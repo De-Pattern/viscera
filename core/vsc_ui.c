@@ -434,7 +434,11 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
                 if (ty != (vsc.t[track][P_MOD(m, 0)] & 3u)) { vsc.t[track][P_MOD(m, 0)] = (uint8_t)ty; vsc_mod_defaults(track, m); }
             }
             break;
-        case PG_STEPS: if (vsc.t[track][P_SEQM] == SEQ_STEPS) { step_sel = (unsigned)clampi((int)step_sel + d, 0, VSC_STEPS - 1); step_page = step_sel / 16; } break;
+        case PG_STEPS: {   /* the sequencer itself: STEPS or CAROM */
+            unsigned m = (unsigned)clampi((int)vsc.t[track][P_SEQM] + d, SEQ_STEPS, SEQ_CAROM);
+            if (m != vsc.t[track][P_SEQM]) { vsc.t[track][P_SEQM] = (uint8_t)m; row = 0; vsc_ui_notice(m == SEQ_CAROM ? "CAROM: NOTES BOUNCE" : "STEPS", 900); }
+            break;
+        }
         case PG_PROJECT: proj_slot = (unsigned)clampi((int)proj_slot + d, 0, VSC_PROJECTS - 1); break;
         case PG_SETTINGS:
             if (row == 2) learn_sel = (unsigned)clampi((int)learn_sel + d, 0, VSC_LEARN - 1);
@@ -614,7 +618,7 @@ static void draw_knobs(void)
                        : (vsc.t[track][P_MOD(row / 3, 0)] & 3) == MT_ADSR ? "PRESETS: TYPE  REC: TRIG  LFO+KNOB: MAP"
                        : "PRESETS: TYPE  HOLD LFO+KNOB: MAP"; break;
     case PG_SCENE: hint = "ARP+PAD: SCENE  ARP+KNOB: MAP MACRO"; break;
-    case PG_STEPS: hint = vsc.t[track][P_SEQM] == SEQ_CAROM ? "REC: ADD BALLS  HOLD REC: CLEAR" : "PRESETS: STEP  OCT: PAGE  REC: RECORD"; break;
+    case PG_STEPS: hint = vsc.t[track][P_SEQM] == SEQ_CAROM ? "PRESETS: STEPS  REC: ADD  HOLD: CLEAR" : "PRESETS: CAROM  OCT: PAGE  REC: REC"; break;
     case PG_PROJECT: hint = "PRESETS: SLOT REC: LOAD SAVE+PLAY: SAVE"; break;
     case PG_SETTINGS: hint = row == 0 ? "PRESETS: DEVICE  REC: SCAN/CONNECT" : row == 2 ? "SAVE+KNOB: LEARN  REC: CLEAR" : "SELECT: PAGE"; break;
     default: hint = "SELECT: PAGE  ALGORITHM: TRACK"; break;

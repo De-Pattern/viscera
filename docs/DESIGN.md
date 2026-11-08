@@ -74,7 +74,7 @@ The FM-1's left-hand encoders are the same kind of control on every page, but th
 | KNOB 1–4 | The four parameters on screen |
 | SELECT | The next four parameters of this device or page |
 | ALGORITHM | Track 1–4 |
-| PRESETS | The page's list: the device in this slot (MATERIAL, FILTER), a modulator's type, a route in the matrix, a step, a project slot, a Bluetooth device, a learned mapping |
+| PRESETS | The page's list: the device in this slot (MATERIAL, FILTER), the sequencer (STEPS or CAROM), a modulator's type, a route in the matrix, a project slot, a Bluetooth device, a learned mapping |
 | MASTER | Output level |
 | EDIT / FX / SEL / ENV / GLO | MATERIAL / GRAIN / FILTER / COLOR / SPACE (press again for the next page) |
 | LFO | The four modulators, then the MATRIX; hold + turn a knob = map |

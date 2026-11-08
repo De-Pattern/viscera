@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1
+
+- **Changed:** on the SEQ page, PRESETS switches the sequencer between STEPS and CAROM (it was a knob on the second page). The bottom line says which way it goes; pads still pick steps.
+
 ## 0.2.0
 
 - **Changed:** built around the S-4's architecture on the FM-1's controls. KNOB 1–4 turn four parameters at a time, SELECT pages through them, ALGORITHM picks the track and PRESETS picks the device, type or list for the page. Parameters follow the S-4's devices, page by page.

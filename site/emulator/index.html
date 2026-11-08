@@ -40,42 +40,65 @@ nav a:hover{color:var(--ink)}
 .intro p{margin:0;max-width:440px;color:var(--ink-soft);font-size:14px}
 .eyebrow{font:400 10px/1 var(--mono);letter-spacing:.24em;text-transform:uppercase;color:var(--grey);margin:0 0 14px}
 
-/* the instrument */
-.stage{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:34px;align-items:start}
-.device{position:relative;background:var(--body);border-radius:18px;padding:26px 26px 22px;
+/* the instrument: laid out like the FM-1's panel. Left: MASTER, SELECT, PRESETS, ALGORITHM and the
+   octave buttons; centre: the screen; right: KNOB 1-4 over two rows of six buttons; the pads below. */
+.device{position:relative;background:var(--body);border-radius:18px;padding:30px 30px 22px;
   box-shadow:0 1px 0 var(--body-edge) inset,0 30px 60px -30px rgba(26,25,23,.55),0 2px 0 rgba(26,25,23,.4);
-  color:var(--mark);user-select:none;-webkit-user-select:none;touch-action:none}
+  color:var(--mark);user-select:none;-webkit-user-select:none;touch-action:none;display:grid;gap:18px}
 .device::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:.18;mix-blend-mode:overlay;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E")}
-.top{display:grid;grid-template-columns:auto minmax(0,1fr);gap:26px;align-items:start}
-.screen{width:min(480px,46vw);aspect-ratio:1;max-width:100%;border-radius:6px;background:#121110;padding:8px;box-shadow:0 0 0 1px #000 inset,0 0 0 2px #2a2926}
+.upper{display:grid;grid-template-columns:auto minmax(0,360px) minmax(0,1fr);gap:28px;align-items:start}
+.lefthand{display:grid;grid-template-columns:repeat(2,86px);gap:14px 6px;justify-items:center}
+
+.righthand{display:grid;gap:14px;min-width:0;align-content:start}
+.knobs4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;justify-items:center}
+.btns{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px}
+.now{border-radius:6px;background:#121110;box-shadow:0 0 0 1px #000 inset;padding:9px 12px;font:400 10px/1.5 var(--mono);letter-spacing:.06em;color:#a49d90;min-height:52px}
+.now b{display:block;font-weight:400;font-size:8px;letter-spacing:.22em;color:#6f695f}
+.screen{width:100%;aspect-ratio:1;border-radius:7px;background:#121110;padding:7px;box-shadow:0 0 0 1px #000 inset,0 0 0 2px #2a2926,0 0 0 3px #0b0b0a}
 #lcd{width:100%;height:100%;display:block;image-rendering:pixelated;image-rendering:crisp-edges;border-radius:2px}
-.knobs{display:grid;grid-template-columns:repeat(3,1fr);gap:18px 14px;align-content:start}
-.knob{display:flex;flex-direction:column;align-items:center;gap:7px;cursor:ns-resize}
-.knob .cap{width:58px;height:58px;border-radius:50%;background:radial-gradient(circle at 40% 35%,var(--cap-hi),var(--cap) 60%,#1a1917);
-  box-shadow:0 2px 0 #0d0d0c,0 0 0 1px #3b3934 inset;position:relative}
-.knob .cap i{position:absolute;left:50%;top:6px;width:2px;height:12px;margin-left:-1px;background:var(--mark);border-radius:1px;transform-origin:1px 23px}
-.knob span{font:400 9px/1 var(--mono);letter-spacing:.16em;color:#9d978b}
-.knob.row .cap{width:46px;height:46px}
-.knob.row .cap i{transform-origin:1px 17px;top:5px;height:9px}
-.knob:focus-visible .cap{outline:1px solid var(--mark);outline-offset:3px}
-.buttons{display:grid;grid-template-columns:repeat(7,1fr);gap:10px 10px;margin:24px 0 20px}
-.btn{font:400 9px/1 var(--mono);letter-spacing:.14em;color:#c8c1b3;background:var(--cap);border:0;border-radius:6px;
-  height:34px;box-shadow:0 2px 0 #0d0d0c,0 0 0 1px #3b3934 inset;cursor:pointer;text-transform:uppercase;padding:0}
-.btn.down{transform:translateY(2px);box-shadow:0 0 0 #0d0d0c,0 0 0 1px #5b5852 inset;color:#fff;background:#3a3834}
+
+/* a knob as on the FM-1: its name printed above, a small knurled black cap with a pale line (the cap turns) */
+.enc{--k:40px;position:relative;display:flex;flex-direction:column;align-items:center;width:100%;cursor:ns-resize;touch-action:none}
+.enc .lbl{order:-1;margin-bottom:9px;font:500 9px/1 var(--mono);letter-spacing:.16em;color:#c8c1b3;white-space:nowrap}
+.enc .cap{position:relative;width:var(--k);height:var(--k);border-radius:50%;flex:none;
+  background:repeating-conic-gradient(#0d0c0b 0 4deg,#2a2826 4deg 12deg);box-shadow:0 0 0 2px #0b0b0a,0 4px 7px rgba(0,0,0,.6)}
+.enc .cap::after{content:"";position:absolute;inset:13%;border-radius:50%;
+  background:linear-gradient(var(--mark),var(--mark)) 50% 6%/2px 34% no-repeat,radial-gradient(circle at 45% 35%,#34322e,#151412 75%);box-shadow:inset 0 1px 1px rgba(255,255,255,.1)}
+.enc .fn{font:400 8px/1.4 var(--mono);letter-spacing:.06em;color:#7d776c;margin-top:7px;white-space:nowrap}
+.enc:focus-visible{outline:none}.enc:focus-visible .cap{outline:1px solid var(--mark);outline-offset:3px}
+.knobs4 .enc{--k:38px}
+
+/* buttons sit in a recessed tray, as on the FM-1 */
+.tray{border-radius:12px;background:#151413;box-shadow:inset 0 2px 6px rgba(0,0,0,.8),0 1px 0 rgba(255,255,255,.05);padding:10px;display:grid;gap:8px}
+.lefthand .tray{grid-column:1/-1;grid-template-columns:1fr 1fr;padding:8px;width:100%}
+.btn{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;height:46px;padding:0;border:1px solid #0b0b0a;border-radius:8px;cursor:pointer;
+  background:linear-gradient(180deg,#2e2c29,#1d1c1a);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 3px 3px rgba(0,0,0,.55);color:#e6dfd1;min-width:0}
+.btn .l{font:600 10px/1 var(--mono);letter-spacing:.08em}
+.btn .f{font:400 7.5px/1 var(--mono);letter-spacing:.04em;color:#7d776c;white-space:nowrap;overflow:hidden;max-width:100%}
+.btn.down{transform:translateY(1px);background:linear-gradient(180deg,#3a3834,#292724);box-shadow:inset 0 0 0 1px rgba(230,223,209,.35),0 1px 1px rgba(0,0,0,.55)}
+.btn.oct{height:34px}
 .btn:focus-visible{outline:1px solid var(--mark);outline-offset:2px}
-.keys{position:relative;height:120px;border-radius:6px;background:#121110;box-shadow:0 0 0 1px #000 inset;overflow:hidden}
-.key{position:absolute;bottom:4px;border-radius:0 0 5px 5px;cursor:pointer}
-.key.w{top:4px;background:linear-gradient(#d9d2c3,#e9e3d6);box-shadow:0 0 0 1px #8f897c inset}
-.key.b{top:4px;height:58%;background:linear-gradient(#2e2c29,#1b1a18);box-shadow:0 0 0 1px #000 inset;z-index:2}
-.key.down.w{background:linear-gradient(#bdb5a5,#cfc8b9)}
-.key.down.b{background:#46433e}
-.key em{position:absolute;bottom:6px;left:0;right:0;text-align:center;font:400 8px/1 var(--mono);letter-spacing:.1em;color:#8a8478;font-style:normal}
-.key.b em{color:#77716a}
-.brand{display:flex;justify-content:space-between;margin-top:14px;font:400 9px/1 var(--mono);letter-spacing:.3em;color:#7d776c}
+
+/* the pads: tall rounded pills with a pale line, sharps on the row above, gaps as on the FM-1 */
+.keybed{border-radius:14px;padding:14px 18px;display:grid;gap:10px;background:#151413;box-shadow:inset 0 3px 10px rgba(0,0,0,.9),0 1px 0 rgba(255,255,255,.06)}
+.krow{display:grid;grid-template-columns:repeat(16,minmax(0,1fr));gap:8px}
+#blackrow{transform:translateX(calc((100% + 8px) / -32))}
+.key{position:relative;height:74px;border-radius:999px;cursor:pointer;display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px;
+  background:linear-gradient(180deg,#2c2a27,#1c1b19);border:1px solid #0a0a09;box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 3px 4px rgba(0,0,0,.6)}
+.key::before{content:"";position:absolute;top:10px;height:20px;left:50%;width:3px;margin-left:-1.5px;border-radius:2px;background:#d8d1c3;opacity:.85}
+.key.b{height:62px}
+.key.gap{visibility:hidden}
+.key span{font:400 7.5px/1.15 var(--mono);color:#8a8478;text-align:center;pointer-events:none}
+.key span i{display:block;font-style:normal;color:#5f5a52}
+.key.down{background:linear-gradient(180deg,#d9d2c3,#b9b1a1);box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 0 14px rgba(230,223,209,.45)}
+.key.down::before{background:#1a1917}
+.key.down span,.key.down span i{color:#1a1917}
+.brand{display:flex;justify-content:space-between;font:400 9px/1 var(--mono);letter-spacing:.3em;color:#7d776c}
 
 /* side panel */
-.side{display:flex;flex-direction:column;gap:22px}
+.side{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:34px;margin-top:34px}
+.side #note{grid-column:1/-1}
 .panel{border-top:1px solid var(--line);padding-top:16px}
 .panel h3{font:400 10px/1 var(--mono);letter-spacing:.24em;text-transform:uppercase;color:var(--grey);margin:0 0 12px}
 .panel p{font-size:13px;color:var(--ink-soft);margin:0 0 10px}
@@ -87,20 +110,31 @@ nav a:hover{color:var(--ink)}
 .slot{font:400 9px/1.3 var(--mono);letter-spacing:.06em;border:1px dashed var(--stone);padding:8px 6px;min-height:46px;color:var(--grey);text-align:left;background:transparent;cursor:pointer;overflow:hidden;text-overflow:ellipsis}
 .slot.full{border-style:solid;border-color:var(--ink);color:var(--ink)}
 .slot.over{background:var(--beige)}
-dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0;font-size:12px}
-dt{font:400 10px/1.8 var(--mono);letter-spacing:.08em;color:var(--grey);white-space:nowrap}
+dl{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:6px 14px;margin:0;font-size:12px}
+dt{font:400 10px/1.8 var(--mono);letter-spacing:.08em;color:var(--grey)}
 dd{margin:0;color:var(--ink-soft)}
 .power{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;border-radius:inherit;background:rgba(18,17,16,.82);z-index:5}
 .power button{font:400 11px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--ink);background:var(--paper);border:0;padding:16px 22px;cursor:pointer}
 .power[hidden]{display:none}
 #note{min-height:20px;font:400 11px/1.5 var(--mono);color:var(--grey)}
 footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;color:var(--grey)}
-@media (max-width:980px){.stage{grid-template-columns:1fr}.screen{width:min(480px,100%)}}
-@media (max-width:640px){
+@media (max-width:1060px){
+  .upper{grid-template-columns:auto minmax(0,1fr)}
+  .righthand{grid-column:1/-1}
+  .side{grid-template-columns:1fr 1fr}
+}
+@media (max-width:720px){
   .wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
-  .top{grid-template-columns:1fr}nav{gap:14px;letter-spacing:.08em}.word{letter-spacing:.24em}.mark{gap:8px}.device{padding:16px}.knobs{grid-template-columns:repeat(4,1fr)}
-  .buttons{grid-template-columns:repeat(7,1fr);gap:6px}.btn{font-size:7px;letter-spacing:.06em}
-  .knob .cap{width:44px;height:44px}.knob .cap i{transform-origin:1px 16px}
+  nav{gap:14px;letter-spacing:.08em}.word{letter-spacing:.24em}.mark{gap:8px}
+  .device{padding:22px 14px 16px}
+  .upper{grid-template-columns:1fr;gap:18px}
+  .lefthand{grid-template-columns:repeat(4,minmax(0,1fr));order:2}
+  .screenwrap{order:1}.righthand{order:3}
+  .enc{--k:38px}.knobs4 .enc{--k:36px}
+  .btns{gap:5px}.btn{height:42px}.btn .l{font-size:8.5px;letter-spacing:.04em}.btn .f{font-size:6.5px}
+  .keybed{padding:8px;gap:6px}.krow{gap:3px}#blackrow{transform:translateX(calc((100% + 3px) / -32))}
+  .key{height:50px;padding-bottom:5px}.key.b{height:44px}.key::before{top:9px;height:16px;width:2px}.key span{display:none}
+  .side{grid-template-columns:1fr;gap:22px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -122,13 +156,17 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
   <div class="stage">
     <div class="device" id="device">
       <div class="power" id="power"><button id="power-on">Switch on</button></div>
-      <div class="top">
-        <div class="screen"><canvas id="lcd" width="240" height="240" aria-label="FM-1 screen"></canvas></div>
-        <div class="knobs" id="knobs"></div>
-      </div>
-      <div class="buttons" id="buttons"></div>
-      <div class="keys" id="keys"></div>
       <div class="brand"><span>FM-1</span><span>VISCERA</span></div>
+      <div class="upper">
+        <div class="lefthand" id="lefthand"></div>
+        <div class="screenwrap"><div class="screen"><canvas id="lcd" width="240" height="240" aria-label="FM-1 screen"></canvas></div></div>
+        <div class="righthand">
+          <div class="knobs4" id="knobs4"></div>
+          <div class="tray"><div class="btns" id="btnrow1"></div><div class="btns" id="btnrow2"></div></div>
+          <div class="now"><b>KNOBS</b><span id="now">KNOB 1–4 turn the four parameters on screen. SELECT pages through them, ALGORITHM picks the track, PRESETS picks the device or list.</span></div>
+        </div>
+      </div>
+      <div class="keybed"><div class="krow" id="blackrow"></div><div class="krow" id="whiterow"></div></div>
     </div>
 
     <div class="side">
@@ -151,15 +189,22 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
       <div class="panel" id="help">
         <h3>Controls</h3>
         <dl>
-          <dt>Knobs</dt><dd>drag up and down, or scroll</dd>
-          <dt>Keys</dt><dd>click, or type Z S X D C V… and Q W E R T…</dd>
+          <dt>Turning</dt><dd>drag up and down, scroll, or focus and use the arrow keys</dd>
+          <dt>KNOB 1–4</dt><dd>the four parameters on screen</dd>
+          <dt>SELECT</dt><dd>the next four parameters (pages)</dd>
+          <dt>ALGORITHM</dt><dd>track 1–4</dd>
+          <dt>PRESETS</dt><dd>the device in this slot, a modulator's type, a route, a step or a slot</dd>
+          <dt>MASTER</dt><dd>output level</dd>
+          <dt>EDIT FX SEL ENV GLO</dt><dd>material, grain, filter, color, space</dd>
+          <dt>LFO</dt><dd>the four modulators and the matrix; hold LFO and turn a knob to map</dd>
+          <dt>ARP</dt><dd>perform: eight macros, scenes (ARP + pad)</dd>
+          <dt>HOME</dt><dd>mix: level, pan, send and filter for each track</dd>
+          <dt>REC</dt><dd>the page's action: record, lock, freeze, trigger</dd>
+          <dt>SAVE</dt><dd>projects and settings; hold SAVE and turn a knob for MIDI learn</dd>
+          <dt>OCT− + OCT+</dt><dd>held together: TEMP, everything snaps back</dd>
+          <dt>Pads</dt><dd>click, or type Z X C V… / and Q W E R T Y; sharps on S D F H J… and 3 4 6</dd>
           <dt>Space</dt><dd>PLAY</dd>
-          <dt>EDIT FX SCL ENV</dt><dd>material, grain, filter, color</dd>
-          <dt>LFO</dt><dd>modulators; hold and turn to assign</dd>
-          <dt>ARP</dt><dd>scenes and macros</dd>
-          <dt>SEQ</dt><dd>steps or CAROM</dd>
-          <dt>HOME + top keys</dt><dd>choose track 1–4</dd>
-          <dt>SAVE</dt><dd>projects (kept in this browser)</dd>
+          <dt>MIDI</dt><dd>channels 1–4 play tracks 1–4; CCs, clock and start/stop follow</dd>
         </dl>
       </div>
       <p id="note" role="status" aria-live="polite"></p>

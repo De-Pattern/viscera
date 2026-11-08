@@ -35,11 +35,14 @@ jobs:
         run: |
           sudo apt-get install -y -q lld >/dev/null
           clang --target=wasm32 -O2 -nostdlib -ffreestanding -fno-builtin-memcpy -Icore \
+            -DVSC_VERSION="\"${{ steps.v.outputs.version }}\"" \
             -Wl,--no-entry -Wl,--export=__heap_base -Wl,--initial-memory=8388608 -Wl,--strip-all \
-            -o build/viscera.wasm web/vsc_wasm.c core/vsc_engine.c core/vsc_params.c core/vsc_ui.c
+            -o build/viscera.wasm web/vsc_wasm.c core/vsc_engine.c core/vsc_params.c core/vsc_ui.c core/vsc_midi.c
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Play every page, device, modulator and MIDI path on the same core
+        run: node tools/emulator/engine_test.mjs build/viscera.wasm
       - name: Check the package with M-VAVE's updater
         run: node tools/verify_package.mjs build/viscera.fwsc build/latest.json
       - name: Install it through the install page into a simulated FM-1 (from Ravel, stock and Open)

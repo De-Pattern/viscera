@@ -8,14 +8,20 @@ static const char *const n_input[] = {"BT", "USB", "BT+USB", "T1", "T2", "T3", "
 static const char *const n_qual[] = {"HI", "LO"};
 static const char *const n_off_on[] = {"OFF", "ON"};
 static const char *const n_gquant[] = {"FREE", "SEMI", "OCT", "5TH"};
-static const char *const n_ftype[] = {"LP", "BP", "HP", "PEAKS", "OFF"};
+static const char *const n_ftype[] = {"LP", "BP", "HP", "PEAKS", "RESON", "OFF"};
 static const char *const n_fscale[] = {"OCT", "5TH", "MAJ", "MIN", "SUS", "HARM", "WHOLE", "CLUST"};
-static const char *const n_ntype[] = {"HISS", "DUST"};
-static const char *const n_lfo[] = {"SINE", "TRI", "SAW", "RAMP", "SQUARE", "S+H"};
-static const char *const n_sync[] = {"FREE", "1/16", "1/8", "1/4", "1/2", "1BAR", "2BAR", "4BAR"};
-static const char *const n_reset[] = {"FREE", "NOTE"};
+static const char *const n_kscale[] = {"CHROM", "MAJOR", "MINOR", "PENTA", "BLUES", "WHOLE", "FIFTHS", "OCTAVE"};
+static const char *const n_kdmode[] = {"SUSTN", "CHOKE"};
+static const char *const n_wmode[] = {"MIX", "SEND"};
+static const char *const n_cmode[] = {"BITS", "REDUX", "BOTH"};
+static const char *const n_xover[] = {"LOW", "MID", "HIGH"};
+static const char *const n_ntype[] = {"WHITE", "PINK", "DUST"};
+static const char *const n_mtype[] = {"WAVE", "RANDOM", "FOLLOW", "ADSR"};
+static const char *const n_wshape[] = {"SINE", "TRI", "SQUARE", "SAW", "RAMP", "S+H"};
+static const char *const n_sync[] = {"FREE", "STRGHT", "TRIPLT", "DOTTED"};
+static const char *const n_fin[] = {"TRACK", "MATER", "T1", "T2", "T3", "T4", "MAIN", "INPUT"};
 static const char *const n_dtime[] = {"1/32", "1/16T", "1/16", "1/8T", "1/16D", "1/8", "1/4T", "1/8D", "1/4"};
-static const char *const n_clock[] = {"INT", "MIDI"};
+static const char *const n_clock[] = {"AUTO", "INT", "MIDI"};
 static const char *const n_seqm[] = {"STEPS", "CAROM"};
 static const char *const n_rquant[] = {"FREE", "1/16", "1/8"};
 static const char *const n_rwalls[] = {"OCTAVE", "SAME", "5TH"};
@@ -24,47 +30,78 @@ static const char *const n_rwalls[] = {"OCTAVE", "SAME", "5TH"};
 #define B(n, d) {n, 127, d, VSC_PF_BIPOLAR, 0}
 #define E(n, list, d) {n, sizeof list / sizeof list[0] - 1, d, VSC_PF_ENUM, list}
 #define X {"", 0, 0, VSC_PF_ENUM, 0}
+#define MODSLOT E("TYPE", n_mtype, 0), X, X, X, X, X, X, X, X, X
 
 static const struct vsc_pinfo tinfo[VSC_NP] = {
     /* MATERIAL */
-    E("MODE", n_mode, 0), {"SLOT", 16, 0, VSC_PF_ENUM, 0}, C("START", 0), C("LENGTH", 127),
+    E("DEVICE", n_mode, 0), {"SAMPLE", 16, 0, VSC_PF_ENUM, 0}, C("START", 0), C("LENGTH", 127),
     B("SPEED", 96), {"PITCH", 48, 24, VSC_PF_BIPOLAR, 0},
-    E("LOOP", n_loopm, 1), E("INPUT", n_input, 0), C("DUB", 100), {"SIZE", 3, 0, VSC_PF_ENUM, 0},
-    E("RATE", n_qual, 0), C("GAIN", 100),
+    E("LOOP", n_loopm, 1), E("INPUT", n_input, 0), C("SOS", 100), {"SIZE", 3, 0, VSC_PF_ENUM, 0},
+    E("RATE", n_qual, 0), C("LEVEL", 100),
     C("ATTACK", 0), C("DECAY", 64), C("SUSTN", 127), C("RELEAS", 30), C("GLIDE", 0), C("VELO", 64),
     /* GRAIN */
-    C("MIX", 0), C("SIZE", 50), C("DENSE", 60), {"PITCH", 48, 24, VSC_PF_BIPOLAR, 0}, C("SPRAY", 20), C("SHAPE", 64),
-    C("TIME", 30), C("REVRS", 0), E("FREEZE", n_off_on, 0), C("DETUNE", 0), E("QUANT", n_gquant, 0), C("FDBK", 0),
+    C("WET", 0), C("SIZE", 50), C("RATE", 60), {"PITCH", 48, 24, VSC_PF_BIPOLAR, 0}, C("SPRAY", 20), B("SHAPE", 64),
+    C("SCAN", 30), C("REVRS", 0), E("LOCK", n_off_on, 0), C("DETUNE", 0), E("QUANT", n_gquant, 0), C("FDBK", 0),
+    E("W.MODE", n_wmode, 0),
     /* FILTER */
-    E("TYPE", n_ftype, 0), C("CUTOFF", 120), C("RESO", 20), C("SPREAD", 64), E("SCALE", n_fscale, 0), C("MIX", 127),
+    E("DEVICE", n_ftype, 4), C("CUTOFF", 120), C("RESO", 20), C("SPREAD", 64), E("SCALE", n_fscale, 0), C("WET", 127),
+    E("W.MODE", n_wmode, 0),
+    C("DECAY", 70), {"PITCH", 48, 24, VSC_PF_BIPOLAR, 0}, B("SLOPE", 64), B("TONE", 64), E("SCALE", n_kscale, 0), C("WAVES", 0),
+    C("W.RATE", 40), C("NOISE", 0), C("N.RATE", 50), B("TILT", 64), C("DETUNE", 0), E("D.MODE", n_kdmode, 0),
     /* COLOR */
-    C("DRIVE", 0), C("COMP", 0), C("BITS", 0), C("RATE", 0), C("NOISE", 0), B("TONE", 64),
-    E("NOISE", n_ntype, 0), C("MIX", 127), X, X, X, X,
+    C("DRIVE", 0), C("COMP", 0), C("CRUSH", 0), E("C.MODE", n_cmode, 0), B("TILT", 64), E("XOVER", n_xover, 1),
+    C("NOISE", 0), C("N.DEC", 40), C("N.TONE", 64), E("N.TYPE", n_ntype, 1), C("WET", 127), E("W.MODE", n_wmode, 0),
     /* MIX */
-    C("LEVEL", 100), B("PAN", 64), C("SEND", 0), E("MUTE", n_off_on, 0), X, X,
-    /* MOD 0: LFO */
-    E("SHAPE", n_lfo, 0), C("RATE", 50), E("SYNC", n_sync, 0), E("RESET", n_reset, 0),
-    /* MOD 1: RANDOM */
-    C("RATE", 50), C("SMOOTH", 64), X, X,
-    /* MOD 2: FOLLOW */
-    C("ATTACK", 10), C("RELEAS", 50), C("GAIN", 64), X,
-    /* MOD 3: ENV */
-    C("ATTACK", 5), C("DECAY", 50), C("SUSTN", 0), C("RELEAS", 30),
+    C("LEVEL", 100), B("PAN", 64), C("SEND", 0), E("MUTE", n_off_on, 0), B("FILTER", 64),
+    /* MODS: the per-type parameters come from mod_tables */
+    MODSLOT, MODSLOT, MODSLOT, MODSLOT,
     /* SEQUENCER */
     E("SEQ", n_seqm, 0), C("SPEED", 50), B("GRAVTY", 64), C("LOSS", 0), C("SPREAD", 64), E("QUANT", n_rquant, 1),
     {"BALLS", VSC_BALLS - 1, VSC_BALLS - 1, VSC_PF_ENUM, 0}, E("WALLS", n_rwalls, 0), C("JITTER", 0), C("GATE", 40),
 };
-static const struct vsc_pinfo ginfo[VSC_NG] = {
-    C("SWING", 0), E("TIME", n_dtime, 5), C("FDBK", 50), B("TONE", 64), E("LONG", n_off_on, 0), C("DELAY", 100),
-    C("SIZE", 70), C("DAMP", 50), C("REVERB", 100), C("MAIN", 110), E("CLOCK", n_clock, 0), E("MONITR", n_off_on, 0),
-    C("MORPH", 0), {"TARGET", VSC_SCENES - 1, 1, VSC_PF_ENUM, 0}, {"MACRO", VSC_MACROS - 1, 0, VSC_PF_ENUM, 0},
-    C("M1", 0), C("M2", 0), C("M3", 0), C("M4", 0),
+/* Modulators: parameters 1..9 for each type (0 is TYPE). */
+static const struct vsc_pinfo mod_tables[4][9] = {
+    /* WAVE */
+    {C("RATE", 50), C("AMOUNT", 127), C("PHASE", 0), B("OFFSET", 64), B("SKEW", 64), C("FOLD", 0), B("CURVE", 64),
+     E("SHAPE", n_wshape, 0), E("SYNC", n_sync, 0)},
+    /* RANDOM */
+    {C("RATE", 70), C("AMOUNT", 127), C("PHASE", 0), B("OFFSET", 64), {"LENGTH", 15, 7, VSC_PF_ENUM, 0}, C("VARIAT", 30),
+     C("SMOOTH", 40), X, E("SYNC", n_sync, 0)},
+    /* FOLLOW */
+    {C("DELAY", 0), C("AMOUNT", 127), C("RISE", 10), C("FALL", 50), E("INPUT", n_fin, 0), B("FILTER", 64), C("HOLD", 0),
+     C("GAIN", 64), X},
+    /* ADSR */
+    {C("ATTACK", 5), C("DECAY", 50), C("SUSTN", 0), C("RELEAS", 30), B("A.CURV", 64), B("D.CURV", 64), B("R.CURV", 64),
+     C("AMOUNT", 127), X},
 };
+static const struct vsc_pinfo ginfo[VSC_NG] = {
+    C("SWING", 0), E("TIME", n_dtime, 5), C("FDBK", 50), B("TONE", 64), E("LONG", n_off_on, 0), C("DELAY", 60),
+    C("SIZE", 70), C("DAMP", 50), C("REVERB", 60), C("MAIN", 110), E("CLOCK", n_clock, 0), E("MONITR", n_off_on, 0),
+    C("MORPH", 0), {"TARGET", VSC_SCENES - 1, 1, VSC_PF_ENUM, 0}, {"MACRO", VSC_MACROS - 1, 0, VSC_PF_ENUM, 0},
+    C("COMP", 0),
+    C("M1", 0), C("M2", 0), C("M3", 0), C("M4", 0), C("M5", 0), C("M6", 0), C("M7", 0), C("M8", 0),
+};
+static const uint8_t mod_default_type[4] = {MT_WAVE, MT_RANDOM, MT_FOLLOW, MT_ADSR};
 
+const struct vsc_pinfo *vsc_mod_info(unsigned type, unsigned k)
+{
+    if (k == 0) return &tinfo[P_MOD0];
+    return &mod_tables[type & 3][(k - 1) % 9];
+}
+void vsc_mod_defaults(unsigned t, unsigned m)
+{
+    if (t >= VSC_TRACKS || m >= VSC_MODS) return;
+    unsigned type = vsc.t[t][P_MOD(m, 0)] & 3;
+    for (unsigned k = 1; k < VSC_MOD_PARAMS; ++k) vsc.t[t][P_MOD(m, k)] = mod_tables[type][k - 1].def;
+}
 const struct vsc_pinfo *vsc_tparam_info(unsigned track, unsigned p)
 {
-    (void)track;
-    return p < VSC_NP ? &tinfo[p] : &tinfo[P_CRES1];
+    if (p >= VSC_NP) return &tinfo[P_MOD0 + 1];   /* an empty entry */
+    if (p > P_MOD0 && p < P_MOD0 + 4 * VSC_MOD_PARAMS && track < VSC_TRACKS) {
+        unsigned rel = p - P_MOD0, k = rel % VSC_MOD_PARAMS;
+        if (k) return &mod_tables[vsc.t[track][P_MOD0 + rel - k] & 3][k - 1];
+    }
+    return &tinfo[p];
 }
 const struct vsc_pinfo *vsc_gparam_info(unsigned p) { return p < VSC_NG ? &ginfo[p] : &ginfo[0]; }
 
@@ -95,8 +132,9 @@ void vsc_param_label(const struct vsc_pinfo *info, unsigned p, unsigned v, char 
             if (v >= VSC_BANK_SLOTS) { put_str(out, "LOOP"); return; }
             out[0] = 'S'; put_int(out + 1, (int)v + 1); return;
         }
-        if (p == P_PITCH || p == P_GPITCH) { put_int(out, (int)v - 24); return; }
+        if (p == P_PITCH || p == P_GPITCH || p == P_KPITCH) { put_int(out, (int)v - 24); return; }
         if (p == P_SIZE || p == P_RCOUNT) { put_int(out, (int)v + 1); return; }
+        if (p > P_MOD0 && p < P_MOD0 + 4 * VSC_MOD_PARAMS && (p - P_MOD0) % VSC_MOD_PARAMS == 5 && !info->names && info->max == 15) { put_int(out, (int)v + 1); return; }
         if (p == P_SPEED) {
             /* -2.00 .. +2.00 */
             int c = ((int)v - 64) * 100 / 32;
@@ -148,22 +186,28 @@ void vsc_track_defaults(struct vsc_project *p, unsigned t)
         vsc_memset(st, 0, sizeof *st);
         st->note = 60; st->vel = 100; st->lp[0] = st->lp[1] = 255;
     }
-    for (unsigned r = 0; r < VSC_MOD_ROUTES; ++r) { p->route[t][r].param = 255; p->route[t][r].depth = 0; }
+    for (unsigned r = 0; r < VSC_MOD_ROUTES; ++r) { p->route[t][r].param = 255; p->route[t][r].depth = 0; p->route[t][r].flags = 0; }
+    for (unsigned m = 0; m < VSC_MODS; ++m) {
+        unsigned type = mod_default_type[m];
+        p->t[t][P_MOD(m, 0)] = (uint8_t)type;
+        for (unsigned k = 1; k < VSC_MOD_PARAMS; ++k) p->t[t][P_MOD(m, k)] = mod_tables[type][k - 1].def;
+    }
 }
 void vsc_project_defaults(struct vsc_project *p)
 {
     vsc_memset(p, 0, sizeof *p);
-    p->magic = VSC_MAGIC; p->version = 1; p->bytes = sizeof *p;
+    p->magic = VSC_MAGIC; p->version = VSC_FORMAT; p->bytes = sizeof *p;
     vsc_memcpy(p->name, "NEW PROJECT", 12);
     p->tempo = 110;
     for (unsigned t = 0; t < VSC_TRACKS; ++t) vsc_track_defaults(p, t);
     for (unsigned g = 0; g < VSC_NG; ++g) p->g[g] = ginfo[g].def;
     for (unsigned m = 0; m < VSC_MACROS; ++m)
         for (unsigned r = 0; r < VSC_MACRO_ROUTES; ++r) { p->macro[m][r].param = 255; p->macro[m][r].depth = 0; }
+    for (unsigned l = 0; l < VSC_LEARN; ++l) p->learn[l].param = 255;
 }
 int vsc_project_valid(const struct vsc_project *p)
 {
-    if (p->magic != VSC_MAGIC || p->version != 1 || p->bytes != sizeof *p) return 0;
+    if (p->magic != VSC_MAGIC || p->version != VSC_FORMAT || p->bytes != sizeof *p) return 0;
     uint32_t want = p->crc;
     /* CRC covers everything after the crc field. */
     const uint8_t *body = (const uint8_t *)&p->name;
@@ -193,7 +237,8 @@ void vsc_scene_recall(unsigned s)
 
 void vsc_route_set(unsigned t, unsigned src, unsigned param, int depth)
 {
-    if (t >= VSC_TRACKS || src >= VSC_MODS || param >= VSC_NP) return;
+    if (t >= VSC_TRACKS || src >= VSC_MODS) return;
+    if (param >= VSC_NP && (param < VSC_GDEST || param >= VSC_GDEST + VSC_NG)) return;
     if (depth > 127) depth = 127;
     if (depth < -127) depth = -127;
     struct vsc_route *free_slot = 0;
@@ -238,4 +283,55 @@ int vsc_macro_get(unsigned m, unsigned t, unsigned param)
     for (unsigned r = 0; r < VSC_MACRO_ROUTES; ++r)
         if (vsc.macro[m][r].param == param && vsc.macro[m][r].track == t) return vsc.macro[m][r].depth;
     return 0;
+}
+
+/* ---- the mod matrix's destinations: every continuous parameter, track and global */
+static const char sect_of[VSC_NP] = {
+    'M','M','M','M','M','M','M','M','M','M','M','M','M','M','M','M','M','M',
+    'G','G','G','G','G','G','G','G','G','G','G','G','G',
+    'F','F','F','F','F','F','F',
+    'F','F','F','F','F','F','F','F','F','F','F','F',
+    'C','C','C','C','C','C','C','C','C','C','C','C',
+    'X','X','X','X','X',
+    '1','1','1','1','1','1','1','1','1','1','2','2','2','2','2','2','2','2','2','2',
+    '3','3','3','3','3','3','3','3','3','3','4','4','4','4','4','4','4','4','4','4',
+    'Q','Q','Q','Q','Q','Q','Q','Q','Q','Q'};
+typedef char sect_size_check[sizeof sect_of == VSC_NP ? 1 : -1];
+static int dest_ok(unsigned code)
+{
+    if (code < VSC_NP) {
+        /* a modulator's own parameters are left out: a mod moving its own slot goes nowhere */
+        if (code >= P_MOD0 && code < P_MOD0 + 4 * VSC_MOD_PARAMS) {
+            unsigned k = (code - P_MOD0) % VSC_MOD_PARAMS;
+            return k == 1 || k == 2;      /* RATE/DELAY and AMOUNT/DECAY of each slot can be modulated */
+        }
+        return tinfo[code].name[0] && !(tinfo[code].flags & VSC_PF_ENUM);
+    }
+    if (code >= VSC_GDEST && code < VSC_GDEST + VSC_NG) return !(ginfo[code - VSC_GDEST].flags & VSC_PF_ENUM);
+    return 0;
+}
+unsigned vsc_mod_dest_count(void)
+{
+    unsigned n = 0;
+    for (unsigned c = 0; c < VSC_GDEST + VSC_NG; ++c) n += (unsigned)dest_ok(c);
+    return n;
+}
+unsigned vsc_mod_dest(unsigned i)
+{
+    for (unsigned c = 0; c < VSC_GDEST + VSC_NG; ++c) if (dest_ok(c) && i-- == 0) return c;
+    return 255;
+}
+void vsc_mod_dest_name(unsigned code, char out[10])
+{
+    const char *n; char s;
+    if (code < VSC_NP) { n = vsc_tparam_info(0, code)->name; s = sect_of[code]; }
+    else if (code >= VSC_GDEST && code < VSC_GDEST + VSC_NG) {
+        n = ginfo[code - VSC_GDEST].name;
+        unsigned g = code - VSC_GDEST;
+        s = g <= G_RLEVEL ? 'S' : g >= G_M0 ? 'P' : 'X';
+    } else { out[0] = '-'; out[1] = '-'; out[2] = 0; return; }
+    unsigned i = 0;
+    out[i++] = s; out[i++] = '.';
+    for (unsigned j = 0; n[j] && j < 7; ++j) out[i++] = n[j];
+    out[i] = 0;
 }

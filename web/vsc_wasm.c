@@ -105,7 +105,7 @@ W_EXPORT(project) struct vsc_project *w_project(void) { return &vsc; }
 W_EXPORT(project_bytes) unsigned w_project_bytes(void) { return sizeof vsc; }
 W_EXPORT(project_seal) void w_project_seal(unsigned slot)
 {
-    vsc.magic = VSC_MAGIC; vsc.version = 1; vsc.bytes = sizeof vsc;
+    vsc.magic = VSC_MAGIC; vsc.version = VSC_FORMAT; vsc.bytes = sizeof vsc;
     char name[12] = "PROJECT  ";
     name[8] = (char)('1' + slot); name[9] = 0;
     for (unsigned i = 0; i < 12; ++i) vsc.name[i] = name[i];
@@ -121,13 +121,29 @@ W_EXPORT(slot_info) void w_slot_info(unsigned slot, unsigned used, const char *n
     vsc_host.slot_name[slot][11] = 0;
 }
 W_EXPORT(name_buffer) char *w_name_buffer(void) { return name_stage; }
+static uint32_t midi_ms;
 W_EXPORT(midi) void w_midi(unsigned status, unsigned a, unsigned b)
 {
-    unsigned ch = status & 15u, type = status & 0xf0u;
-    if (status == 0xf8) { vsc_midi_event(EV_CLOCK, 0, 0, 0); return; }
-    if (status == 0xfa) { vsc_midi_event(EV_START, 0, 0, 0); return; }
-    if (status == 0xfc) { vsc_midi_event(EV_STOP, 0, 0, 0); return; }
-    if (ch >= VSC_TRACKS) return;
-    if (type == 0x90) vsc_midi_event(b ? EV_NOTE_ON : EV_NOTE_OFF, ch, a, b);
-    else if (type == 0x80) vsc_midi_event(EV_NOTE_OFF, ch, a, 0);
+    uint8_t m[3] = {(uint8_t)status, (uint8_t)a, (uint8_t)b};
+    unsigned n = status >= 0xf8 ? 1u : (status & 0xe0u) == 0xc0u ? 2u : 3u;
+    midi_ms += 1;   /* the page sends clock in order; one port */
+    vsc_midi_in(0, m, n, midi_ms);
 }
+
+/* ---- direct access, for the page's tests and tools ---- */
+W_EXPORT(set_param) void w_set_param(unsigned t, unsigned p, unsigned v) { if (t < VSC_TRACKS && p < VSC_NP) vsc.t[t][p] = (uint8_t)v; }
+W_EXPORT(get_param) unsigned w_get_param(unsigned t, unsigned p) { return t < VSC_TRACKS && p < VSC_NP ? vsc.t[t][p] : 0; }
+W_EXPORT(set_global) void w_set_global(unsigned g, unsigned v) { if (g < VSC_NG) vsc.g[g] = (uint8_t)v; }
+W_EXPORT(get_global) unsigned w_get_global(unsigned g) { return g < VSC_NG ? vsc.g[g] : 0; }
+W_EXPORT(set_route) void w_set_route(unsigned t, unsigned r, unsigned src, unsigned param, int depth, unsigned flags)
+{
+    if (t >= VSC_TRACKS || r >= VSC_MOD_ROUTES) return;
+    vsc.route[t][r].src = (uint8_t)src; vsc.route[t][r].param = (uint8_t)param;
+    vsc.route[t][r].depth = (int8_t)depth; vsc.route[t][r].flags = (uint8_t)flags;
+}
+W_EXPORT(mod_value) float w_mod_value(unsigned t, unsigned m) { return t < VSC_TRACKS && m < VSC_MODS ? vsc_meter.mod_value[t][m] : 0.f; }
+W_EXPORT(track_peak) float w_track_peak(unsigned t) { return t < VSC_TRACKS ? vsc_meter.peak[t] : 0.f; }
+W_EXPORT(tempo_now) float w_tempo_now(void) { return vsc_meter.tempo; }
+W_EXPORT(playing) unsigned w_playing(void) { return vsc_meter.playing; }
+W_EXPORT(learn_entry) unsigned w_learn_entry(unsigned l) { return l < VSC_LEARN ? (unsigned)vsc.learn[l].ch | (unsigned)vsc.learn[l].cc << 8 | (unsigned)vsc.learn[l].track << 16 | (unsigned)vsc.learn[l].param << 24 : 0; }
+W_EXPORT(np) unsigned w_np(void) { return VSC_NP; }

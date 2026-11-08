@@ -11,40 +11,46 @@
  * Every parameter is a uint8_t from 0 to its max. Continuous parameters run
  * 0..127 and can be modulated; enums cannot. */
 enum vsc_tparam {
-    /* MATERIAL */
+    /* MATERIAL: PLAY (from the flash bank), LOOP (tape), KEYS (polyphonic), THRU */
     P_MODE, P_SLOT, P_START, P_LEN, P_SPEED, P_PITCH,
     P_LOOPM, P_INPUT, P_DUB, P_SIZE, P_QUAL, P_GAIN,
     P_ATK, P_DEC, P_SUS, P_REL, P_GLIDE, P_VELO,
     /* GRAIN */
     P_GMIX, P_GSIZE, P_GDENS, P_GPITCH, P_GSPRAY, P_GSHAPE,
-    P_GTIME, P_GREV, P_GFREEZE, P_GDETUNE, P_GQUANT, P_GFDBK,
-    /* FILTER */
-    P_FTYPE, P_FCUT, P_FRES, P_FSPREAD, P_FSCALE, P_FMIX,
-    /* COLOR */
-    P_DRIVE, P_COMP, P_BITS, P_RATE, P_NOISE, P_TONE,
-    P_NTYPE, P_CMIX, P_CRES1, P_CRES2, P_CRES3, P_CRES4,
+    P_GTIME, P_GREV, P_GFREEZE, P_GDETUNE, P_GQUANT, P_GFDBK, P_GWMODE,
+    /* FILTER: RESON (the resonator bank) or a classic filter */
+    P_FTYPE, P_FCUT, P_FRES, P_FSPREAD, P_FSCALE, P_FMIX, P_FWMODE,
+    P_KDECAY, P_KPITCH, P_KSLOPE, P_KTONE, P_KSCALE, P_KWAVES,
+    P_KWRATE, P_KNOISE, P_KNRATE, P_KTILT, P_KDETUN, P_KDMODE,
+    /* COLOR: noise -> drive -> crush -> compress, then tilt */
+    P_DRIVE, P_COMP, P_CRUSH, P_CMODE, P_TILT, P_XOVER,
+    P_NOISE, P_NDECAY, P_NTONE, P_NTYPE, P_CMIX, P_CWMODE,
     /* MIX */
-    P_LEVEL, P_PAN, P_SEND, P_MUTE, P_MRES1, P_MRES2,
-    /* MODS: four parameters for each of the four modulators */
-    P_M0A, P_M0B, P_M0C, P_M0D,
-    P_M1A, P_M1B, P_M1C, P_M1D,
-    P_M2A, P_M2B, P_M2C, P_M2D,
-    P_M3A, P_M3B, P_M3C, P_M3D,
+    P_LEVEL, P_PAN, P_SEND, P_MUTE, P_DJF,
+    /* MODS: four slots, each a TYPE and nine parameters whose meaning follows the type */
+    P_MOD0,
     /* SEQUENCER: STEPS or CAROM, and CAROM's physics */
-    P_SEQM, P_RSPEED, P_RGRAV, P_RLOSS, P_RSPREAD, P_RQUANT,
+    P_SEQM = P_MOD0 + 40, P_RSPEED, P_RGRAV, P_RLOSS, P_RSPREAD, P_RQUANT,
     P_RCOUNT, P_RWALLS, P_RJITTER, P_RGATE,
     VSC_NP
 };
+#define VSC_MOD_PARAMS 10
+#define P_MOD(m, k) (P_MOD0 + (m) * VSC_MOD_PARAMS + (k))
 enum vsc_gparam {
     G_SWING, G_DTIME, G_DFEED, G_DTONE, G_DLONG, G_DLEVEL,
     G_RSIZE, G_RDAMP, G_RLEVEL, G_MAIN, G_CLOCK, G_INMON,
-    G_MORPH, G_TARGET, G_MSEL, G_M0, G_M1, G_M2, G_M3,
+    G_MORPH, G_TARGET, G_MSEL, G_MCOMP,
+    G_M0, G_M1, G_M2, G_M3, G_M4, G_M5, G_M6, G_M7,
     VSC_NG
 };
 enum { MODE_PLAY, MODE_LOOP, MODE_KEYS, MODE_THRU };
 enum { IN_BT, IN_USB, IN_BOTH, IN_T1, IN_T2, IN_T3, IN_T4, IN_MAIN, IN_COUNT };
-enum { FT_LP, FT_BP, FT_HP, FT_PEAKS, FT_OFF };
-enum { MOD_LFO, MOD_RANDOM, MOD_FOLLOW, MOD_ENV };
+enum { FT_LP, FT_BP, FT_HP, FT_PEAKS, FT_RING, FT_OFF };
+enum { RING_SUSTAIN, RING_CHOKE };
+#define VSC_RING_BANDS 10
+enum { MT_WAVE, MT_RANDOM, MT_FOLLOW, MT_ADSR };
+enum { WET_MIX, WET_SEND };
+enum { CLOCK_AUTO, CLOCK_INT, CLOCK_MIDI };
 enum { SEQ_STEPS, SEQ_CAROM };
 #define VSC_BALLS 8
 
@@ -56,14 +62,31 @@ struct vsc_pinfo {
     uint8_t max, def, flags;
     const char *const *names;  /* enum labels, or NULL */
 };
+/* A track parameter's description. Modulator parameters depend on the slot's TYPE. */
 const struct vsc_pinfo *vsc_tparam_info(unsigned track, unsigned p);
+/* The description of modulator parameter k (1..9) for a modulator type. */
+const struct vsc_pinfo *vsc_mod_info(unsigned type, unsigned k);
+/* Puts a modulator slot's nine parameters back to its type's defaults. */
+void vsc_mod_defaults(unsigned track, unsigned slot);
 const struct vsc_pinfo *vsc_gparam_info(unsigned p);
 /* Writes a short value label (up to 7 chars) into out. */
 void vsc_param_label(const struct vsc_pinfo *info, unsigned p, unsigned value, char out[8], int global);
+/* Every destination the mod matrix offers, in menu order (track and global codes). */
+unsigned vsc_mod_dest_count(void);
+unsigned vsc_mod_dest(unsigned i);
+/* A destination's name with its section, e.g. "G.SIZE" (up to 9 chars). */
+void vsc_mod_dest_name(unsigned code, char out[10]);
 
 /* ---- Project data (saved and recalled as one block) -------------------- */
 struct vsc_step { uint8_t on, note, vel, lp[2], lv[2], pad; };
-struct vsc_route { uint8_t src, param; int8_t depth; uint8_t pad; };
+/* A modulation route: param < VSC_NP is a track parameter, VSC_GDEST + g a global one,
+ * 255 an empty route. */
+struct vsc_route { uint8_t src, param; int8_t depth; uint8_t flags; };   /* flags bit 0: bipolar */
+/* MIDI learn: a CC on a channel drives a parameter (code as for routes). */
+struct vsc_learn { uint8_t ch, cc, track, param; };
+#define VSC_LEARN 16
+#define VSC_GDEST 128
+#define VSC_FORMAT 3   /* project layout version: bump when the parameters change */
 struct vsc_mroute { uint8_t track, param; int8_t depth; uint8_t pad; };
 struct vsc_scene { uint8_t used, pad[3]; uint8_t t[VSC_TRACKS][VSC_NP]; uint8_t macro[VSC_MACROS]; };
 struct vsc_project {
@@ -77,6 +100,7 @@ struct vsc_project {
     struct vsc_mroute macro[VSC_MACROS][VSC_MACRO_ROUTES];
     struct vsc_step step[VSC_TRACKS][VSC_STEPS];
     struct vsc_scene scene[VSC_SCENES];
+    struct vsc_learn learn[VSC_LEARN];
 };
 #define VSC_MAGIC 0x31435356u /* "VSC1" */
 
@@ -98,10 +122,18 @@ void vsc_render(const struct vsc_inputs *in, float *out);
 
 /* Events from control or MIDI into the audio context (lock-free queue). */
 enum { EV_NOTE_ON, EV_NOTE_OFF, EV_PLAY, EV_STOP, EV_REC, EV_CLOCK, EV_START, EV_CONT,
-       EV_PANIC, EV_LOOP_CLEAR, EV_BALL, EV_BALL_CLEAR };
+       EV_PANIC, EV_LOOP_CLEAR, EV_BALL, EV_BALL_CLEAR, EV_CC, EV_PC, EV_ACTION };
+/* EV_ACTION a: */
+enum { ACT_SPACE_FREEZE, ACT_SPACE_CLEAR, ACT_MOD_TRIG, ACT_TAPE_REWIND, ACT_TAPE_REVERSE };
+/* MIDI learn: the UI arms it with a parameter (track, code); the next CC to arrive
+ * takes it. vsc_learn_seen counts completed learns, for the UI's notice. */
+extern volatile uint8_t vsc_learn_armed, vsc_learn_track, vsc_learn_param;
+extern volatile uint8_t vsc_learn_seen;
 void vsc_event(unsigned type, unsigned track, unsigned a, unsigned b);
 /* Same, from the MIDI routing task (its own queue). */
 void vsc_midi_event(unsigned type, unsigned track, unsigned a, unsigned b);
+/* A complete MIDI message from a port (0 MIDI jack, 1 USB, 2 Bluetooth). MIDI task only. */
+void vsc_midi_in(unsigned port, const uint8_t *m, unsigned n, uint32_t now_ms);
 
 /* ---- State shared with the UI ----------------------------------------- */
 struct vsc_meter {
@@ -112,12 +144,18 @@ struct vsc_meter {
     uint16_t grain_pos[VSC_TRACKS][VSC_GRAINS]; /* 0..65535 position in ring, 0xffff idle */
     uint8_t grain_amp[VSC_TRACKS][VSC_GRAINS];
     float mod_value[VSC_TRACKS][VSC_MODS];
+    float mod_phase[VSC_TRACKS][VSC_MODS];   /* WAVE/RANDOM: where in the cycle (0..1) */
     uint8_t loop_state[VSC_TRACKS];  /* 0 empty, 1 recording, 2 playing, 3 overdub */
     uint8_t step[VSC_TRACKS];
     /* CAROM: ball positions 0..255, a flash that fades after each wall hit */
     uint8_t ball_x[VSC_TRACKS][VSC_BALLS], ball_y[VSC_TRACKS][VSC_BALLS], ball_hit[VSC_TRACKS][VSC_BALLS];
     uint8_t ball_on[VSC_TRACKS][VSC_BALLS];
-    uint8_t playing, ext_clock, bt_in, usb_in;
+    uint8_t playing, ext_clock, bt_in, usb_in, space_frozen, reverse[VSC_TRACKS];
+    uint8_t overview[VSC_TRACKS][240];   /* PLAY/KEYS: the sample's shape, 0..60 per column, filled by the audio side */
+    uint8_t overview_slot[VSC_TRACKS];   /* which slot it shows (255: none yet) */
+    float tempo;                     /* the tempo in use: internal, or measured from MIDI clock */
+    /* RING: each band's place on the screen's frequency axis (0..239) and its level */
+    uint8_t ring_x[VSC_TRACKS][VSC_RING_BANDS], ring_amp[VSC_TRACKS][VSC_RING_BANDS];
 };
 extern struct vsc_project vsc;   /* the live project */
 extern struct vsc_meter vsc_meter;
@@ -137,7 +175,8 @@ void vsc_scene_store(unsigned scene);
 void vsc_scene_recall(unsigned scene);
 uint32_t vsc_crc32(const void *data, size_t bytes);
 int vsc_project_valid(const struct vsc_project *p);
-/* Sets or clears a modulation route; depth -127..127, 0 removes it. */
+/* Sets or clears a modulation route; depth -127..127, 0 removes it. param is a
+ * track parameter, or VSC_GDEST + a global one. */
 void vsc_route_set(unsigned track, unsigned src, unsigned param, int depth);
 int vsc_route_get(unsigned track, unsigned src, unsigned param);
 void vsc_macro_set(unsigned macro, unsigned track, unsigned param, int depth);

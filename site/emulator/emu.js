@@ -4,80 +4,116 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
-  const BUTTONS = ['OCT−', 'OCT+', 'FX', 'SCL', 'ENV', 'LFO', 'EDIT', 'GLO', 'HOME', 'SAVE', 'ARP', 'SEQ', 'PLAY', 'REC'];
+  const BUTTONS = ['OCT−', 'OCT+', 'FX', 'SEL', 'ENV', 'LFO', 'EDIT', 'GLO', 'HOME', 'SAVE', 'ARP', 'SEQ', 'PLAY', 'REC'];
   const NOTE_NAMES = ['F', 'F#', 'G', 'G#', 'A', 'A#', 'B', 'C', 'C#', 'D', 'D#', 'E'];
   /* computer keys for the 27 keys, F3..G5 */
-  const KEYMAP = 'zsxdcvgbhnjm,l.;/q2w3er5t6y'.split('');
+  /* naturals on Z X C V … / and Q W E R T Y, sharps on the keys just above them */
+  const KEYMAP = (() => {
+    const w = 'zxcvbnm,./qwerty'.split(''), b = ['s', 'd', 'f', 'h', 'j', 'l', ';', "'", '3', '4', '6'];
+    const WH = [0, 2, 4, 6, 7, 9, 11, 12, 14, 16, 18, 19, 21, 23, 24, 26], BL = [1, 3, 5, 8, 10, 13, 15, 17, 20, 22, 25];
+    const m = []; WH.forEach((k, i) => m[k] = w[i]); BL.forEach((k, i) => m[k] = b[i]); return m;
+  })();
   const state = {keys: 0, buttons: 0, enc: [0, 0, 0, 0, 0, 0, 0]};
-  let ctx = null, node = null, source = null, inputKind = 'none', pending = false;
+  let ctx = null, node = null, outGain = null, source = null, inputKind = 'none', pending = false;
   const note = t => { $('note').textContent = t; };
 
-  /* ---------- panel ---------- */
-  const knobs = $('knobs'), angle = [0, 0, 0, 0, 0, 0, 0];
-  for (let i = 0; i < 7; i++) {
-    const k = document.createElement('div');
-    k.className = 'knob' + (i === 6 ? ' row' : '');
-    k.tabIndex = 0;
-    k.setAttribute('role', 'slider');
-    k.setAttribute('aria-label', i === 6 ? 'Encoder 7 (row)' : 'Encoder ' + (i + 1));
-    k.innerHTML = '<div class="cap"><i></i></div><span>' + (i === 6 ? 'E7 ROW' : 'E' + (i + 1)) + '</span>';
-    knobs.appendChild(k);
-    const turn = d => { state.enc[i] += d; angle[i] += d * 12; k.querySelector('i').style.transform = `rotate(${angle[i]}deg)`; send(); };
-    let y0 = null, acc = 0;
-    k.addEventListener('pointerdown', e => { y0 = e.clientY; acc = 0; k.setPointerCapture(e.pointerId); });
-    k.addEventListener('pointermove', e => {
+  /* ---------- panel: the FM-1's own layout ---------- */
+  /* encoder indices as the FM-1 reports them: 0 SELECT, 1 ALGORITHM, 2-5 KNOB 1-4, 6 PRESETS */
+  const ENC_FN = ['page', 'track', 'param 1', 'param 2', 'param 3', 'param 4', 'device / list'];
+  const BTN_FN = {FX: 'grain', SEL: 'filter', ENV: 'colour', LFO: 'mods', EDIT: 'material', GLO: 'space',
+    HOME: 'mix', SAVE: 'project', ARP: 'scenes', SEQ: 'steps', REC: 'record'};
+  const ROW1 = ['FX', 'SEL', 'ENV', 'LFO', 'EDIT', 'GLO'], ROW2 = ['HOME', 'SAVE', 'ARP', 'SEQ', 'PLAY', 'REC'];
+  let master = 0.8;
+  function makeEnc(role, parent, label, fn) {
+    const el = document.createElement('div');
+    el.className = 'enc'; el.tabIndex = 0;
+    el.setAttribute('role', 'slider'); el.setAttribute('aria-label', label + (fn ? ' (' + fn + ')' : ''));
+    el.innerHTML = '<div class="lbl">' + label + '</div><div class="cap"></div><div class="fn">' + (fn || '&nbsp;') + '</div>';
+    const cap = el.children[1];
+    let angle = 0;
+    el.turn = d => { state.enc[role] += d; angle += d * 15; cap.style.transform = `rotate(${angle}deg)`; send(); };
+    /* PRESETS steps through rows and tracks: a firmer turn per click, like Ravel's selectors */
+    const dragPx = role === 6 ? 18 : 6, wheelPx = role === 6 ? 80 : 30;
+    let y0 = null, acc = 0, wacc = 0;
+    el.addEventListener('pointerdown', e => { y0 = e.clientY; acc = 0; el.setPointerCapture(e.pointerId); e.preventDefault(); el.focus({preventScroll: true}); });
+    el.addEventListener('pointermove', e => {
       if (y0 === null) return;
-      acc += (y0 - e.clientY); y0 = e.clientY;
-      while (acc >= 6) { turn(1); acc -= 6; }
-      while (acc <= -6) { turn(-1); acc += 6; }
+      acc += y0 - e.clientY; y0 = e.clientY;
+      const d = Math.trunc(acc / dragPx); if (d) { acc -= d * dragPx; el.turn(d); }
     });
-    k.addEventListener('pointerup', () => { y0 = null; });
-    k.addEventListener('wheel', e => { e.preventDefault(); turn(e.deltaY < 0 ? 1 : -1); }, {passive: false});
-    k.addEventListener('keydown', e => {
-      if (e.key === 'ArrowUp' || e.key === 'ArrowRight') { turn(1); e.preventDefault(); }
-      if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') { turn(-1); e.preventDefault(); }
+    const end = () => { y0 = null; };
+    el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+    el.addEventListener('wheel', e => {
+      e.preventDefault();
+      wacc -= e.deltaMode === 1 ? e.deltaY * 30 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
+      const d = Math.trunc(wacc / wheelPx); if (d) { wacc -= d * wheelPx; el.turn(Math.max(-3, Math.min(3, d))); }
+    }, {passive: false});
+    el.addEventListener('keydown', e => {
+      if (e.key === 'ArrowUp' || e.key === 'ArrowRight') { el.turn(1); e.preventDefault(); }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') { el.turn(-1); e.preventDefault(); }
     });
+    parent.appendChild(el);
+    return el;
   }
-  const buttons = $('buttons');
-  BUTTONS.forEach((label, i) => {
-    const b = document.createElement('button');
-    b.className = 'btn'; b.textContent = label; b.setAttribute('aria-label', label.replace('−', '-'));
+  const lh = $('lefthand');
+  {
+    /* MASTER is the FM-1's analogue volume, not an encoder */
+    const m = makeEnc(0, lh, 'MASTER', 'volume'), cap = m.children[1];
+    const show = () => { cap.style.transform = `rotate(${(master - 0.5) * 270}deg)`; if (outGain) outGain.gain.value = master * master * 1.4; };
+    m.turn = d => { master = Math.max(0, Math.min(1, master + d * 0.03)); show(); };
+    show();
+  }
+  makeEnc(0, lh, 'SELECT', ENC_FN[0]);
+  makeEnc(6, lh, 'PRESETS', ENC_FN[6]);
+  makeEnc(1, lh, 'ALGORITHM', ENC_FN[1]);
+  for (let i = 0; i < 4; i++) makeEnc(2 + i, $('knobs4'), 'KNOB ' + (i + 1), ENC_FN[2 + i]);
+
+  function makeBtn(name, parent, extra) {
+    const i = BUTTONS.indexOf(name), b = document.createElement('button');
+    b.className = 'btn' + (extra ? ' ' + extra : '');
+    b.innerHTML = '<span class="l">' + (name === 'PLAY' ? 'PLAY/STOP' : name) + '</span>' + (BTN_FN[name] ? '<span class="f">' + BTN_FN[name] + '</span>' : '');
+    b.setAttribute('aria-label', name.replace('−', '-'));
     const down = () => { state.buttons |= 1 << i; b.classList.add('down'); send(); };
     const up = () => { state.buttons &= ~(1 << i); b.classList.remove('down'); send(); };
-    b.addEventListener('pointerdown', e => { b.setPointerCapture(e.pointerId); down(); });
+    b.addEventListener('pointerdown', e => { b.setPointerCapture(e.pointerId); e.preventDefault(); down(); });
     b.addEventListener('pointerup', up);
     b.addEventListener('pointercancel', up);
+    b.addEventListener('contextmenu', e => e.preventDefault());
     b.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); e.stopPropagation(); down(); } });
     b.addEventListener('keyup', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); up(); } });
-    buttons.appendChild(b);
-  });
-  /* 27 keys from F3: white and black by pitch class */
-  const keys = $('keys'), keyEls = [];
-  const black = pc => [1, 3, 6, 8, 10].includes(pc);         /* F#, G#, A#, C#, D# relative to F */
-  let whites = 0;
-  for (let k = 0; k < 27; k++) if (!black(k % 12)) whites++;
-  let w = 0;
-  for (let k = 0; k < 27; k++) {
+    parent.appendChild(b);
+  }
+  const octTray = document.createElement('div'); octTray.className = 'tray'; lh.appendChild(octTray);
+  makeBtn('OCT−', octTray, 'oct');
+  makeBtn('OCT+', octTray, 'oct');
+  ROW1.forEach(n => makeBtn(n, $('btnrow1')));
+  ROW2.forEach(n => makeBtn(n, $('btnrow2')));
+
+  /* 27 pads from F3: sharps on the row above, offset half a pad, with gaps as on the FM-1 */
+  const WHITE = [0, 2, 4, 6, 7, 9, 11, 12, 14, 16, 18, 19, 21, 23, 24, 26], BLACK = [1, 3, 5, 8, 10, 13, 15, 17, 20, 22, 25];
+  const BLACK_SLOTS = [1, 2, 3, 5, 6, 8, 9, 10, 12, 13, 15];
+  const keyEls = new Array(27);
+  function makeKey(k, parent, cls) {
     const el = document.createElement('div');
-    const isB = black(k % 12);
-    el.className = 'key ' + (isB ? 'b' : 'w');
-    const unit = 100 / whites;
-    if (isB) { el.style.left = `calc(${(w - 0.32) * unit}% + 1px)`; el.style.width = `${unit * 0.64}%`; }
-    else { el.style.left = `calc(${w * unit}% + 2px)`; el.style.width = `calc(${unit}% - 3px)`; w++; }
-    const name = NOTE_NAMES[k % 12] + (3 + Math.floor((k + 5) / 12));
-    el.innerHTML = '<em>' + (KEYMAP[k] || '').toUpperCase() + '</em>';
-    el.title = name;
+    el.className = cls;
+    if (k < 0) { parent.appendChild(el); return; }
+    el.innerHTML = '<span>' + NOTE_NAMES[k % 12] + (3 + Math.floor((k + 5) / 12)) + '<i>' + (KEYMAP[k] || '').toUpperCase() + '</i></span>';
     const down = () => { state.keys |= 1 << k; el.classList.add('down'); send(); };
     const up = () => { state.keys &= ~(1 << k); el.classList.remove('down'); send(); };
-    el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); down(); });
+    el.addEventListener('pointerdown', e => { el.releasePointerCapture?.(e.pointerId); e.preventDefault(); down(); });
     el.addEventListener('pointerup', up);
     el.addEventListener('pointercancel', up);
     el.addEventListener('pointerenter', e => { if (e.buttons & 1) down(); });
-    el.addEventListener('pointerleave', e => { if (e.buttons & 1) up(); });
-    keys.appendChild(el); keyEls.push(el);
+    el.addEventListener('pointerleave', e => { if (state.keys & (1 << k)) up(); });
+    parent.appendChild(el); keyEls[k] = el;
+  }
+  {
+    let bi = 0;
+    for (let s = 0; s < 16; s++) makeKey(BLACK_SLOTS.includes(s) ? BLACK[bi++] : -1, $('blackrow'), BLACK_SLOTS.includes(s) ? 'key b' : 'key b gap');
+    WHITE.forEach(k => makeKey(k, $('whiterow'), 'key'));
   }
   addEventListener('keydown', e => {
-    if (e.target.closest('input,select,textarea,button,.knob')) return;
+    if (e.target.closest('input,select,textarea,button,.enc')) return;
     if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === ' ') { e.preventDefault(); state.buttons |= 1 << 12; send(); return; }
     const k = KEYMAP.indexOf(e.key.toLowerCase());
@@ -215,7 +251,8 @@
       const module = await WebAssembly.compileStreaming(fetch('viscera.wasm'));
       await ctx.audioWorklet.addModule('worklet.js');
       node = new AudioWorkletNode(ctx, 'viscera', {numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], processorOptions: {module}});
-      node.connect(ctx.destination);
+      outGain = ctx.createGain(); outGain.gain.value = master * master * 1.4;
+      node.connect(outGain).connect(ctx.destination);
       node.port.onmessage = e => {
         const m = e.data;
         if (m.type === 'screen') { pending = false; draw(m.px); }

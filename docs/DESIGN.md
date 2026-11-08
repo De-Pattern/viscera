@@ -32,48 +32,65 @@ flash sample bank ───────────┘                          
 
 ### Devices
 
-- **GRAIN**: a per-track capture ring (8-bit µ-law) read by up to 8 grains. Size, rate (density), pitch, spread (position jitter), contour (window shape), reverse chance, freeze, mix.
-- **FILTER**: state-variable low-pass, band-pass, high-pass, or PEAKS (four tuned resonant bands following a scale, with decay and spread).
-- **COLOR**: drive, compression, bit crush, rate reduction, noise (hiss or crackle), tilt tone.
-- **SPACE**: a shared bus. Each track has a send; the bus has a tempo-synced delay and a small reverb.
+Each track runs the same chain as the S-4's: MATERIAL, then GRAIN, FILTER and COLOR, then a send to SPACE. Parameters follow the S-4's devices; the FM-1 has four knobs, so each device's parameters come four at a time and SELECT steps through them.
+
+- **GRAIN**: a per-track capture ring (8-bit µ-law) read by up to 8 grains. PITCH, RATE, SIZE, SHAPE | SCAN, SPRAY, DETUNE, WET | REVRS, FDBK, QUANT, W.MODE. REC locks the buffer.
+- **FILTER**: **RESON**, a resonant bank of ten tuned bands after the S-4's filter device: CUTOFF, RESO, DECAY, PITCH | SLOPE (low-pass, band-pass, high-pass), TONE, SCALE, WET | WAVES, W.RATE, NOISE, N.RATE | TILT, DETUNE, D.MODE (SUSTAIN: the bands ring on after the shape closes; CHOKE: closing a band silences it), W.MODE (MIX or SEND). Or a classic LP, BP, HP, or PEAKS. PRESETS picks the device.
+- **COLOR**: noise, drive, crush and compression in that order, then a two-band tilt: DRIVE, COMP, CRUSH, TILT | NOISE, N.DEC, N.TONE, WET | C.MODE (BITS, REDUX, BOTH), XOVER (80 Hz, 650 Hz, 2.5 kHz), N.TYPE (WHITE, PINK, DUST), W.MODE. The noise follows the input's envelope.
+- **SPACE**: a shared bus (the FM-1's RAM holds one, where the S-4 has one per track). Each track has a send on MIX; the bus has a tempo-synced delay and a reverb: DELAY, TIME, FDBK, TONE | REVERB, SIZE, DAMP, LONG. REC freezes it, holding REC clears it.
+- Every WET can be MIX (crossfade) or SEND (the dry signal stays, the effect is added), as on the S-4.
 
 ### Modulation
 
-Four modulators per track: **LFO** (shape, rate, sync), **RANDOM** (rate, smoothing), **FOLLOW** (envelope follower on the material), **ENV** (ADSR from keys and steps). Up to 12 routes per track. Hold **LFO** and turn any encoder to set how much the selected modulator moves that parameter.
+Four modulator slots per track, each **WAVE**, **RANDOM**, **FOLLOW** or **ADSR** (PRESETS changes a slot's type), with the S-4's parameters: WAVE has RATE, AMOUNT, PHASE, OFFSET, SKEW, FOLD, CURVE, SHAPE and SYNC (free, straight, triplet, dotted); RANDOM has RATE, AMOUNT, PHASE, OFFSET, LENGTH, VARIATION, SMOOTH and SYNC; FOLLOW has DELAY, AMOUNT, RISE, FALL, INPUT (this track, its material, any track, the main mix or the live input), FILTER, HOLD and GAIN; ADSR has ATTACK, DECAY, SUSTAIN, RELEASE, their three curves and AMOUNT, and plays from notes or REC.
 
-### Macros, temp and scenes
+Hold **LFO** and turn any knob on any page to map the modulator you last looked at to that parameter; the direction you turn sets the direction. Every continuous parameter can be a destination, track or global (the space, the mix, the macros), plus each modulator's RATE and AMOUNT. The **MATRIX** (after the four modulators) lists every route on the track with its source, destination, depth and polarity (unipolar or bipolar). Modulators restart with PLAY.
 
-- Four macros per project, each moving up to 8 parameters on any track, with a depth per route. Hold **ARP** and turn an encoder to assign the selected macro.
+### Perform, temp and scenes
+
+- **PERFORM**: eight macros per project, each moving up to 8 parameters on any track. Hold **ARP** and turn a knob to map the selected macro (hold ARP and turn PRESETS to choose it).
 - **TEMP**: hold OCT− and OCT+ together, tweak anything, and everything snaps back on release.
-- **Scenes**: 8 per project, each a snapshot of every track's sound and the macros. Recall them from the SCENE page or with ARP + a key; morph between the current scene and a target scene with one encoder.
+- **Scenes**: 8 per project, each a snapshot of every track's sound and the macros. ARP + a pad recalls, ARP + SAVE + a pad stores; MORPH glides toward the TARGET scene. MIDI program change recalls them too.
 
 ### Sequencer
 
-One pattern per track, 16 to 64 steps. A step holds a note, a velocity and up to two parameter locks. Steps retrigger PLAY, play KEYS notes, jump LOOP slices, or gate THRU's ENV modulator. Internal tempo (30–300 BPM) with swing, or MIDI clock. Live recording quantises to the step.
+One pattern per track, 16 to 64 steps, or CAROM (notes bounce in a box and play when they hit a wall). A step holds a note, a velocity and up to two parameter locks. Internal tempo (30–300 BPM) with swing, or MIDI clock. Live recording quantises to the step.
+
+### MIDI
+
+MIDI comes in from the FM-1's MIDI jack, USB and Bluetooth MIDI alike.
+
+- Notes on channels 1–4 play tracks 1–4.
+- **Clock** follows the CLOCK setting: AUTO follows MIDI clock whenever it arrives, MIDI always, INT never. Start, continue and stop drive the transport (except in INT). The tempo shown is measured from the clock. Clock is taken from one port at a time.
+- **MIDI learn**: hold SAVE and turn a knob, then move a controller: that CC drives the parameter. SETTINGS lists the mappings; REC clears one.
+- **Fixed CCs** on a track's channel: 7 level, 10 pan, 11 send, 12 mix filter; 14–19 material (start, length, speed, pitch, level, SOS); 20–29 grain (pitch, rate, size, shape, scan, spray, detune, wet, feedback, reverse); 70–79 filter (cutoff, reso, decay, pitch, slope, tone, wet, waves, noise, tilt); 80–87 color (drive, comp, crush, tilt, noise, noise decay, noise tone, wet); 102–105 the four modulators' AMOUNT. On channel 16: 7 main, 9 master comp, 20 delay, 22 feedback, 23 delay tone, 24 reverb, 25 size, 26 damp, 27 morph, 28–31 and 102–105 macros 1–8, 106 swing. 120/123 stop all notes.
 
 ## Controls
 
+The FM-1's left-hand encoders are the same kind of control on every page, but their job follows the page:
+
 | Control | Job |
 | --- | --- |
-| E1–E6 | The six parameters on screen |
-| E7 | Next/previous parameter row on the page |
-| HOME | Mixer; hold HOME and press one of the top four keys to pick track 1–4 |
-| EDIT | MATERIAL |
-| FX | GRAIN |
-| SCL | FILTER |
-| ENV | COLOR |
-| LFO | MODS (press again for the next modulator); hold + turn = assign |
-| GLO | SPACE and clock |
-| ARP | SCENE / MACROS; hold + turn = assign the selected macro; hold + key = recall scene |
-| SEQ | STEPS (the first 16 keys toggle steps) |
-| SAVE | PROJECT (press again for SETTINGS: Bluetooth, MIDI, input) |
-| PLAY / REC | Transport; REC arms the loop on LOOP tracks, step or live recording on STEPS |
+| KNOB 1–4 | The four parameters on screen |
+| SELECT | The next four parameters of this device or page |
+| ALGORITHM | Track 1–4 |
+| PRESETS | The page's list: the device in this slot (MATERIAL, FILTER), a modulator's type, a route in the matrix, a step, a project slot, a Bluetooth device, a learned mapping |
+| MASTER | Output level |
+| EDIT / FX / SEL / ENV / GLO | MATERIAL / GRAIN / FILTER / COLOR / SPACE (press again for the next page) |
+| LFO | The four modulators, then the MATRIX; hold + turn a knob = map |
+| HOME | MIX: level, pan, send, filter and mute, each across the four tracks; hold HOME + a top pad = track |
+| ARP | PERFORM: macros and scenes; hold + turn = map a macro; hold + pad = scene |
+| SEQ | STEPS or CAROM |
+| SAVE | PROJECT, then SETTINGS (Bluetooth, clock, MIDI learn); hold + turn = MIDI learn |
+| PLAY | Play / stop |
+| REC | The page's action: record or overdub (LOOP), restart (PLAY), lock (GRAIN), freeze (SPACE), trigger (ADSR), record steps; held, clear |
 | OCT− / OCT+ | Octave; both held = TEMP |
-| Keys | Play the selected track |
+
+The screen follows the S-4's: the track and page at the top with the tempo, a picture of the device, the four parameter cells (a bar for continuous values with a centre mark for bipolar ones, the value while you turn, a coloured marker where a modulator is mapped), and the page's actions along the bottom. MATERIAL, FILTER and the modulators draw as the S-4 does; GRAIN, COLOR and SPACE have their own pictures of the sound coming apart: grains lifting out of a dust horizon, a body of matter worn, coarsened and sheared by COLOR, echoes leaving as broken rings beside a drifting reverb cloud.
 
 ## Memory
 
-The FM-1 has about 511 KB of RAM, and the platform library takes roughly 200 KB of it (Bluetooth, USB, RTOS, the DX7 engine's state and its RAM-resident code). The rest has to cover Viscera's buffers, its RAM-resident audio code (every audio function must sit in RAM, because flash programming stalls code fetched from flash), and the heap that Bluetooth needs.
+The FM-1 has about 511 KB of RAM, and the platform library takes roughly 200 KB of it (Bluetooth, USB, RTOS, the DX7 engine's state and its RAM-resident code). Viscera's build replaces the SDK's 32 DX7 factory voices with one blank voice (it has no DX7 engine), which frees 16 KB of RAM and 10 KB of flash. The rest has to cover Viscera's buffers, its RAM-resident audio code (every audio function must sit in RAM, because flash programming stalls code fetched from flash), and the heap that Bluetooth needs.
 
 | Buffer | Default | Notes |
 | --- | --- | --- |

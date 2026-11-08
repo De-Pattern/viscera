@@ -59,10 +59,25 @@ def main():
     os.makedirs(os.path.join(app, "viscera"))
     for f in os.listdir(os.path.join(root, "core")):
         shutil.copy(os.path.join(root, "core", f), os.path.join(app, "viscera", f))
+    cfg = os.path.join(app, "viscera", "vsc_config.h")
+    patch(cfg, '#ifndef VSC_VERSION\n#define VSC_VERSION "dev"\n#endif', f'#define VSC_VERSION "{a.version}"')
     # the FM-1 bridge, screen and output stage
     for f in os.listdir(os.path.join(root, "fm1", "app")):
         shutil.copy(os.path.join(root, "fm1", "app", f), os.path.join(app, f))
 
+    # Viscera never plays DX7 voices: the 32 packed factory voices (10.5 KB of flash, 16 KB of
+    # RAM once unpacked) become one blank voice. The functions stay, so the SDK's workbench
+    # library code still links and answers; it just hands out the blank voice.
+    with open(os.path.join(app, "fm_factory.c"), "w") as f:
+        f.write("""/* SPDX-License-Identifier: GPL-3.0-only WITH GPL-3.0-linking-exception
+ * Viscera build: one blank DX7 voice in place of the factory set (Viscera has no DX7 engine). */
+#include "fm_patch.h"
+static const uint8_t blank_voice[128] = {
+    [102] = 99, [103] = 99, [104] = 99, [105] = 99, [106] = 50, [107] = 50, [108] = 50, [109] = 50,
+    [117] = 'V', [118] = 'I', [119] = 'S', [120] = 'C', [121] = 'E', [122] = 'R', [123] = 'A', [124] = ' ', [125] = ' ', [126] = ' '};
+FM1_DSP_CODE const uint8_t *groove_fm_factory_raw(unsigned program) { (void)program; return blank_voice; }
+FM1_DSP_CODE void groove_fm_factory(uint8_t p[156], unsigned program) { groove_fm_unpack(p, groove_fm_factory_raw(program)); }
+""")
     # audio interrupt: render Viscera instead of the stock engine
     patch(os.path.join(app, "board", "audio.c"),
           '#include "audio_output.h"\n',

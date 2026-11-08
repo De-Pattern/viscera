@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.0
+
+- **Changed:** built around the S-4's architecture on the FM-1's controls. KNOB 1–4 turn four parameters at a time, SELECT pages through them, ALGORITHM picks the track and PRESETS picks the device, type or list for the page. Parameters follow the S-4's devices, page by page.
+- **New:** RESON, a resonant bank of ten tuned bands in the FILTER slot: cutoff, resonance, decay (sustain or choke), pitch, slope, tone, scale, wet, waves, noise, tilt and detune, spread across the stereo field.
+- **New:** four modulator slots per track, each WAVE, RANDOM, FOLLOW or ADSR with the S-4's parameters, tempo-synced rates, and a MATRIX listing every route. Any continuous parameter can be modulated, globals included; routes are unipolar or bipolar.
+- **New:** COLOR rebuilt in the S-4's order: noise that follows the input, drive, crush (bits, redux or both), compression and a two-band tilt. WET can be MIX or SEND on every device.
+- **New:** MIX lays each control across the four tracks, with a per-track filter and a master compressor. PERFORM has eight macros.
+- **New:** MIDI learn (hold SAVE and turn a knob), a fixed CC map, program change for scenes, and clock, start, continue and stop from the MIDI jack, USB and Bluetooth MIDI, one clock source at a time. CLOCK can be AUTO, INT or MIDI.
+- **New:** the screen follows the S-4's layout, with our own pictures for GRAIN, COLOR and SPACE.
+- **New:** REC acts on the page: freeze or clear SPACE, lock GRAIN, trigger an ADSR, restart PLAY.
+- **Changed:** projects from 0.1.x don't load in 0.2 (the parameters changed).
+- **New:** the emulator is laid out like the FM-1, and CI plays every page, device, modulator and MIDI path on the browser build before releasing.
+
 ## 0.1.4
 
 - **Fixed:** installing over Ravel, SLOOP or another Felucca-based firmware failed part-way. Those firmwares accept only M-VAVE's own packages, so the install page now puts M-VAVE's V15 on first and then Viscera, in one go. It picks the route from what the FM-1 runs; the "switching from" tick box is gone.

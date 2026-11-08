@@ -3,7 +3,9 @@
 #ifndef VSC_CONFIG_H
 #define VSC_CONFIG_H
 
-#define VSC_VERSION "0.1.0"
+#ifndef VSC_VERSION
+#define VSC_VERSION "dev"
+#endif
 
 #define VSC_TRACKS        4
 #define VSC_SR            44100
@@ -21,9 +23,9 @@
 
 #define VSC_STEPS         64
 #define VSC_SCENES        8
-#define VSC_MACROS        4
+#define VSC_MACROS        8
 #define VSC_MACRO_ROUTES  8
-#define VSC_MOD_ROUTES    12
+#define VSC_MOD_ROUTES    16
 #define VSC_MODS          4
 #define VSC_PROJECTS      8
 

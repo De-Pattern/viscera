@@ -77,12 +77,14 @@ def main():
     sources.sort()
 
     small = {'app/project.c', 'app/transfer.c', 'app/samples.c', 'app/screen.c', 'app/presets.c',
-             'app/midi_router.c', 'app/fm_factory.c', 'app/fm_library.c'}
+             'app/midi_router.c', 'app/fm_factory.c', 'app/fm_library.c',
+             # Viscera's screen, parameter table and MIDI parsing run in the control task: size over speed
+             'app/viscera/vsc_ui.c', 'app/viscera/vsc_params.c', 'app/viscera/vsc_midi.c'}
     def compile_one(i_src):
         i, src = i_src
         obj = os.path.join(out, 'obj', f'{i}_' + re.sub(r'[^a-zA-Z0-9._-]', '_', src) + '.obj')
         opts = list(flags)
-        if src in ('app/screen.c', 'app/transfer.c', 'app/midi_router.c'):
+        if src in ('app/screen.c', 'app/transfer.c', 'app/midi_router.c', 'app/viscera/vsc_ui.c', 'app/viscera/vsc_params.c'):
             opts.append('-fno-lto')
         if src == 'app/board/panel.c':
             opts += ['-fno-lto', '-fno-pic']

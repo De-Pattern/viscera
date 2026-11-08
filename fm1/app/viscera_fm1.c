@@ -122,20 +122,7 @@ FM1_AUDIO_CODE const int16_t *vsc_bank_chunk(unsigned slot, unsigned chunk)
  * play tracks 1-4. */
 void vsc_fm1_midi(unsigned source, const uint8_t *m, size_t n)
 {
-    (void)source;
-    if (!n) return;
-    uint8_t st = m[0];
-    switch (st) {
-    case 0xf8: vsc_midi_event(EV_CLOCK, 0, 0, 0); return;
-    case 0xfa: vsc_midi_event(EV_START, 0, 0, 0); return;
-    case 0xfb: vsc_midi_event(EV_CONT, 0, 0, 0); return;
-    case 0xfc: vsc_midi_event(EV_STOP, 0, 0, 0); return;
-    default: break;
-    }
-    unsigned ch = st & 15u;
-    if (ch >= VSC_TRACKS || n < 3) return;
-    if ((st & 0xf0) == 0x90) vsc_midi_event(m[2] ? EV_NOTE_ON : EV_NOTE_OFF, ch, m[1], m[2]);
-    else if ((st & 0xf0) == 0x80) vsc_midi_event(EV_NOTE_OFF, ch, m[1], 0);
+    vsc_midi_in(source, m, (unsigned)n, fm1_millis());
 }
 
 /* ------------------------------------------------------------ storage */
@@ -168,7 +155,7 @@ int vsc_fm1_save(unsigned slot)
 {
     if (slot >= VSC_PROJECTS || !vsc_fm1_storage_ok()) return -1;
     if (vsc_meter.playing) return -2;
-    vsc.magic = VSC_MAGIC; vsc.version = 1; vsc.bytes = sizeof vsc;
+    vsc.magic = VSC_MAGIC; vsc.version = VSC_FORMAT; vsc.bytes = sizeof vsc;
     char name[12] = "PROJECT  ";
     name[8] = (char)('1' + slot); name[9] = 0;
     vsc_memcpy(vsc.name, name, 12);

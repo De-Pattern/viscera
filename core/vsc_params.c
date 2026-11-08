@@ -16,6 +16,9 @@ static const char *const n_sync[] = {"FREE", "1/16", "1/8", "1/4", "1/2", "1BAR"
 static const char *const n_reset[] = {"FREE", "NOTE"};
 static const char *const n_dtime[] = {"1/32", "1/16T", "1/16", "1/8T", "1/16D", "1/8", "1/4T", "1/8D", "1/4"};
 static const char *const n_clock[] = {"INT", "MIDI"};
+static const char *const n_seqm[] = {"STEPS", "BOUNCE"};
+static const char *const n_rquant[] = {"FREE", "1/16", "1/8"};
+static const char *const n_rwalls[] = {"OCTAVE", "SAME", "5TH"};
 
 #define C(n, d) {n, 127, d, 0, 0}
 #define B(n, d) {n, 127, d, VSC_PF_BIPOLAR, 0}
@@ -47,6 +50,9 @@ static const struct vsc_pinfo tinfo[VSC_NP] = {
     C("ATTACK", 10), C("RELEAS", 50), C("GAIN", 64), X,
     /* MOD 3: ENV */
     C("ATTACK", 5), C("DECAY", 50), C("SUSTN", 0), C("RELEAS", 30),
+    /* SEQUENCER */
+    E("SEQ", n_seqm, 0), C("SPEED", 50), B("GRAVTY", 64), C("LOSS", 0), C("SPREAD", 64), E("QUANT", n_rquant, 1),
+    {"BALLS", VSC_BALLS - 1, VSC_BALLS - 1, VSC_PF_ENUM, 0}, E("WALLS", n_rwalls, 0), C("JITTER", 0), C("GATE", 40),
 };
 static const struct vsc_pinfo ginfo[VSC_NG] = {
     C("SWING", 0), E("TIME", n_dtime, 5), C("FDBK", 50), B("TONE", 64), E("LONG", n_off_on, 0), C("DELAY", 100),
@@ -90,7 +96,7 @@ void vsc_param_label(const struct vsc_pinfo *info, unsigned p, unsigned v, char 
             out[0] = 'S'; put_int(out + 1, (int)v + 1); return;
         }
         if (p == P_PITCH || p == P_GPITCH) { put_int(out, (int)v - 24); return; }
-        if (p == P_SIZE) { put_int(out, (int)v + 1); return; }
+        if (p == P_SIZE || p == P_RCOUNT) { put_int(out, (int)v + 1); return; }
         if (p == P_SPEED) {
             /* -2.00 .. +2.00 */
             int c = ((int)v - 64) * 100 / 32;

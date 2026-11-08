@@ -1,0 +1,95 @@
+name: Build, release and deploy
+# Every push to main: build the FM-1 firmware on Linux, check it with M-VAVE's
+# own updater code, publish a GitHub Release when VERSION names a new release,
+# and deploy the install page with that build behind "Use latest build".
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: build
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: echo "version=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
+      - name: JieLi toolchain, kept between runs
+        uses: actions/cache@v4
+        with:
+          path: ~/.jieli
+          key: jieli-linux-toolchain-v1
+      - name: Get the toolchain
+        run: test -e ~/.jieli/toolchain || sh tools/get_toolchain.sh ~/.jieli
+      - name: Build the firmware
+        run: JIELI_TOOLCHAIN=~/.jieli/toolchain python3 tools/build_fm1.py --version "${{ steps.v.outputs.version }}"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check the package with M-VAVE's updater
+        run: node tools/verify_package.mjs build/viscera.fwsc build/latest.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: |
+            build/viscera.fwsc
+            build/latest.json
+            build/fm1-report.json
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      V: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware
+          path: build
+      - name: Release this version if it's new
+        run: |
+          if gh release view "v$V" >/dev/null 2>&1; then
+            echo "v$V is already released; bump VERSION to publish a new release."
+            exit 0
+          fi
+          cp build/viscera.fwsc "build/viscera-$V.fwsc"
+          awk -v v="$V" '$0 ~ "^## "v"$" {f=1; next} /^## / {f=0} f' CHANGELOG.md > notes.md
+          printf '\nInstall it from https://de-pattern.github.io/viscera/ (Chrome or Edge, FM-1 on USB).\n' >> notes.md
+          gh release create "v$V" "build/viscera-$V.fwsc" build/fm1-report.json \
+            --title "Viscera $V" --notes-file notes.md --target "$GITHUB_SHA"
+
+  pages:
+    needs: [build, release]
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    env:
+      V: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware
+          path: build
+      - name: Put the build behind the installer
+        run: |
+          mkdir -p site/firmware
+          cp build/viscera.fwsc "site/firmware/viscera-$V.fwsc"
+          cp build/latest.json site/firmware/latest.json
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

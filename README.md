@@ -15,7 +15,7 @@ Viscera brings sound in over Bluetooth (a phone or tablet) or USB (a computer), 
 
 It's built on M-VAVE's official FM1 Open SDK (V14), so Bluetooth, USB audio and MIDI keep working, and samples uploaded with M-VAVE's workbench still play.
 
-**Status: on hold, early.** The audio engine is written and compiles for the host and WebAssembly. The screen and controls, the SDK glue and the first hardware build come next. Nothing runs on the FM-1 yet.
+**Status: 0.1.0, early, untested on hardware.** The firmware builds, packages and passes M-VAVE's updater checks; it hasn't run on an FM-1 yet. Two sequencers per track: STEPS, and REBOUND, where notes bounce around a box and play when they hit the walls.
 
 | | |
 |:-:|:-:|
@@ -28,7 +28,7 @@ It's built on M-VAVE's official FM1 Open SDK (V14), so Bluetooth, USB audio and 
 
 Open the [install page](https://de-pattern.github.io/viscera/) in Chrome or Edge on a computer, with the FM-1 on and connected by USB. It uses M-VAVE's own update protocol. Back up your projects and samples with M-VAVE's workbench first; the workbench can also put the stock firmware back.
 
-No build is published yet.
+Each release is built in CI and goes straight to the install page. See [Releases](https://github.com/De-Pattern/viscera/releases) for the `.fwsc` files and [CHANGELOG.md](CHANGELOG.md) for what changed.
 
 ## Licence
 

@@ -1,0 +1,11 @@
+import fs from 'fs'; import vm from 'vm';
+const ctx = { console, crypto: globalThis.crypto, TextEncoder, TextDecoder, atob, btoa, URL, setTimeout, clearTimeout, fetch, AbortController, location: { href: 'https://de-pattern.github.io/viscera/', origin: 'https://de-pattern.github.io' } };
+ctx.globalThis = ctx; vm.createContext(ctx);
+vm.runInContext(fs.readFileSync('site/vendor/WebUpdate.js', 'utf8'), ctx);
+const U8 = vm.runInContext('Uint8Array', ctx); const bytes = new U8(fs.readFileSync(process.argv[2] || 'build/viscera.fwsc'));
+const meta = JSON.parse(fs.readFileSync(process.argv[3] || 'build/latest.json', 'utf8'));
+const pkg = ctx.FM1Web.inspectPackage(bytes);
+console.log('inspectPackage ok: product', pkg.product, 'image', pkg.image.length, 'loader', pkg.loader.length);
+const m = { ...meta }; delete m.url; m.data = Buffer.from(bytes).toString('base64');
+const prepared = await ctx.FM1Web.prepare(m);
+console.log('prepare ok: loaderIdentity', prepared.loaderIdentity, 'build', prepared.build_id.slice(0, 16));

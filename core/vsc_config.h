@@ -12,7 +12,7 @@
 
 /* Buffers (bytes or frames). Grow these once the hardware link map shows
  * how much heap is left for Bluetooth. */
-#define VSC_GRAIN_FRAMES  12288    /* per track, 8-bit mu-law */
+#define VSC_GRAIN_FRAMES  11264    /* per track, 8-bit mu-law (0.26 s) */
 #define VSC_GRAINS        8        /* grains per track */
 #define VSC_LOOP_SLICE    16384    /* bytes per loop slice, 8-bit mu-law */
 #define VSC_LOOP_SLICES   4

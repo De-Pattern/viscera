@@ -1,30 +1,32 @@
 # Status and next steps
 
-Paused 2026-11-08.
+## Where it stands (0.1.0, 2026-11-08)
 
-## Done
+The firmware builds and packages on Linux, and the package passes M-VAVE's own updater checks. **It has not run on an FM-1 yet.**
 
-- `docs/DESIGN.md`: the instrument, controls, memory budget and storage plan.
-- `core/vsc_config.h`, `core/vsc.h`: sizes, parameter IDs, project format, platform and UI interfaces.
-- `core/vsc_params.c`: parameter table and labels, defaults, scenes, mod and macro routing, CRC.
-- `core/vsc_engine.c`: the whole audio engine — PLAY / LOOP / KEYS / THRU material, grains, SVF and PEAKS filter, colour, delay and reverb bus, four modulators, macros, scene morph, parameter locks, sequencer with swing and MIDI clock, event queues, meters. Compiles warning-free for the host and wasm32 and renders on the host; not listened to yet.
+- `core/`: the engine (`vsc_engine.c`), parameters and scenes (`vsc_params.c`) and the screen and controls (`vsc_ui.c`). Portable C99, single-precision float, no C library in the audio path.
+- `fm1/app/`: the SDK glue. `screen.c` replaces the stock screen and runs the UI; `viscera_fm1.c` renders in the audio interrupt, reads Bluetooth and USB audio in, decodes the flash sample bank (SEA5) into a small cache, takes MIDI and stores projects; `audio_output.c` applies MASTER.
+- `tools/make_fm1_tree.py` overlays all of that on M-VAVE's FM1 Open V14 kit (pinned commit), with small checked patches to `board/audio.c`, `samples.c`, `midi_router.c` and `version.h`.
+- `tools/build_fm1.py` is a Linux port of the firmware path of M-VAVE's `Build.ps1`, using JieLi's Linux toolchain (the same PI32v2 clang 4.0.1); `tools/fm1_package.py` ports `Package.cs`. `tools/verify_package.mjs` runs the result through `WebUpdate.js`'s `inspectPackage` and `prepare`.
 
-## SDK findings (fm1_open V14, commit 4c7496d)
+Budget at 0.1.0: app image 443,528 of 453,921 bytes; Bluetooth heap 54,924 bytes (needs 49,152).
 
-- Inputs: `fm1_bluetooth_audio_read` (16-bit) and `fm1_usb_audio_read` (Q23).
-- The audio ISR lives in the app (`app/board/audio.c`); swap `fm1_engine_render` for `vsc_render` there, and rework `app/audio_output.c` so input feeds the engine instead of the output mix.
-- The library needs these app hooks: `groove_screen_init/control/mmc` (replace `screen.c`), plus the stock `project.c`, `samples.c`, `transfer.c`, `midi_router.c`, `fm_library.c` (keep them so the workbench still uploads sample banks).
-- Tap MIDI in `fm1_app_midi_received` (midi_router.c) and forward to `vsc_midi_event`.
-- Sample bank: 512-byte header ("FM1S"), 16 entries, 32 kHz, SEA5 chunks of 228 bytes / 320 frames, mapped with `fm1_flash_map`; decode with `fm1_sea_decode` and `sample_dqt` from `web/synth/sample_metadata.inc` (MIT).
-- Audio code and tables must be in RAM (`.volatile_ram_code`); `VSC_HOT` does this. The compiler has an FPU (`-mfprev1`), single precision only.
-- Builds need Windows and JieLi toolchain 2.5.3; `Build.ps1` compiles everything under `app/` except `app/synth`.
+## Releasing
+
+Bump `VERSION`, add a `## X.Y.Z` section to `CHANGELOG.md`, push. The `Build, release and deploy` workflow builds the firmware, checks it, creates the `vX.Y.Z` release with the `.fwsc`, and deploys the install page with that build behind "Use latest build". Pushes without a new VERSION still rebuild and redeploy the page.
+
+## First hardware test
+
+1. Back up projects and samples with M-VAVE's workbench.
+2. Install from the page (tick "Switching from…" when coming from stock or another firmware).
+3. Check: the screen draws; keys play T1; the MASTER knob works; Bluetooth audio from a phone reaches a THRU track; USB audio from a computer does too; saving a project while stopped; the sample bank plays on a PLAY track.
+4. If the sound crackles, see "If the FM-1 runs out of CPU" below.
 
 ## Next
 
-1. `core/vsc_ui.c`: band-painted screen (240×240 in 16-row bands), pages and controls per DESIGN.md.
-2. `fm1/app/`: SDK glue (screen.c replacement, audio.c/audio_output.c changes, bank chunk cache, project storage in the top 64 KB of the sample area, MIDI tap) and a script to overlay it on fm1_open.
-3. `web/`: wasm build and browser emulator (AudioWorklet, mic or file as BT/USB input, WAV drop-in for the bank), published on GitHub Pages.
-4. First hardware build: read the link map's heap, then size the buffers in `vsc_config.h`.
+- Browser emulator (wasm build of `core/` with the same UI).
+- PLAY material overview: decode the bank into a waveform picture in the control task.
+- Project names, copy and paste of steps, a CPU meter on the SETTINGS page (`vsc_fm1_cpu` is ready).
 
 ## If the FM-1 runs out of CPU
 
@@ -44,9 +46,8 @@ Notes: the pi32v2 FPU has a hardware divide but no square root. Host instruction
 
 `site/` is the install page (GitHub Pages). It uses M-VAVE's updater (`site/vendor/WebUpdate.js`, `I18n.js`, copied unchanged from fm1_open V14) for the protocol and its safety checks.
 
-- **One-time setup:** in the repo's Settings → Pages, set Source to **GitHub Actions**. The `Pages` workflow then publishes `site/` on every push. If Source is left on "Deploy from a branch", the root `index.html` sends visitors on to `site/`, and `.nojekyll` stops GitHub rendering the README as the home page.
-- **Publishing a build:** put the package at `site/firmware/viscera-X.Y.Z.fwsc` and write `site/firmware/latest.json`:
+- **One-time setup:** in the repo's Settings → Pages, set Source to **GitHub Actions**. The `Build, release and deploy` workflow then publishes `site/` (with the latest firmware) on every push. If Source is left on "Deploy from a branch", the root `index.html` sends visitors on to `site/`, and `.nojekyll` stops GitHub rendering the README as the home page.
+- **Publishing a build** is automatic (see Releasing). The workflow writes `site/firmware/viscera-X.Y.Z.fwsc` and `site/firmware/latest.json`:
   `{"schema":1,"kind":"open","product":"FM-1_8xxxxxx","build_id":"<sha256 of the .fwsc>","family":7,"bytes":N,"sha256":"<sha256>","loader_sha256":"<sha256 of the package's loader>","url":"firmware/viscera-X.Y.Z.fwsc","version":"X.Y.Z"}`.
-  Until then the page says no build is published, and still installs a local `.fwsc`.
 - The logo is the artwork in `docs/art/logo-source.png`. `tools/make_logo.py` makes its paper transparent and writes the site and README sizes, plus `site/mark.js`, the points the hero animation gathers into the reel. The splatter reel in `docs/art/icon-source.png` is the tab icon, the README image and the link preview (`site/social.png`); the same script builds those.
 - **GitHub's repo preview** is set by hand: Settings → General → Social preview → upload `docs/art/social-preview.png`.

@@ -70,6 +70,8 @@ static void ulaw_build(void)
 }
 
 /* -------------------------------------------------------------- buffers */
+static uint8_t is_enum[VSC_NP];   /* built at init: the parameter table stays in flash */
+#define balls_allowed(t) ((unsigned)vsc.t[(t)][P_RCOUNT] % VSC_BALLS + 1u)
 static uint8_t loop_pool[VSC_LOOP_SLICES * VSC_LOOP_SLICE];
 static uint8_t grain_ring[VSC_TRACKS][VSC_GRAIN_FRAMES];
 static int16_t delay_line[VSC_DELAY_FRAMES];
@@ -268,8 +270,7 @@ static VSC_HOT void compute_params(unsigned t)
     for (unsigned m = 0; m < VSC_MODS; ++m) mods[m] = vsc_meter.mod_value[t][m];
     for (unsigned p = 0; p < VSC_NP; ++p) {
         unsigned v = vsc_lock[t][p] != 255 ? vsc_lock[t][p] : base[p];
-        const struct vsc_pinfo *info = vsc_tparam_info(t, p);
-        if (info->flags & VSC_PF_ENUM) { k->e[p] = (float)v; continue; }
+        if (is_enum[p]) { k->e[p] = (float)v; continue; }
         float x = (float)v * (1.f / 127.f);
         if (morph > 0.f) x += ((float)sc->t[t][p] * (1.f / 127.f) - x) * morph;
         k->e[p] = x;
@@ -289,11 +290,11 @@ static VSC_HOT void compute_params(unsigned t)
         }
     }
     for (unsigned p = 0; p < VSC_NP; ++p)
-        if (!(vsc_tparam_info(t, p)->flags & VSC_PF_ENUM)) k->e[p] = clampf(k->e[p], 0.f, 1.f);
+        if (!is_enum[p]) k->e[p] = clampf(k->e[p], 0.f, 1.f);
 }
 
 /* --------------------------------------------------------------- mods */
-static const float sync_beats[8] = {0.f, 0.25f, 0.5f, 1.f, 2.f, 4.f, 8.f, 16.f};
+static VSC_HOTDATA const float sync_beats[8] = {0.f, 0.25f, 0.5f, 1.f, 2.f, 4.f, 8.f, 16.f};
 static VSC_HOT void run_mods(unsigned t, unsigned frames)
 {
     struct track *k = &tr[t];
@@ -490,7 +491,7 @@ static VSC_HOT void material(unsigned t, unsigned off, unsigned n)
 }
 
 /* -------------------------------------------------------------- grains */
-static const int8_t quant_steps[4] = {0, 1, 12, 7};
+static VSC_HOTDATA const int8_t quant_steps[4] = {0, 1, 12, 7};
 static VSC_HOT void grains(unsigned t, unsigned off, unsigned n)
 {
     struct track *k = &tr[t];
@@ -573,7 +574,7 @@ static VSC_HOT void grains(unsigned t, unsigned off, unsigned n)
 }
 
 /* -------------------------------------------------------------- filter */
-static const int8_t scale_iv[8][4] = {
+static VSC_HOTDATA const int8_t scale_iv[8][4] = {
     {0, 12, 24, 36}, {0, 7, 12, 19}, {0, 4, 7, 11}, {0, 3, 7, 10},
     {0, 5, 7, 12}, {0, 12, 19, 24}, {0, 2, 4, 6}, {0, 1, 2, 3}};
 VSC_INL float svf_g(float hz)
@@ -676,7 +677,7 @@ static VSC_HOT void color(unsigned t, unsigned off, unsigned n)
 }
 
 /* --------------------------------------------------------------- space */
-static const float div_beats[9] = {0.125f, 1.f / 6.f, 0.25f, 1.f / 3.f, 0.375f, 0.5f, 2.f / 3.f, 0.75f, 1.f};
+static VSC_HOTDATA const float div_beats[9] = {0.125f, 1.f / 6.f, 0.25f, 1.f / 3.f, 0.375f, 0.5f, 2.f / 3.f, 0.75f, 1.f};
 VSC_INL float rv_tap(unsigned bank, unsigned len, unsigned base, float in, float fbk, float damp)
 {
     uint32_t i = rv_idx[bank];
@@ -748,6 +749,125 @@ static VSC_HOT void space(float *l, float *r, unsigned n)
     }
 }
 
+/* ------------------------------------------------------------ rebound */
+/* REBOUND: notes become balls in a unit box. Each wall a ball hits fires its
+ * note: top and bottom as it is, left and right shifted by the WALLS interval.
+ * SPEED, GRAVTY (bipolar: down or up), LOSS (energy lost per bounce), SPREAD
+ * (how far launch angles fan out), JITTER (random deflection at each wall),
+ * QUANT (free, or held for the next 1/16 or 1/8), GATE (note length). */
+struct ball { float x, y, vx, vy; uint8_t note, vel, on, pad; };
+static struct ball balls[VSC_TRACKS][VSC_BALLS];
+static uint8_t ball_next[VSC_TRACKS], ball_seeded[VSC_TRACKS];
+struct pend { uint8_t note, vel; };
+static struct pend pending[VSC_TRACKS][16];
+static uint8_t pending_n[VSC_TRACKS];
+struct release { uint8_t note, on; int32_t left; };
+static struct release rel[VSC_TRACKS][12];
+static VSC_HOTDATA const int8_t wall_iv[3] = {12, 0, 7};
+
+static VSC_HOT void fire_note(unsigned t, unsigned note, unsigned vel)
+{
+    if (vsc.t[t][P_MUTE]) return;
+    note_on(t, note, vel);
+    float g = tr[t].e[P_RGATE];
+    int32_t frames = (int32_t)((0.02f + g * g * 0.6f) * (float)VSC_SR);
+    for (unsigned i = 0; i < 12; ++i)
+        if (!rel[t][i].on) { rel[t][i].on = 1; rel[t][i].note = (uint8_t)note; rel[t][i].left = frames; return; }
+    note_off(t, note);   /* no room to track it: make it a click */
+}
+static VSC_HOT void ball_launch(unsigned t, struct ball *b, unsigned k, float x, float y)
+{
+    /* the golden angle spaces successive launches; SPREAD fans them out */
+    float spread = tr[t].e[P_RSPREAD];
+    float ph = (float)k * 0.381966f * spread + 0.125f + rndu() * spread * 0.08f;
+    ph -= (float)floori(ph);
+    float c = sin01(ph + 0.25f), sn = sin01(ph);
+    b->x = clampf(x, 0.02f, 0.98f); b->y = clampf(y, 0.02f, 0.98f);
+    b->vx = c; b->vy = sn;
+}
+static VSC_HOT void ball_add(unsigned t, unsigned note, unsigned vel)
+{
+    unsigned max = balls_allowed(t);
+    unsigned k = ball_next[t] % max;
+    struct ball *b = &balls[t][k];
+    b->note = (uint8_t)note; b->vel = (uint8_t)(vel ? vel : 100); b->on = 1;
+    ball_launch(t, b, k + note, 0.5f, 0.5f);
+    ball_next[t] = (uint8_t)((k + 1) % max);
+}
+static VSC_HOT void ball_seed(unsigned t)
+{
+    unsigned len = vsc.length[t] ? vsc.length[t] : 16, k = 0, max = balls_allowed(t);
+    for (unsigned i = 0; i < VSC_BALLS; ++i) balls[t][i].on = 0;
+    for (unsigned s = 0; s < len && k < max; ++s) {
+        const struct vsc_step *st = &vsc.step[t][s];
+        if (!st->on) continue;
+        struct ball *b = &balls[t][k];
+        b->note = st->note; b->vel = st->vel; b->on = 1;
+        ball_launch(t, b, k, ((float)s + 0.5f) / (float)len, 1.f - (float)st->vel / 127.f);
+        ++k;
+    }
+    ball_next[t] = (uint8_t)(k % max);
+    ball_seeded[t] = 1;
+}
+static VSC_HOT void ball_hit(unsigned t, struct ball *b, int shift)
+{
+    int note = (int)b->note + shift;
+    if (note < 0 || note > 127) note = b->note;
+    if (vsc.t[t][P_RQUANT] && pending_n[t] < 16) {
+        pending[t][pending_n[t]].note = (uint8_t)note; pending[t][pending_n[t]].vel = b->vel; ++pending_n[t];
+    } else fire_note(t, (unsigned)note, b->vel);
+    /* JITTER: a random turn at the wall */
+    float j = tr[t].e[P_RJITTER] * rndb() * 0.9f;
+    if (j != 0.f) {
+        float c = 1.f - j * j * 0.5f, sn = j, vx = b->vx;
+        b->vx = vx * c - b->vy * sn; b->vy = vx * sn + b->vy * c;
+    }
+}
+static VSC_HOT void rebound(unsigned t, unsigned n)
+{
+    struct track *k = &tr[t];
+    if (!ball_seeded[t]) {
+        int any = 0;
+        for (unsigned i = 0; i < VSC_BALLS; ++i) any |= balls[t][i].on;
+        if (!any) ball_seed(t); else ball_seeded[t] = 1;
+    }
+    float dt = (float)n * (1.f / (float)VSC_SR);
+    float speed = 0.04f + k->e[P_RSPEED] * k->e[P_RSPEED] * 2.4f;     /* box widths per second */
+    float grav = (k->e[P_RGRAV] - 0.5f) * 2.f * 2.5f;                  /* + pulls down */
+    float keep = 1.f - k->e[P_RLOSS] * 0.6f;
+    int iv = wall_iv[vsc.t[t][P_RWALLS] % 3];
+    unsigned max = balls_allowed(t);
+    for (unsigned i = 0; i < VSC_BALLS; ++i) {
+        struct ball *b = &balls[t][i];
+        if (!b->on || i >= max) { vsc_meter.ball_on[t][i] = 0; continue; }
+        b->vy += grav * dt;
+        b->x += b->vx * speed * dt;
+        b->y += b->vy * speed * dt;
+        /* a hit fires only if the ball still has some speed into the wall,
+         * so a ball resting on the floor stays quiet */
+        /* a wall fires only when the ball meets it with some speed, so a ball
+         * that has come to rest stays quiet; the flash marks real hits */
+        if (b->x < 0.f) { b->x = -b->x; if (b->vx < -0.05f) { ball_hit(t, b, -iv); vsc_meter.ball_hit[t][i] = 255; } b->vx = -b->vx * keep; }
+        else if (b->x > 1.f) { b->x = 2.f - b->x; if (b->vx > 0.05f) { ball_hit(t, b, iv); vsc_meter.ball_hit[t][i] = 255; } b->vx = -b->vx * keep; }
+        if (b->y < 0.f) { b->y = -b->y; if (b->vy < -0.05f) { ball_hit(t, b, 0); vsc_meter.ball_hit[t][i] = 255; } b->vy = -b->vy * keep; }
+        else if (b->y > 1.f) { b->y = 2.f - b->y; if (b->vy > 0.05f) { ball_hit(t, b, 0); vsc_meter.ball_hit[t][i] = 255; } b->vy = -b->vy * keep; }
+        /* under gravity a slow ball settles against the wall it is pressed into */
+        if (grav > 0.f && b->y > 0.995f && b->vy > -0.06f && b->vy < 0.06f) { b->y = 1.f; b->vy = 0.f; }
+        if (grav < 0.f && b->y < 0.005f && b->vy > -0.06f && b->vy < 0.06f) { b->y = 0.f; b->vy = 0.f; }
+        b->x = clampf(b->x, 0.f, 1.f); b->y = clampf(b->y, 0.f, 1.f);
+        vsc_meter.ball_on[t][i] = 1;
+        vsc_meter.ball_x[t][i] = (uint8_t)(b->x * 255.f);
+        vsc_meter.ball_y[t][i] = (uint8_t)(b->y * 255.f);
+        if (vsc_meter.ball_hit[t][i] == 255) vsc_meter.ball_hit[t][i] = 254;
+        else if (vsc_meter.ball_hit[t][i] > 6) vsc_meter.ball_hit[t][i] -= 6; else vsc_meter.ball_hit[t][i] = 0;
+    }
+}
+static VSC_HOT void releases(unsigned t, unsigned n)
+{
+    for (unsigned i = 0; i < 12; ++i)
+        if (rel[t][i].on && (rel[t][i].left -= (int32_t)n) <= 0) { rel[t][i].on = 0; note_off(t, rel[t][i].note); }
+}
+
 /* ----------------------------------------------------------- sequencer */
 static VSC_HOT void fire_step(void)
 {
@@ -756,6 +876,14 @@ static VSC_HOT void fire_step(void)
         unsigned s = seq_step % len;
         vsc_meter.step[t] = (uint8_t)s;
         const struct vsc_step *st = &vsc.step[t][s];
+        if (vsc.t[t][P_SEQM] == SEQ_REBOUND) {
+            /* quantised wall hits wait for the next 1/16 (or 1/8) */
+            if (pending_n[t] && (vsc.t[t][P_RQUANT] == 1 || !(seq_step & 1))) {
+                for (unsigned i = 0; i < pending_n[t]; ++i) fire_note(t, pending[t][i].note, pending[t][i].vel);
+                pending_n[t] = 0;
+            }
+            continue;
+        }
         for (unsigned p = 0; p < VSC_NP; ++p) vsc_lock[t][p] = 255;
         if (!st->on) continue;
         for (unsigned l = 0; l < 2; ++l) if (st->lp[l] < VSC_NP) vsc_lock[t][st->lp[l]] = st->lv[l];
@@ -774,6 +902,10 @@ static VSC_HOT void sequencer(unsigned n)
             tr[t].gate_left -= (int32_t)n;
             if (tr[t].gate_left <= 0) { tr[t].gate_left = 0; note_off(t, tr[t].gate_note); }
         }
+    for (unsigned t = 0; t < VSC_TRACKS; ++t) {
+        releases(t, n);
+        if (seq_running && vsc.t[t][P_SEQM] == SEQ_REBOUND) rebound(t, n);
+    }
     if (!seq_running) return;
     if (vsc.g[G_CLOCK]) { /* MIDI clock: steps fire on every sixth pulse */
         while (seq_ext_pending) { --seq_ext_pending; fire_step(); ++seq_step; }
@@ -789,7 +921,7 @@ static VSC_HOT void sequencer(unsigned n)
         fire_step();
     }
 }
-static void seq_start(int from_zero)
+static VSC_HOT void seq_start(int from_zero)
 {
     if (from_zero) { seq_step = 0; seq_phase = 0.f; seq_clock_count = 0; }
     seq_running = 1;
@@ -798,12 +930,14 @@ static void seq_start(int from_zero)
         if (vsc.t[t][P_MODE] == MODE_PLAY && !tr[t].running) note_on(t, 60, 100), note_off(t, 60);
     fire_step();
 }
-static void seq_stop(void)
+static VSC_HOT void seq_stop(void)
 {
     seq_running = 0; seq_ext_pending = 0;
     vsc_meter.playing = 0;
     for (unsigned t = 0; t < VSC_TRACKS; ++t) {
         if (tr[t].gate_left > 0) { note_off(t, tr[t].gate_note); tr[t].gate_left = 0; }
+        for (unsigned i = 0; i < 12; ++i) if (rel[t][i].on) { rel[t][i].on = 0; note_off(t, rel[t][i].note); }
+        pending_n[t] = 0;
         for (unsigned p = 0; p < VSC_NP; ++p) vsc_lock[t][p] = 255;
     }
 }
@@ -825,6 +959,8 @@ static VSC_HOT void handle(uint32_t e)
         if (vsc.g[G_CLOCK] && seq_running && ++seq_clock_count >= 6) { seq_clock_count = 0; if (seq_ext_pending < 4) ++seq_ext_pending; }
         break;
     case EV_REC: loop_rec(t); break;
+    case EV_BALL: ball_add(t, a, b); ball_seeded[t] = 1; break;
+    case EV_BALL_CLEAR: for (unsigned i = 0; i < VSC_BALLS; ++i) balls[t][i].on = 0; ball_next[t] = 0; ball_seeded[t] = 0; pending_n[t] = 0; break;
     case EV_LOOP_CLEAR: tr[t].loop_state = 0; tr[t].loop_len = 0; tr[t].running = 0; break;
     case EV_PANIC:
         for (unsigned i = 0; i < VSC_TRACKS; ++i) {
@@ -849,6 +985,7 @@ static VSC_HOT void drain(struct queue *q)
 void vsc_init(void)
 {
     ulaw_build();
+    for (unsigned p = 0; p < VSC_NP; ++p) is_enum[p] = (vsc_tparam_info(0, p)->flags & VSC_PF_ENUM) != 0;
     vsc_memset(tr, 0, sizeof tr);
     vsc_memset(vsc_lock, 255, sizeof vsc_lock);
     vsc_memset(loop_pool, 0xff, sizeof loop_pool);

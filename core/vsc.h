@@ -30,6 +30,9 @@ enum vsc_tparam {
     P_M1A, P_M1B, P_M1C, P_M1D,
     P_M2A, P_M2B, P_M2C, P_M2D,
     P_M3A, P_M3B, P_M3C, P_M3D,
+    /* SEQUENCER: STEPS or REBOUND, and REBOUND's physics */
+    P_SEQM, P_RSPEED, P_RGRAV, P_RLOSS, P_RSPREAD, P_RQUANT,
+    P_RCOUNT, P_RWALLS, P_RJITTER, P_RGATE,
     VSC_NP
 };
 enum vsc_gparam {
@@ -42,6 +45,8 @@ enum { MODE_PLAY, MODE_LOOP, MODE_KEYS, MODE_THRU };
 enum { IN_BT, IN_USB, IN_BOTH, IN_T1, IN_T2, IN_T3, IN_T4, IN_MAIN, IN_COUNT };
 enum { FT_LP, FT_BP, FT_HP, FT_PEAKS, FT_OFF };
 enum { MOD_LFO, MOD_RANDOM, MOD_FOLLOW, MOD_ENV };
+enum { SEQ_STEPS, SEQ_REBOUND };
+#define VSC_BALLS 8
 
 #define VSC_PF_ENUM    1
 #define VSC_PF_BIPOLAR 2
@@ -93,7 +98,7 @@ void vsc_render(const struct vsc_inputs *in, float *out);
 
 /* Events from control or MIDI into the audio context (lock-free queue). */
 enum { EV_NOTE_ON, EV_NOTE_OFF, EV_PLAY, EV_STOP, EV_REC, EV_CLOCK, EV_START, EV_CONT,
-       EV_PANIC, EV_LOOP_CLEAR };
+       EV_PANIC, EV_LOOP_CLEAR, EV_BALL, EV_BALL_CLEAR };
 void vsc_event(unsigned type, unsigned track, unsigned a, unsigned b);
 /* Same, from the MIDI routing task (its own queue). */
 void vsc_midi_event(unsigned type, unsigned track, unsigned a, unsigned b);
@@ -109,6 +114,9 @@ struct vsc_meter {
     float mod_value[VSC_TRACKS][VSC_MODS];
     uint8_t loop_state[VSC_TRACKS];  /* 0 empty, 1 recording, 2 playing, 3 overdub */
     uint8_t step[VSC_TRACKS];
+    /* REBOUND: ball positions 0..255, a flash that fades after each wall hit */
+    uint8_t ball_x[VSC_TRACKS][VSC_BALLS], ball_y[VSC_TRACKS][VSC_BALLS], ball_hit[VSC_TRACKS][VSC_BALLS];
+    uint8_t ball_on[VSC_TRACKS][VSC_BALLS];
     uint8_t playing, ext_clock, bt_in, usb_in;
 };
 extern struct vsc_project vsc;   /* the live project */
@@ -119,6 +127,7 @@ extern float vsc_scope[2][128];              /* last main output block, for the 
 /* Loop memory, for the UI's overview (8-bit mu-law). */
 const uint8_t *vsc_loop_memory(unsigned track, uint32_t *frames, uint32_t *capacity);
 const uint8_t *vsc_grain_ring(unsigned track);
+uint32_t vsc_loop_base(unsigned track);   /* track's offset into the loop memory */
 float vsc_ulaw(uint8_t v);
 
 /* ---- Control helpers --------------------------------------------------- */

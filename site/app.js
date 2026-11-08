@@ -109,7 +109,15 @@
 
   $('install-btn').addEventListener('click', async () => {
     if (!updater || busy) return;
-    if (!confirm('Install Viscera now? Keep the FM-1 on and connected until it restarts.')) return;
+    const btn = $('install-btn');
+    if (!btn.dataset.armed) {
+      /* two presses: the first asks, the second installs */
+      btn.dataset.armed = '1'; btn.textContent = 'Press again to install';
+      $('inst-meta').textContent = 'Keep the FM-1 on and connected until it restarts.';
+      setTimeout(() => { if (!busy) { delete btn.dataset.armed; btn.textContent = 'Install Viscera'; } }, 6000);
+      return;
+    }
+    delete btn.dataset.armed; btn.textContent = 'Install Viscera';
     clearError(); busy = true;
     fx.state.rain = 0.9; fx.state.progress = 0.01; fx.sediment && fx.sediment.kick();
     $('inst-meta').textContent = 'Writing… don’t unplug.';

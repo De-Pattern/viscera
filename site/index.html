@@ -17,6 +17,7 @@
   --sans:"Inter Tight",system-ui,-apple-system,"Segoe UI",sans-serif;
 }
 *{box-sizing:border-box}
+html{color-scheme:light}
 html,body{margin:0;background:var(--paper);color:var(--ink)}
 body{font:300 15px/1.6 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
 a{color:inherit;text-decoration:none;border-bottom:1px solid var(--stone)}
@@ -28,7 +29,7 @@ body::after{content:"";position:fixed;inset:-50%;pointer-events:none;z-index:50;
 @keyframes grain{0%{transform:translate(0,0)}20%{transform:translate(-3%,2%)}40%{transform:translate(2%,-4%)}60%{transform:translate(-4%,-1%)}80%{transform:translate(3%,3%)}100%{transform:translate(0,0)}}
 @media (prefers-reduced-motion:reduce){body::after{animation:none}}
 
-.wrap{max-width:980px;margin:0 auto;padding:0 28px}
+.wrap{max-width:980px;margin:0 auto;padding-left:max(28px,env(safe-area-inset-left,0px));padding-right:max(28px,env(safe-area-inset-right,0px))}
 header{display:flex;align-items:center;justify-content:space-between;padding:26px 0 0}
 .mark{display:flex;align-items:center;gap:14px;border:0}
 .mark img{display:block;width:24px;height:32px}
@@ -91,7 +92,7 @@ footer{padding:42px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
 footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
 
 @media (max-width:760px){
-  .wrap{padding:0 16px}
+  .wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
   nav{gap:16px}
   .steps{grid-template-columns:1fr}
   .step{min-height:0}

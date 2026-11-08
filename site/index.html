@@ -94,6 +94,9 @@ button:disabled{opacity:.35;cursor:default;background:var(--ink);color:var(--pap
 .console #error{color:#7a2d22;white-space:pre-wrap}
 #sediment{width:100%;height:46px;display:block;margin:12px 0 4px}
 
+.cycle{margin:0;display:flex;flex-direction:column;align-items:center;gap:14px}
+.cycle img{display:block;width:100%;max-width:720px;height:auto}
+.cycle figcaption{font:400 10px/1 var(--mono);letter-spacing:.24em;text-transform:uppercase;color:var(--grey)}
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:56px}
 .cols p,.cols li{font-size:14px;color:var(--ink-soft)}
 .cols ul{padding:0;margin:0;list-style:none}
@@ -186,6 +189,18 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
       <div id="status">Ready.</div>
       <div id="error"></div>
     </div>
+  </div>
+</section>
+
+<div class="rule"></div>
+
+<section id="motion">
+  <div class="wrap">
+    <p class="eyebrow">In motion</p>
+    <figure class="cycle">
+      <img src="art/cycle.gif" width="520" height="349" loading="lazy" alt="Grains moving through five states: vapour rising, rain falling, swell in waves, melt dripping from a mass, and settle gathering into the reel">
+      <figcaption>vapour · rain · swell · melt · settle</figcaption>
+    </figure>
   </div>
 </section>
 

@@ -91,7 +91,7 @@
       const src = window.VISCERA_MARK;
       if (src && src.p.length) {
         MARK = src;
-        const want = Math.min(Math.round(n * 0.6), 1500), step = src.p.length / want;
+        const want = Math.min(Math.round(n * 0.7), 1800), step = src.p.length / want;
         logo = []; for (let k = 0; k < want; k++) logo.push(src.p[Math.floor(k * step) % src.p.length]);
       } else { MARK = {w: 120, h: 160}; logo = dropPoints(Math.min(Math.round(n * 0.55), 1300)); }
     }
@@ -169,7 +169,7 @@
           const cx = MARK.cx || mw / 2, cy = MARK.cy || mh / 2, rim = (MARK.r || mw * 0.4) + 3;
           const rx = px - cx, ry = py - cy;
           if (rx * rx + ry * ry < rim * rim) {
-            const ang = t * 0.22, c = Math.cos(ang), s2 = Math.sin(ang);
+            const ang = t * 0.07, c = Math.cos(ang), s2 = Math.sin(ang);
             px = cx + rx * c - ry * s2; py = cy + rx * s2 + ry * c;
           }
           const jitter = (noise(i * 0.37, t * 0.6) - 0.5) * 1.6 * dpr;

@@ -30,7 +30,7 @@ enum vsc_tparam {
     P_M1A, P_M1B, P_M1C, P_M1D,
     P_M2A, P_M2B, P_M2C, P_M2D,
     P_M3A, P_M3B, P_M3C, P_M3D,
-    /* SEQUENCER: STEPS or REBOUND, and REBOUND's physics */
+    /* SEQUENCER: STEPS or CAROM, and CAROM's physics */
     P_SEQM, P_RSPEED, P_RGRAV, P_RLOSS, P_RSPREAD, P_RQUANT,
     P_RCOUNT, P_RWALLS, P_RJITTER, P_RGATE,
     VSC_NP
@@ -45,7 +45,7 @@ enum { MODE_PLAY, MODE_LOOP, MODE_KEYS, MODE_THRU };
 enum { IN_BT, IN_USB, IN_BOTH, IN_T1, IN_T2, IN_T3, IN_T4, IN_MAIN, IN_COUNT };
 enum { FT_LP, FT_BP, FT_HP, FT_PEAKS, FT_OFF };
 enum { MOD_LFO, MOD_RANDOM, MOD_FOLLOW, MOD_ENV };
-enum { SEQ_STEPS, SEQ_REBOUND };
+enum { SEQ_STEPS, SEQ_CAROM };
 #define VSC_BALLS 8
 
 #define VSC_PF_ENUM    1
@@ -114,7 +114,7 @@ struct vsc_meter {
     float mod_value[VSC_TRACKS][VSC_MODS];
     uint8_t loop_state[VSC_TRACKS];  /* 0 empty, 1 recording, 2 playing, 3 overdub */
     uint8_t step[VSC_TRACKS];
-    /* REBOUND: ball positions 0..255, a flash that fades after each wall hit */
+    /* CAROM: ball positions 0..255, a flash that fades after each wall hit */
     uint8_t ball_x[VSC_TRACKS][VSC_BALLS], ball_y[VSC_TRACKS][VSC_BALLS], ball_hit[VSC_TRACKS][VSC_BALLS];
     uint8_t ball_on[VSC_TRACKS][VSC_BALLS];
     uint8_t playing, ext_clock, bt_in, usb_in;

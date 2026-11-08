@@ -110,7 +110,7 @@ static const struct slot rows_scene[2][6] = {
 static const struct slot rows_steps[2][6] = {
     {{S_STEP, 0}, {S_STEP, 1}, {S_STEP, 2}, {S_STEP, 3}, {S_STEP, 4}, {S_STEP, 5}},
     {T(P_SEQM), N, N, N, N, N}};
-static const struct slot rows_rebound[2][6] = {
+static const struct slot rows_carom[2][6] = {
     {T(P_SEQM), T(P_RSPEED), T(P_RGRAV), T(P_RLOSS), T(P_RSPREAD), T(P_RQUANT)},
     {T(P_RCOUNT), T(P_RWALLS), T(P_RJITTER), T(P_RGATE), N, N}};
 static const char *const mod_name[VSC_MODS] = {"LFO", "RANDOM", "FOLLOW", "ENV"};
@@ -144,7 +144,7 @@ static struct slot slot_at(unsigned i)
     case PG_MIX: return rows_mix[0][i];
     case PG_SPACE: return rows_space[r][i];
     case PG_SCENE: return rows_scene[r][i];
-    case PG_STEPS: return vsc.t[track][P_SEQM] == SEQ_REBOUND ? rows_rebound[r][i] : rows_steps[r][i];
+    case PG_STEPS: return vsc.t[track][P_SEQM] == SEQ_CAROM ? rows_carom[r][i] : rows_steps[r][i];
     case PG_MODS: if (i < 4) { struct slot s = {S_T, (uint8_t)(P_M0A + mod_sel * 4 + i)}; return s; } return none;
     default: return none;
     }
@@ -256,7 +256,7 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
     if (down & B(BTN_PLAY)) vsc_event(EV_PLAY, track, 0, 0);
     if (down & B(BTN_REC)) { rec_down_at = now_ms; rec_long = 0; }
     if ((in->buttons & B(BTN_REC)) && !rec_long && now_ms - rec_down_at > 900) {
-        if (page == PG_STEPS && vsc.t[track][P_SEQM] == SEQ_REBOUND) {
+        if (page == PG_STEPS && vsc.t[track][P_SEQM] == SEQ_CAROM) {
             rec_long = 1; vsc_event(EV_BALL_CLEAR, track, 0, 0); vsc_ui_notice("BALLS CLEARED", 900);
         } else if (vsc.t[track][P_MODE] == MODE_LOOP) {
             rec_long = 1; vsc_event(EV_LOOP_CLEAR, track, 0, 0); vsc_ui_notice("LOOP CLEARED", 900);
@@ -265,7 +265,7 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
     if ((up & B(BTN_REC)) && !rec_long) {
         if (page == PG_STEPS) {
             live_rec ^= 1;
-            if (vsc.t[track][P_SEQM] == SEQ_REBOUND) vsc_ui_notice(live_rec ? "PLAY NOTES TO ADD BALLS" : "BALL RECORD OFF", 1200);
+            if (vsc.t[track][P_SEQM] == SEQ_CAROM) vsc_ui_notice(live_rec ? "PLAY NOTES TO ADD BALLS" : "BALL RECORD OFF", 1200);
             else vsc_ui_notice(live_rec ? "STEP RECORD ON" : "STEP RECORD OFF", 900);
         }
         else if (page == PG_PROJECT) { *arg = proj_slot; req = vsc_host.slot_used[proj_slot] ? HOST_LOAD : HOST_SAVE; }
@@ -315,16 +315,16 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
                 else vsc_scene_recall(k);
                 used = B(31); continue;
             }
-            int rebound = vsc.t[track][P_SEQM] == SEQ_REBOUND;
-            if (rebound && live_rec) vsc_event(EV_BALL, track, note, 100);
-            if (page == PG_STEPS && k < 16 && !rebound) {
+            int carom = vsc.t[track][P_SEQM] == SEQ_CAROM;
+            if (carom && live_rec) vsc_event(EV_BALL, track, note, 100);
+            if (page == PG_STEPS && k < 16 && !carom) {
                 unsigned s = step_page * 16 + k;
                 step_sel = s;
                 if (!live_rec) vsc.step[track][s].on ^= 1;
                 continue;
             }
             vsc_event(EV_NOTE_ON, track, note, 100);
-            if (live_rec && vsc_meter.playing && !rebound) {
+            if (live_rec && vsc_meter.playing && !carom) {
                 struct vsc_step *st = &vsc.step[track][vsc_meter.step[track]];
                 st->on = 1; st->note = (uint8_t)note; st->vel = 100;
             }
@@ -352,7 +352,7 @@ static void draw_header(void)
     b[0] = 'T'; b[1] = (char)('1' + track); b[2] = 0;
     rect(4, 3, 15, 11, C_FG); text(6, 5, b, C_BG, 1);
     const char *title = page == PG_MODS ? mod_name[mod_sel]
-        : page == PG_STEPS && vsc.t[track][P_SEQM] == SEQ_REBOUND ? "REBOUND" : page_name[page];
+        : page == PG_STEPS && vsc.t[track][P_SEQM] == SEQ_CAROM ? "CAROM" : page_name[page];
     text(24, 5, title, C_FG, 1);
     if (row_count() > 1) {
         for (unsigned r = 0; r < row_count(); ++r) rect(24 + text_w(title, 1) + 6 + (int)r * 5, 8, 3, 3, r == row ? C_FG : C_LINE);
@@ -389,7 +389,7 @@ static void draw_knobs(void)
         if (i) vline(x, KNOB_Y - 2, 40, C_LINE);   /* each knob keeps to its own column */
     }
     /* key and button hints along the bottom */
-    const char *hint = page == PG_STEPS && vsc.t[track][P_SEQM] == SEQ_REBOUND ? "REC: ADD BALLS  HOLD REC: CLEAR"
+    const char *hint = page == PG_STEPS && vsc.t[track][P_SEQM] == SEQ_CAROM ? "REC: ADD BALLS  HOLD REC: CLEAR"
         : page == PG_STEPS ? "KEYS: STEPS  OCT: PAGE  REC: RECORD"
         : page == PG_PROJECT ? "E1: SLOT  REC: LOAD/SAVE  SAVE+PLAY: SAVE"
         : page == PG_SETTINGS ? "E1-3 AUDIO/MIDI/ROLE E4 DEV E5 UNPAIR"
@@ -502,7 +502,7 @@ static void draw_vis(void)
             rect(26, y + 2, vsc.g[G_M0 + m] * 200 / 127, 3, C_FG);
         }
         break;
-    case PG_STEPS: if (vsc.t[track][P_SEQM] == SEQ_REBOUND) {
+    case PG_STEPS: if (vsc.t[track][P_SEQM] == SEQ_CAROM) {
         int x0 = 20, y0 = VIS_Y + 4, w = 200, h = 128;
         hline(x0, y0, w, C_LINE); hline(x0, y0 + h, w, C_LINE); vline(x0, y0, h, C_LINE); vline(x0 + w, y0, h + 1, C_LINE);
         static const char *const iv[3] = {"-12", "0", "-7"};

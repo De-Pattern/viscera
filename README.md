@@ -15,7 +15,7 @@ Viscera brings sound in over Bluetooth (a phone or tablet) or USB (a computer), 
 
 It's built on M-VAVE's official FM1 Open SDK (V14), so Bluetooth, USB audio and MIDI keep working, and samples uploaded with M-VAVE's workbench still play.
 
-**Status: 0.1.0, early, untested on hardware.** The firmware builds, packages and passes M-VAVE's updater checks; it hasn't run on an FM-1 yet. Two sequencers per track: STEPS, and REBOUND, where notes bounce around a box and play when they hit the walls.
+**Status: early, untested on hardware.** The firmware builds, packages and passes M-VAVE's updater checks; it hasn't run on an FM-1 yet. Two sequencers per track: STEPS, and CAROM, where notes bounce around a box and play when they hit the walls.
 
 | | |
 |:-:|:-:|

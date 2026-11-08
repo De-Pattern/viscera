@@ -749,8 +749,8 @@ static VSC_HOT void space(float *l, float *r, unsigned n)
     }
 }
 
-/* ------------------------------------------------------------ rebound */
-/* REBOUND: notes become balls in a unit box. Each wall a ball hits fires its
+/* ------------------------------------------------------------ carom */
+/* CAROM: notes become balls in a unit box. Each wall a ball hits fires its
  * note: top and bottom as it is, left and right shifted by the WALLS interval.
  * SPEED, GRAVTY (bipolar: down or up), LOSS (energy lost per bounce), SPREAD
  * (how far launch angles fan out), JITTER (random deflection at each wall),
@@ -823,7 +823,7 @@ static VSC_HOT void ball_hit(unsigned t, struct ball *b, int shift)
         b->vx = vx * c - b->vy * sn; b->vy = vx * sn + b->vy * c;
     }
 }
-static VSC_HOT void rebound(unsigned t, unsigned n)
+static VSC_HOT void carom(unsigned t, unsigned n)
 {
     struct track *k = &tr[t];
     if (!ball_seeded[t]) {
@@ -876,7 +876,7 @@ static VSC_HOT void fire_step(void)
         unsigned s = seq_step % len;
         vsc_meter.step[t] = (uint8_t)s;
         const struct vsc_step *st = &vsc.step[t][s];
-        if (vsc.t[t][P_SEQM] == SEQ_REBOUND) {
+        if (vsc.t[t][P_SEQM] == SEQ_CAROM) {
             /* quantised wall hits wait for the next 1/16 (or 1/8) */
             if (pending_n[t] && (vsc.t[t][P_RQUANT] == 1 || !(seq_step & 1))) {
                 for (unsigned i = 0; i < pending_n[t]; ++i) fire_note(t, pending[t][i].note, pending[t][i].vel);
@@ -904,7 +904,7 @@ static VSC_HOT void sequencer(unsigned n)
         }
     for (unsigned t = 0; t < VSC_TRACKS; ++t) {
         releases(t, n);
-        if (seq_running && vsc.t[t][P_SEQM] == SEQ_REBOUND) rebound(t, n);
+        if (seq_running && vsc.t[t][P_SEQM] == SEQ_CAROM) carom(t, n);
     }
     if (!seq_running) return;
     if (vsc.g[G_CLOCK]) { /* MIDI clock: steps fire on every sixth pulse */

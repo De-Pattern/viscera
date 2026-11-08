@@ -16,7 +16,7 @@ static const char *const n_sync[] = {"FREE", "1/16", "1/8", "1/4", "1/2", "1BAR"
 static const char *const n_reset[] = {"FREE", "NOTE"};
 static const char *const n_dtime[] = {"1/32", "1/16T", "1/16", "1/8T", "1/16D", "1/8", "1/4T", "1/8D", "1/4"};
 static const char *const n_clock[] = {"INT", "MIDI"};
-static const char *const n_seqm[] = {"STEPS", "BOUNCE"};
+static const char *const n_seqm[] = {"STEPS", "CAROM"};
 static const char *const n_rquant[] = {"FREE", "1/16", "1/8"};
 static const char *const n_rwalls[] = {"OCTAVE", "SAME", "5TH"};
 

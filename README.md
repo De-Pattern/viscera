@@ -8,7 +8,7 @@
 <a href="https://de-pattern.github.io/viscera/">Install page</a> · <a href="docs/DESIGN.md">Design</a> · <a href="docs/STATUS.md">Status</a></p>
 
 <p align="center">
-  <img src="docs/art/melt.gif" width="560" alt="Grains melting from a mass into drips, then gathering into the reel">
+  <img src="docs/art/cycle.gif" width="520" alt="The install page animation: vapour, rain, swell, melt, settle">
 </p>
 
 Viscera brings sound in over Bluetooth (a phone or tablet) or USB (a computer), or plays it from the FM-1's flash sample bank, then takes it apart. Each track runs MATERIAL → GRAIN → FILTER → COLOR into a shared SPACE bus (delay and reverb), with four modulators per track, macros, scenes that morph, and a step sequencer with parameter locks.

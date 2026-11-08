@@ -44,7 +44,7 @@ Notes: the pi32v2 FPU has a hardware divide but no square root. Host instruction
 
 `site/` is the install page (GitHub Pages). It uses M-VAVE's updater (`site/vendor/WebUpdate.js`, `I18n.js`, copied unchanged from fm1_open V14) for the protocol and its safety checks.
 
-- **One-time setup:** in the repo's Settings → Pages, set Source to **GitHub Actions**. The `Pages` workflow then publishes `site/` on every push.
+- **One-time setup:** in the repo's Settings → Pages, set Source to **GitHub Actions**. The `Pages` workflow then publishes `site/` on every push. If Source is left on "Deploy from a branch", the root `index.html` sends visitors on to `site/`, and `.nojekyll` stops GitHub rendering the README as the home page.
 - **Publishing a build:** put the package at `site/firmware/viscera-X.Y.Z.fwsc` and write `site/firmware/latest.json`:
   `{"schema":1,"kind":"open","product":"FM-1_8xxxxxx","build_id":"<sha256 of the .fwsc>","family":7,"bytes":N,"sha256":"<sha256>","loader_sha256":"<sha256 of the package's loader>","url":"firmware/viscera-X.Y.Z.fwsc","version":"X.Y.Z"}`.
   Until then the page says no build is published, and still installs a local `.fwsc`.

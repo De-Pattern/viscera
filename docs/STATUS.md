@@ -11,6 +11,10 @@ The firmware builds and packages on Linux, and the package passes M-VAVE's own u
 
 Budget at 0.1.0: app image 443,528 of 453,921 bytes; Bluetooth heap 54,924 bytes (needs 49,152).
 
+## Identity and build ID
+
+The update identity is `FM-1_86` followed by the version as X YY ZZ: 0.1.2 reports `FM-1_8600102` ("86" is "V"; M-VAVE's SDK requires `FM-1_8` plus six digits). The build ID is a SHA-256 over the SDK manifest and every app file; the FM-1 reports it after an install, and the install page shows it next to the package's build ID after connecting. CI and local builds of the same commit give the same build ID.
+
 ## Releasing
 
 Bump `VERSION`, add a `## X.Y.Z` section to `CHANGELOG.md`, push. The `Build, release and deploy` workflow builds the firmware, checks it, creates the `vX.Y.Z` release with the `.fwsc`, and deploys the install page with that build behind "Use latest build". Pushes without a new VERSION still rebuild and redeploy the page.

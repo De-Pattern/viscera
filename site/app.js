@@ -51,7 +51,7 @@
 
   function describe(meta) {
     $('pkg-meta').innerHTML = '<b>' + meta.product + '</b><br>' +
-      (meta.version ? 'version ' + meta.version + ' · ' : '') + Math.round(meta.bytes / 1024) + ' KB · sha ' + meta.sha256.slice(0, 12);
+      (meta.version ? 'version ' + meta.version + ' · ' : '') + Math.round(meta.bytes / 1024) + ' KB<br>build ' + meta.build_id.slice(0, 16);
   }
   async function choose(meta) {
     clearError();
@@ -100,7 +100,11 @@
         return;
       }
       fx.state.connected = 1;
-      $('dev-meta').innerHTML = 'Connected: <b>' + device.identity + '</b>' + (device.same ? '<br>This build is already installed.' : '');
+      /* the FM-1 reports the build it's running: compare it with the package */
+      const now = device.current ? String(device.current).slice(0, 16) : '';
+      $('dev-meta').innerHTML = 'Connected: <b>' + device.identity + '</b>' +
+        (now ? '<br>installed build ' + now : '') +
+        (device.same ? '<br>Matches this package: already installed.' : '');
       stage(3);
       status(device.resume ? 'The FM-1 is waiting in update mode. Install to finish.' : 'Connected. Ready to install.');
     } catch (e) { fx.state.connected = 0; error(e); status('Could not connect.'); }

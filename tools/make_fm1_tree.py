@@ -18,8 +18,14 @@ Without --sdk the kit is cloned at the pinned commit.
 import argparse, os, shutil, subprocess, sys
 
 PINNED = "4c7496daac04a95ff10d1afdcc8f9ead2dbabc41"   # fm1_open V14, 2026-10-21
-PRODUCT = "FM-1_8960001"                              # Viscera's update identity
-RELEASE = "V01"
+# Update identity: FM-1_86 + the version as X YY ZZ ("86" is "V"; the SDK
+# requires FM-1_8 plus six digits). 0.1.2 -> FM-1_8600102. The fixed part
+# "FM-1_86" is Viscera's own, so firmware hubs can tell it apart.
+def identity(version):
+    major, minor, patch = (int(x) for x in version.split('.'))
+    if major > 9 or minor > 99 or patch > 99:
+        raise SystemExit('version out of range for the update identity')
+    return f"FM-1_86{major}{minor:02d}{patch:02d}", f"V{minor * 10 + patch:02d}" if minor * 10 + patch < 100 else f"V{minor * 10 + patch}"
 
 here = os.path.dirname(os.path.abspath(__file__))
 root = os.path.abspath(os.path.join(here, ".."))
@@ -35,6 +41,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sdk", help="existing fm1_open checkout (V14)")
     ap.add_argument("--out", default=os.path.join(root, "build", "fm1-tree"))
+    ap.add_argument("--version", default=open(os.path.join(root, "VERSION")).read().strip())
     a = ap.parse_args()
 
     sdk = a.sdk
@@ -87,9 +94,10 @@ def main():
           "void fm1_app_midi_received(unsigned source, const uint8_t *m, size_t n)\n{\n    vsc_fm1_midi(source, m, n);\n")
 
     # identity
+    PRODUCT, RELEASE = identity(a.version)
     patch(os.path.join(app, "version.h"), '#define FM1_RELEASE_VERSION "V14"', f'#define FM1_RELEASE_VERSION "{RELEASE}"')
     patch(os.path.join(app, "version.h"), '#define FM1_UPDATE_PRODUCT "FM-1_8000014"', f'#define FM1_UPDATE_PRODUCT "{PRODUCT}"')
-    print("tree ready:", a.out)
+    print("tree ready:", a.out, PRODUCT, RELEASE)
 
 if __name__ == "__main__":
     main()

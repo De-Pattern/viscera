@@ -40,7 +40,7 @@ def run(cmd, **kw):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--sdk', help='existing fm1_open V14 checkout (cloned at the pinned commit if absent)')
-    ap.add_argument('--version', default='0.1.0')
+    ap.add_argument('--version', default=open(os.path.join(root, 'VERSION')).read().strip())
     a = ap.parse_args()
     tc = os.environ.get('JIELI_TOOLCHAIN', os.path.expanduser('~/.jieli/toolchain'))
     bin_ = os.path.join(tc, 'pi32v2', 'bin')
@@ -49,7 +49,7 @@ def main():
 
     build = os.path.join(root, 'build')
     tree = os.path.join(build, 'fm1-tree')
-    sys.argv = ['make_fm1_tree.py', '--out', tree] + (['--sdk', a.sdk] if a.sdk else [])
+    sys.argv = ['make_fm1_tree.py', '--out', tree, '--version', a.version] + (['--sdk', a.sdk] if a.sdk else [])
     make_fm1_tree.main()
     sdk = os.path.join(tree, 'sdk')
     out = os.path.join(tree, 'build', 'viscera')

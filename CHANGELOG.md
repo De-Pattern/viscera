@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- **Changed:** the update identity is now FM-1_86 followed by the version (0.1.2 reports FM-1_8600102), a fixed part no other firmware uses, so firmware hubs can tell Viscera apart.
+- **New:** after connecting, the install page shows the build the FM-1 is running next to the package's build, so you can check an install took.
+
 ## 0.1.1
 
 - **Fixed:** the knob columns have clear dividers, so long values never seem to run into the next knob.

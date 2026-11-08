@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Viscera Emulator</title>
+<meta name="description" content="Play Viscera, the four-track sculpting sampler firmware for the M-VAVE FM-1, in your browser. The same code the FM-1 runs.">
+<link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32">
+<meta property="og:title" content="Viscera emulator">
+<meta property="og:image" content="https://de-pattern.github.io/viscera/social.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=Inter+Tight:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#f3efe7; --beige:#e6dfd1; --sand:#d8cfbd; --stone:#a9a397; --grey:#6f6b64;
+  --ink:#1a1917; --ink-soft:#3a3833; --line:#cfc7b7;
+  --body:#1d1c1a; --body-edge:#2b2a27; --cap:#2f2d2a; --cap-hi:#3d3b37; --mark:#e6dfd1;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --sans:"Inter Tight",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+html{color-scheme:light}
+html,body{margin:0;background:var(--paper);color:var(--ink)}
+body{font:300 15px/1.6 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit;text-decoration:none;border-bottom:1px solid var(--stone)}
+a:hover{border-color:var(--ink)}
+body::after{content:"";position:fixed;inset:-50%;pointer-events:none;z-index:50;opacity:.07;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1.4 -.25'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E")}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(28px,env(safe-area-inset-left,0px));padding-right:max(28px,env(safe-area-inset-right,0px))}
+header{display:flex;align-items:center;justify-content:space-between;padding:26px 0 0}
+.mark{display:flex;align-items:center;gap:14px;border:0}
+.mark img{display:block;width:46px;height:36px}
+.word{font:400 13px/1 var(--mono);letter-spacing:.42em}
+nav{display:flex;gap:26px;font:400 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--grey)}
+nav a{border:0}
+nav a:hover{color:var(--ink)}
+.intro{display:flex;justify-content:space-between;align-items:flex-end;gap:30px;padding:40px 0 26px;flex-wrap:wrap}
+.intro h1{font:300 clamp(30px,4.6vw,46px)/1.05 var(--sans);letter-spacing:-.02em;margin:0}
+.intro p{margin:0;max-width:440px;color:var(--ink-soft);font-size:14px}
+.eyebrow{font:400 10px/1 var(--mono);letter-spacing:.24em;text-transform:uppercase;color:var(--grey);margin:0 0 14px}
+
+/* the instrument */
+.stage{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:34px;align-items:start}
+.device{position:relative;background:var(--body);border-radius:18px;padding:26px 26px 22px;
+  box-shadow:0 1px 0 var(--body-edge) inset,0 30px 60px -30px rgba(26,25,23,.55),0 2px 0 rgba(26,25,23,.4);
+  color:var(--mark);user-select:none;-webkit-user-select:none;touch-action:none}
+.device::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:.18;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E")}
+.top{display:grid;grid-template-columns:auto minmax(0,1fr);gap:26px;align-items:start}
+.screen{width:min(480px,46vw);aspect-ratio:1;max-width:100%;border-radius:6px;background:#121110;padding:8px;box-shadow:0 0 0 1px #000 inset,0 0 0 2px #2a2926}
+#lcd{width:100%;height:100%;display:block;image-rendering:pixelated;image-rendering:crisp-edges;border-radius:2px}
+.knobs{display:grid;grid-template-columns:repeat(3,1fr);gap:18px 14px;align-content:start}
+.knob{display:flex;flex-direction:column;align-items:center;gap:7px;cursor:ns-resize}
+.knob .cap{width:58px;height:58px;border-radius:50%;background:radial-gradient(circle at 40% 35%,var(--cap-hi),var(--cap) 60%,#1a1917);
+  box-shadow:0 2px 0 #0d0d0c,0 0 0 1px #3b3934 inset;position:relative}
+.knob .cap i{position:absolute;left:50%;top:6px;width:2px;height:12px;margin-left:-1px;background:var(--mark);border-radius:1px;transform-origin:1px 23px}
+.knob span{font:400 9px/1 var(--mono);letter-spacing:.16em;color:#9d978b}
+.knob.row .cap{width:46px;height:46px}
+.knob.row .cap i{transform-origin:1px 17px;top:5px;height:9px}
+.knob:focus-visible .cap{outline:1px solid var(--mark);outline-offset:3px}
+.buttons{display:grid;grid-template-columns:repeat(7,1fr);gap:10px 10px;margin:24px 0 20px}
+.btn{font:400 9px/1 var(--mono);letter-spacing:.14em;color:#c8c1b3;background:var(--cap);border:0;border-radius:6px;
+  height:34px;box-shadow:0 2px 0 #0d0d0c,0 0 0 1px #3b3934 inset;cursor:pointer;text-transform:uppercase;padding:0}
+.btn.down{transform:translateY(2px);box-shadow:0 0 0 #0d0d0c,0 0 0 1px #5b5852 inset;color:#fff;background:#3a3834}
+.btn:focus-visible{outline:1px solid var(--mark);outline-offset:2px}
+.keys{position:relative;height:120px;border-radius:6px;background:#121110;box-shadow:0 0 0 1px #000 inset;overflow:hidden}
+.key{position:absolute;bottom:4px;border-radius:0 0 5px 5px;cursor:pointer}
+.key.w{top:4px;background:linear-gradient(#d9d2c3,#e9e3d6);box-shadow:0 0 0 1px #8f897c inset}
+.key.b{top:4px;height:58%;background:linear-gradient(#2e2c29,#1b1a18);box-shadow:0 0 0 1px #000 inset;z-index:2}
+.key.down.w{background:linear-gradient(#bdb5a5,#cfc8b9)}
+.key.down.b{background:#46433e}
+.key em{position:absolute;bottom:6px;left:0;right:0;text-align:center;font:400 8px/1 var(--mono);letter-spacing:.1em;color:#8a8478;font-style:normal}
+.key.b em{color:#77716a}
+.brand{display:flex;justify-content:space-between;margin-top:14px;font:400 9px/1 var(--mono);letter-spacing:.3em;color:#7d776c}
+
+/* side panel */
+.side{display:flex;flex-direction:column;gap:22px}
+.panel{border-top:1px solid var(--line);padding-top:16px}
+.panel h3{font:400 10px/1 var(--mono);letter-spacing:.24em;text-transform:uppercase;color:var(--grey);margin:0 0 12px}
+.panel p{font-size:13px;color:var(--ink-soft);margin:0 0 10px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--ink)}
+.seg button{font:400 10px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;padding:10px 4px;border:0;background:transparent;color:var(--ink);cursor:pointer}
+.seg button+button{border-left:1px solid var(--ink)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.slots{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.slot{font:400 9px/1.3 var(--mono);letter-spacing:.06em;border:1px dashed var(--stone);padding:8px 6px;min-height:46px;color:var(--grey);text-align:left;background:transparent;cursor:pointer;overflow:hidden;text-overflow:ellipsis}
+.slot.full{border-style:solid;border-color:var(--ink);color:var(--ink)}
+.slot.over{background:var(--beige)}
+dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0;font-size:12px}
+dt{font:400 10px/1.8 var(--mono);letter-spacing:.08em;color:var(--grey);white-space:nowrap}
+dd{margin:0;color:var(--ink-soft)}
+.power{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;border-radius:inherit;background:rgba(18,17,16,.82);z-index:5}
+.power button{font:400 11px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--ink);background:var(--paper);border:0;padding:16px 22px;cursor:pointer}
+.power[hidden]{display:none}
+#note{min-height:20px;font:400 11px/1.5 var(--mono);color:var(--grey)}
+footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;color:var(--grey)}
+@media (max-width:980px){.stage{grid-template-columns:1fr}.screen{width:min(480px,100%)}}
+@media (max-width:640px){
+  .wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+  .top{grid-template-columns:1fr}nav{gap:14px;letter-spacing:.08em}.word{letter-spacing:.24em}.mark{gap:8px}.device{padding:16px}.knobs{grid-template-columns:repeat(4,1fr)}
+  .buttons{grid-template-columns:repeat(7,1fr);gap:6px}.btn{font-size:7px;letter-spacing:.06em}
+  .knob .cap{width:44px;height:44px}.knob .cap i{transform-origin:1px 16px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="mark" href="../" aria-label="Viscera home"><img src="../logo-small.png" width="46" height="36" alt=""><span class="word">viscera</span></a>
+    <nav><a href="../">Install</a><a href="#help">Controls</a><a href="https://github.com/De-Pattern/viscera">Source</a></nav>
+  </header>
+  <div class="intro">
+    <div>
+      <p class="eyebrow">Emulator</p>
+      <h1>Play it before<br>you flash it.</h1>
+    </div>
+    <p>The same code the FM-1 runs, compiled for the browser: the engine, the screen and the controls. An audio file or your microphone stands in for Bluetooth and USB audio in.</p>
+  </div>
+
+  <div class="stage">
+    <div class="device" id="device">
+      <div class="power" id="power"><button id="power-on">Switch on</button></div>
+      <div class="top">
+        <div class="screen"><canvas id="lcd" width="240" height="240" aria-label="FM-1 screen"></canvas></div>
+        <div class="knobs" id="knobs"></div>
+      </div>
+      <div class="buttons" id="buttons"></div>
+      <div class="keys" id="keys"></div>
+      <div class="brand"><span>FM-1</span><span>VISCERA</span></div>
+    </div>
+
+    <div class="side">
+      <div class="panel">
+        <h3>Live input (Bluetooth / USB)</h3>
+        <div class="seg" role="group" aria-label="Live input">
+          <button id="in-none" aria-pressed="true">None</button>
+          <button id="in-file" aria-pressed="false">File</button>
+          <button id="in-mic" aria-pressed="false">Mic</button>
+        </div>
+        <input type="file" id="in-file-pick" accept="audio/*" hidden>
+        <p id="in-name" style="margin:8px 0 0;font-size:12px">T2 (LOOP) and T4 (THRU) listen to it. Press REC on T2 to catch a loop.</p>
+      </div>
+      <div class="panel">
+        <h3>Sample bank</h3>
+        <p>Drop a WAV or MP3 on a slot, or click one to choose a file. Slots 1–5 start with sounds made here.</p>
+        <div class="slots" id="slots"></div>
+        <input type="file" id="slot-pick" accept="audio/*" hidden>
+      </div>
+      <div class="panel" id="help">
+        <h3>Controls</h3>
+        <dl>
+          <dt>Knobs</dt><dd>drag up and down, or scroll</dd>
+          <dt>Keys</dt><dd>click, or type Z S X D C V… and Q W E R T…</dd>
+          <dt>Space</dt><dd>PLAY</dd>
+          <dt>EDIT FX SCL ENV</dt><dd>material, grain, filter, color</dd>
+          <dt>LFO</dt><dd>modulators; hold and turn to assign</dd>
+          <dt>ARP</dt><dd>scenes and macros</dd>
+          <dt>SEQ</dt><dd>steps or CAROM</dd>
+          <dt>HOME + top keys</dt><dd>choose track 1–4</dd>
+          <dt>SAVE</dt><dd>projects (kept in this browser)</dd>
+        </dl>
+      </div>
+      <p id="note" role="status" aria-live="polite"></p>
+    </div>
+  </div>
+</div>
+<footer><div class="wrap">Viscera · GPL-3.0 · the emulator runs the firmware's own C code, compiled to WebAssembly</div></footer>
+<script src="emu.js"></script>
+</body>
+</html>

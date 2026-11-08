@@ -24,6 +24,10 @@ It's built on M-VAVE's official FM1 Open SDK (V14), so Bluetooth, USB audio and 
 | <img src="docs/art/swell.png" width="360" alt="Swell: grains riding layered waves"> | <img src="docs/art/settle.png" width="360" alt="Settle: grains gathering into the reel"> |
 | swell | settle |
 
+## Try it in the browser
+
+The [emulator](https://de-pattern.github.io/viscera/emulator/) runs the firmware's own C core, compiled to WebAssembly: the engine, the screen and the controls, with an audio file or your microphone standing in for Bluetooth and USB audio in.
+
 ## Install
 
 Open the [install page](https://de-pattern.github.io/viscera/) in Chrome or Edge on a computer, with the FM-1 on and connected by USB. It uses M-VAVE's own update protocol. Back up your projects and samples with M-VAVE's workbench first; the workbench can also put the stock firmware back.

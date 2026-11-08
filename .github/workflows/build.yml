@@ -31,6 +31,12 @@ jobs:
         run: test -e ~/.jieli/toolchain || sh tools/get_toolchain.sh ~/.jieli
       - name: Build the firmware
         run: JIELI_TOOLCHAIN=~/.jieli/toolchain python3 tools/build_fm1.py --version "${{ steps.v.outputs.version }}"
+      - name: Build the browser emulator from the same core
+        run: |
+          sudo apt-get install -y -q lld >/dev/null
+          clang --target=wasm32 -O2 -nostdlib -ffreestanding -fno-builtin-memcpy -Icore \
+            -Wl,--no-entry -Wl,--export=__heap_base -Wl,--initial-memory=8388608 -Wl,--strip-all \
+            -o build/viscera.wasm web/vsc_wasm.c core/vsc_engine.c core/vsc_params.c core/vsc_ui.c
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -48,6 +54,7 @@ jobs:
             build/viscera.fwsc
             build/latest.json
             build/fm1-report.json
+            build/viscera.wasm
 
   release:
     needs: build
@@ -92,6 +99,7 @@ jobs:
           mkdir -p site/firmware
           cp build/viscera.fwsc "site/firmware/viscera-$V.fwsc"
           cp build/latest.json site/firmware/latest.json
+          cp build/viscera.wasm site/emulator/viscera.wasm
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

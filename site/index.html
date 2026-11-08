@@ -28,7 +28,7 @@
   --sans:"Inter Tight",system-ui,-apple-system,"Segoe UI",sans-serif;
 }
 *{box-sizing:border-box}
-html{color-scheme:light}
+html{color-scheme:light;overflow-x:clip}
 html,body{margin:0;background:var(--paper);color:var(--ink)}
 body{font:300 15px/1.6 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
 a{color:inherit;text-decoration:none;border-bottom:1px solid var(--stone)}
@@ -110,7 +110,10 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
 
 @media (max-width:760px){
   .wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
-  nav{gap:16px}
+  nav{gap:12px;letter-spacing:.06em;font-size:10px}
+  .word{letter-spacing:.24em}
+  .mark{gap:8px}
+  nav a[href*="github"]{display:none}
   .steps{grid-template-columns:1fr}
   .step{min-height:0}
   .cols{grid-template-columns:1fr;gap:30px}
@@ -129,6 +132,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
     <nav>
       <a href="#install">Install</a>
       <a href="#about">About</a>
+      <a href="emulator/">Emulator</a>
       <a href="https://github.com/De-Pattern/viscera">Source</a>
     </nav>
   </header>
@@ -216,6 +220,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
       <p class="eyebrow">About</p>
       <h2>Four tracks of material.</h2>
       <p>Each track takes a sample from the FM-1's flash bank, a live loop, a playable keyboard voice, or the live input itself, then passes it through grains, a filter and colour into a shared delay and reverb. Four modulators per track, four macros, eight scenes to morph between, and a step sequencer with parameter locks.</p>
+      <p>Try it first in the <a href="emulator/">browser emulator</a>: the same code, running in this page's browser.</p>
       <p>Viscera is early: each release builds and passes M-VAVE's update checks, but it hasn't been tested on an FM-1 yet. Two sequencers per track: steps, and CAROM, where notes bounce around a box and play when they hit the walls.</p>
     </div>
     <div>

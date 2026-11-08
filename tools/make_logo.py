@@ -55,3 +55,38 @@ open(os.path.join(root, 'site/mark.js'), 'w').write(
     "window.VISCERA_MARK={w:%d,h:%d,cx:%.1f,cy:%.1f,r:%d,p:[%s]};\n"
     % (W, H, W, H, cx, cy, int(min(W, H) * 0.36), ','.join('[%.1f,%.1f]' % p for p in pts)))
 print(art.size, len(pts), 'points')
+
+# ---- the splatter reel (docs/art/icon-source.png): tab icon, README, social preview
+def transparent(path):
+    im = Image.open(path).convert('RGB')
+    gl = im.convert('L')
+    pts_ = [(5, 5), (im.width - 5, 5), (5, im.height - 5), (im.width - 5, im.height - 5)]
+    pap = sum(gl.getpixel(p) for p in pts_) / 4
+    a = gl.point(lambda v: 0 if v >= pap - 3 else min(255, int((pap - v) / (pap - 10) * 255 * 1.08)))
+    out = Image.new('RGBA', im.size, (26, 25, 23, 0))
+    out.putalpha(a)
+    return out, im
+
+icon_art, icon_rgb = transparent(os.path.join(root, 'docs/art/icon-source.png'))
+# README: the whole artwork
+icon_art.resize((760, round(icon_art.height * 760 / icon_art.width)), Image.LANCZOS).save(
+    os.path.join(root, 'docs/art/icon.png'), optimize=True)
+# tab icon: a square around the ring, centred on the hub
+HUB2, RING = (765, 470), 345
+sq = icon_art.crop((HUB2[0] - RING, HUB2[1] - RING, HUB2[0] + RING, HUB2[1] + RING))
+for size, name in ((32, 'favicon-32.png'), (180, 'apple-touch-icon.png'), (512, 'icon-512.png')):
+    im = sq.resize((size, size), Image.LANCZOS)
+    if size <= 64:   # thin ink washes out when shrunk: deepen it for the tab icon only
+        a = im.getchannel('A').point(lambda v: min(255, int(v * 2.1)))
+        im.putalpha(a)
+    if name == 'apple-touch-icon.png':      # iOS shows no transparency: put it on paper
+        bg = Image.new('RGBA', im.size, (243, 239, 231, 255)); bg.alpha_composite(im); im = bg
+    im.save(os.path.join(root, 'site', name), optimize=True)
+# social preview: 1280 x 640 on the site's paper
+card = Image.new('RGBA', (1280, 640), (243, 239, 231, 255))
+w = 860
+art2 = icon_art.resize((w, round(icon_art.height * w / icon_art.width)), Image.LANCZOS)
+card.alpha_composite(art2, ((1280 - art2.width) // 2, (640 - art2.height) // 2))
+card.convert('RGB').save(os.path.join(root, 'site/social.png'), optimize=True)
+card.convert('RGB').save(os.path.join(root, 'docs/art/social-preview.png'), optimize=True)
+print('icon files written')

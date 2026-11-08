@@ -48,4 +48,5 @@ Notes: the pi32v2 FPU has a hardware divide but no square root. Host instruction
 - **Publishing a build:** put the package at `site/firmware/viscera-X.Y.Z.fwsc` and write `site/firmware/latest.json`:
   `{"schema":1,"kind":"open","product":"FM-1_8xxxxxx","build_id":"<sha256 of the .fwsc>","family":7,"bytes":N,"sha256":"<sha256>","loader_sha256":"<sha256 of the package's loader>","url":"firmware/viscera-X.Y.Z.fwsc","version":"X.Y.Z"}`.
   Until then the page says no build is published, and still installs a local `.fwsc`.
-- The logo is the artwork in `docs/art/logo-source.png`. `tools/make_logo.py` makes its paper transparent and writes the site and README sizes, plus `site/mark.js`, the points the hero animation gathers into the reel.
+- The logo is the artwork in `docs/art/logo-source.png`. `tools/make_logo.py` makes its paper transparent and writes the site and README sizes, plus `site/mark.js`, the points the hero animation gathers into the reel. The splatter reel in `docs/art/icon-source.png` is the tab icon, the README image and the link preview (`site/social.png`); the same script builds those.
+- **GitHub's repo preview** is set by hand: Settings → General → Social preview → upload `docs/art/social-preview.png`.

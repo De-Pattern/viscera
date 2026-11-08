@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/art/logo.png" width="380" alt="Viscera: a tape reel of ink, fibre and grain">
+  <img src="docs/art/icon.png" width="520" alt="Viscera: a tape reel spun from splattered ink">
 </p>
 
 <h1 align="center">viscera</h1>

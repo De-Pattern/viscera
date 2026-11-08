@@ -1,0 +1,8 @@
+FM-1_015.fwsc is M-VAVE's original FM-1 V15 firmware, as distributed in the FM1 Open SDK
+(github.com/m-vave/fm1_open, sdk/firmware/FM-1_015.fwsc), unmodified.
+Copyright (c) M-VAVE. Licensed under the Apache License, Version 2.0:
+https://www.apache.org/licenses/LICENSE-2.0
+SHA-256: db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a
+
+The Viscera install page uses it as the bridge from Felucca-family firmwares (Ravel,
+SLOOP and others) to Viscera, and to put M-VAVE's own firmware back.

@@ -36,6 +36,11 @@ jobs:
           node-version: 22
       - name: Check the package with M-VAVE's updater
         run: node tools/verify_package.mjs build/viscera.fwsc build/latest.json
+      - name: Install it through the install page into a simulated FM-1 (from Ravel, stock and Open)
+        run: |
+          pip install -q playwright
+          python -m playwright install --with-deps chromium >/dev/null
+          python3 tools/emulator/flash_test.py
       - uses: actions/upload-artifact@v4
         with:
           name: firmware

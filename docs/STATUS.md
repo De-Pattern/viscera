@@ -19,6 +19,14 @@ The update identity is `FM-1_86` followed by the version as X YY ZZ: 0.1.2 repor
 
 Bump `VERSION`, add a `## X.Y.Z` section to `CHANGELOG.md`, push. The `Build, release and deploy` workflow builds the firmware, checks it, creates the `vX.Y.Z` release with the `.fwsc`, and deploys the install page with that build behind "Use latest build". Pushes without a new VERSION still rebuild and redeploy the page.
 
+## Installing over other firmware
+
+Felucca-based firmwares (Ravel, SLOOP and others) accept only packages whose 16 KB boot head equals the one already on the FM-1, which is still stock V15's (they never rewrite it). Viscera's package, built on M-VAVE's V14 Open SDK, carries a different head, so those firmwares refuse it (Felucca's `ota.c`, error -5). The install page therefore installs M-VAVE's V15 first (bundled under `site/firmware/stock/`, Apache-2.0) and then Viscera, through V15's own updater. From stock V15 it installs directly through V15's updater; from an Open-family firmware it installs directly.
+
+`tools/emulator/` simulates an FM-1 for this: `fm1_device.js` replaces Web MIDI with a device in a Web Worker (its own clock, a strict per-block deadline, Felucca's head check, stock V15's voice-bank restore), and `flash_test.py` installs through the real page in headless Chrome from each starting firmware, checking reply times, every written byte and the build ID afterwards. CI runs it on every build.
+
+Safe mode: hold OCT- and OCT+ while switching on. Viscera starts with sound and controls off; the update protocol still answers, so the page can always reinstall. A CPU guard rests the engine for about a second if rendering takes over 90 % of a block three times running.
+
 ## First hardware test
 
 1. Back up projects and samples with M-VAVE's workbench.

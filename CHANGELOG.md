@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.4
+
+- **Fixed:** installing over Ravel, SLOOP or another Felucca-based firmware failed part-way. Those firmwares accept only M-VAVE's own packages, so the install page now puts M-VAVE's V15 on first and then Viscera, in one go. It picks the route from what the FM-1 runs; the "switching from" tick box is gone.
+- **New:** "Put M-VAVE's V15 back" on the install page.
+- **New:** safe mode. Hold OCT- and OCT+ while switching on: Viscera starts with sound and controls off, and the install page can always reinstall.
+- **New:** a CPU guard pauses the sound for a second if the engine ever overruns, so USB and updates are never starved.
+- **Changed:** the install page stops all its animation while writing, keeps the screen awake, and warns if its tab goes to the background.
+- **New:** every build is installed in CI through the real install page into a simulated FM-1 (from Ravel, stock V15 and an Open firmware), checking every block, every byte and the build ID afterwards.
+
 ## 0.1.3
 
 - **Changed:** the bouncing sequencer is now called CAROM, after the billiards shot that glances off one cushion to strike the next.

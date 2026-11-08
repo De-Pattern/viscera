@@ -4,6 +4,10 @@
 (() => {
   'use strict';
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /* While the FM-1 is being written, nothing animates: the page's main thread
+   * must answer every block request at once. */
+  let paused = false;
+  const resumers = [];
   const PAPER = '#f3efe7';
   const TAU = Math.PI * 2;
 
@@ -189,7 +193,7 @@
     let t0 = performance.now(), running = true, raf = 0, last = 0;
     function frame(now) {
       raf = 0;
-      if (!running) return;
+      if (!running || paused) return;
       const t = (now - t0) / 1000;
       if (canvas.width !== Math.round(canvas.getBoundingClientRect().width * dpr)) build();
       const pos = t % cycle, idx = Math.floor(pos / (HOLD + BLEND)), local = pos - idx * (HOLD + BLEND);
@@ -245,6 +249,7 @@
     visible(canvas, on => { running = on && !document.hidden; if (running && !raf) raf = requestAnimationFrame(frame); });
     document.addEventListener('visibilitychange', () => { running = !document.hidden; if (running && !raf) raf = requestAnimationFrame(frame); });
     raf = requestAnimationFrame(frame);
+    resumers.push(() => { if (!raf && running) raf = requestAnimationFrame(frame); });
   }
 
   /* ------------------------------------------------------- small studies */
@@ -255,7 +260,7 @@
     const P = Array.from({length: N}, () => ({x: r(), y: r(), u: r(), v: r(), w: r()}));
     let dpr = fit(canvas), W = canvas.width, H = canvas.height, on = true, raf = 0, mix = 0;
     function draw(now) {
-      raf = 0; if (!on) return;
+      raf = 0; if (!on || paused) return;
       const t = now / 1000;
       if (canvas.width !== Math.round(canvas.getBoundingClientRect().width * dpr)) { dpr = fit(canvas); W = canvas.width; H = canvas.height; }
       ctx.fillStyle = 'rgba(243,239,231,0.42)'; ctx.fillRect(0, 0, W, H);
@@ -301,6 +306,7 @@
     visible(canvas, v => { on = v; if (on && !raf) raf = requestAnimationFrame(draw); });
     if (reduce) { for (let k = 0; k < 60; k++) draw(k * 16); return; }
     raf = requestAnimationFrame(draw);
+    resumers.push(() => { if (!raf && on) raf = requestAnimationFrame(draw); });
   }
 
   /* ------------------------------------------------------ sediment bar */
@@ -315,6 +321,12 @@
       if (canvas.width !== Math.round(canvas.getBoundingClientRect().width * dpr)) { dpr = fit(canvas); W = canvas.width; H = canvas.height; }
       const p = state.progress;
       if (p <= 0 && heights.some(h => h > 0)) reset();
+      if (paused) {
+        /* settled sediment only: one quick drawing per progress update */
+        falling.length = 0;
+        const edge = Math.floor(p * cols);
+        for (let c = 0; c < cols; c++) heights[c] = c < edge ? 5 + (hash(c, 1) * 3 | 0) : 0;
+      }
       /* the filled width follows progress; grains land and pile up there */
       const edge = Math.floor(p * cols);
       const want = 7;
@@ -345,14 +357,17 @@
         }
       }
       ctx.globalAlpha = 1;
-      if (!reduce || falling.length) raf = requestAnimationFrame(draw);
+      if (!paused && (!reduce || falling.length)) raf = requestAnimationFrame(draw);
     }
     const kick = () => { if (!raf) raf = requestAnimationFrame(draw); };
     kick();
     return {kick, reset};
   }
 
-  window.VisceraFX = {state, start() {
+  window.VisceraFX = {state,
+    pause() { paused = true; document.documentElement.classList.add('flashing'); },
+    resume() { paused = false; document.documentElement.classList.remove('flashing'); resumers.forEach(f => f()); this.sediment && this.sediment.kick(); },
+    start() {
     const f = document.getElementById('field');
     if (f) field(f);
     document.querySelectorAll('canvas[data-mini]').forEach(mini);

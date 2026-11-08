@@ -1,11 +1,24 @@
 /* Viscera site: the flasher. Uses M-VAVE's FM1 updater (vendor/WebUpdate.js),
- * the same protocol and checks as the official workbench. */
+ * the same protocol and checks as the official workbench.
+ *
+ * The route depends on what the FM-1 runs now:
+ *   Open family (FM-1_8xxxxxx: Viscera, M-VAVE Open)  -> install directly
+ *   M-VAVE stock V15 (FM-1_015)                        -> install through V15's updater
+ *   anything else (Ravel, SLOOP, other Felucca-based)  -> M-VAVE's V15 first, then Viscera
+ * Felucca-based firmwares accept only M-VAVE's own packages (their boot head
+ * must match the one already on the FM-1), so Viscera can't go on directly. */
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
   const fx = window.VisceraFX || {state: {}};
   const en = text => (window.FM1I18n ? FM1I18n.t(String(text), 'en') : String(text));
-  let prepared = null, updater = null, access = null, latest = null, busy = false;
+  const STOCK = {schema: 1, kind: 'stock', product: 'FM-1_015', profile: 'M-VAVE Original V15', family: 7, release_version: 'V15',
+    build_id: 'db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a',
+    sha256: 'db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a', bytes: 699956,
+    loader_sha256: 'ef1f2db89b011fa53e71df363f0122de0ea896618c53fb53e8da676322004541',
+    url: 'firmware/stock/FM-1_015.fwsc'};
+  const OPEN = /^(FM1_OFFICIAL_OPEN|FM1_COMMUNITY_\d+|FM-1_8\d{6})$/;
+  let prepared = null, access = null, latest = null, busy = false, route = null, identity = '';
 
   function status(text, progress) {
     $('status').textContent = en(text);
@@ -14,15 +27,10 @@
       fx.sediment && fx.sediment.kick();
     }
   }
-  function error(e) {
-    const msg = e && e.message ? e.message : String(e);
-    $('error').textContent = en(msg);
-  }
+  const stepStatus = (step, steps) => (text, progress) => status((steps > 1 ? `Step ${step} of ${steps}: ` : '') + en(text), progress);
+  function error(e) { $('error').textContent = en(e && e.message ? e.message : String(e)); }
   function clearError() { $('error').textContent = ''; }
-  function stage(n) {
-    $('s2').classList.toggle('off', n < 2);
-    $('s3').classList.toggle('off', n < 3);
-  }
+  function stage(n) { $('s2').classList.toggle('off', n < 2); $('s3').classList.toggle('off', n < 3); }
 
   async function sha256(bytes) {
     const d = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
@@ -34,9 +42,7 @@
     return btoa(s);
   }
 
-  /* A published build: firmware/latest.json written by the release workflow:
-   * {schema:1, kind:"open", product, build_id, family:7, bytes, sha256,
-   *  loader_sha256, url:"firmware/viscera-x.y.z.fwsc", version} */
+  /* firmware/latest.json is written by the release workflow */
   async function findLatest() {
     try {
       const r = await fetch('firmware/latest.json', {cache: 'no-cache'});
@@ -45,10 +51,9 @@
       $('release-text').textContent = 'Latest build: ' + (latest.version || latest.product) + '. Early firmware — back up first.';
       $('use-latest').disabled = false;
     } catch {
-      $('release-text').textContent = 'No build is published yet. Viscera is in development; once the first build is released it appears here. You can still open a .fwsc file you built.';
+      $('release-text').textContent = 'No build is published yet. You can still open a .fwsc file you built.';
     }
   }
-
   function describe(meta) {
     $('pkg-meta').innerHTML = '<b>' + meta.product + '</b><br>' +
       (meta.version ? 'version ' + meta.version + ' · ' : '') + Math.round(meta.bytes / 1024) + ' KB<br>build ' + meta.build_id.slice(0, 16);
@@ -62,7 +67,6 @@
     stage(2);
     status('Firmware checked. Connect the FM-1.');
   }
-
   $('use-latest').addEventListener('click', async () => {
     if (!latest || busy) return;
     try { await choose({...latest}); } catch (e) { error(e); status('That build could not be used.'); }
@@ -81,58 +85,115 @@
     ev.target.value = '';
   });
 
+  async function midi() {
+    if (!navigator.requestMIDIAccess) throw new Error('This browser has no Web MIDI. Use Chrome or Edge on a computer.');
+    return access = access || await navigator.requestMIDIAccess({sysex: true});
+  }
+  /* Connect without writing anything: identify the FM-1 and pick the route. */
   $('connect').addEventListener('click', async () => {
     if (!prepared || busy) return;
-    clearError();
-    if (!navigator.requestMIDIAccess) { error('This browser has no Web MIDI. Use Chrome or Edge on a computer.'); return; }
-    busy = true;
+    clearError(); busy = true;
     try {
-      status('Asking for MIDI access…');
-      access = access || await navigator.requestMIDIAccess({sysex: true});
-      if (updater) await updater.disconnect().catch(() => {});
-      updater = new FM1Web.Updater(access, prepared, status);
       status('Looking for the FM-1…');
-      const device = await updater.connect({force: $('switch').checked});
-      if (device.migration) {
-        fx.state.connected = 0;
-        $('dev-meta').innerHTML = 'Found <b>' + device.identity + '</b>.';
-        status('The FM-1 is running other firmware. Tick “Switching from…” and connect again to replace it.');
-        return;
-      }
+      const u = new FM1Web.Updater(await midi(), prepared, status);
+      const device = await u.connect({force: false});
+      identity = device.identity;
+      await u.disconnect().catch(() => {});
+      if (device.resume || /^ota-/i.test(identity)) route = 'resume';
+      else if (OPEN.test(identity) && !device.migration) route = 'direct';
+      else if (identity === 'FM-1_015') route = 'stock';
+      else if (OPEN.test(identity)) route = 'direct-force';    /* Open identity, other family */
+      else route = 'bridge';
       fx.state.connected = 1;
-      /* the FM-1 reports the build it's running: compare it with the package */
       const now = device.current ? String(device.current).slice(0, 16) : '';
-      $('dev-meta').innerHTML = 'Connected: <b>' + device.identity + '</b>' +
+      $('dev-meta').innerHTML = 'Connected: <b>' + identity + '</b>' +
         (now ? '<br>installed build ' + now : '') +
         (device.same ? '<br>Matches this package: already installed.' : '');
+      $('route').textContent = {
+        resume: 'The FM-1 is waiting in update mode: installing finishes the update.',
+        direct: 'Viscera installs directly.',
+        'direct-force': 'Viscera installs directly, replacing this Open-family firmware.',
+        stock: 'Installs through M-VAVE’s V15 updater.',
+        bridge: 'This firmware only accepts M-VAVE’s own packages, so the page installs M-VAVE’s V15 first, then Viscera. Both run in one go; projects and samples on the FM-1 may be replaced.'
+      }[route];
       stage(3);
-      status(device.resume ? 'The FM-1 is waiting in update mode. Install to finish.' : 'Connected. Ready to install.');
-    } catch (e) { fx.state.connected = 0; error(e); status('Could not connect.'); }
+      status(device.same ? 'This build is already on the FM-1.' : 'Connected. Ready to install.');
+    } catch (e) { fx.state.connected = 0; route = null; error(e); status('Could not connect. Switch the FM-1 off and on, close other MIDI apps, then connect again.'); }
     finally { busy = false; }
   });
 
-  $('install-btn').addEventListener('click', async () => {
-    if (!updater || busy) return;
-    const btn = $('install-btn');
-    if (!btn.dataset.armed) {
-      /* two presses: the first asks, the second installs */
-      btn.dataset.armed = '1'; btn.textContent = 'Press again to install';
-      $('inst-meta').textContent = 'Keep the FM-1 on and connected until it restarts.';
-      setTimeout(() => { if (!busy) { delete btn.dataset.armed; btn.textContent = 'Install Viscera'; } }, 6000);
-      return;
-    }
-    delete btn.dataset.armed; btn.textContent = 'Install Viscera';
+  /* One install of one package, connecting first. force covers non-Open firmware. */
+  async function installOne(pkg, force, report) {
+    const u = new FM1Web.Updater(await midi(), pkg, report);
+    const device = await u.connect({force});
+    if (device.migration && !force) { await u.disconnect().catch(() => {}); return installOne(pkg, true, report); }
+    await u.install({force});
+    return device;
+  }
+  async function writing(job) {
+    if (document.visibilityState !== 'visible') { error('Keep this tab in front while installing.'); return false; }
     clearError(); busy = true;
-    fx.state.rain = 0.9; fx.state.progress = 0.01; fx.sediment && fx.sediment.kick();
-    $('inst-meta').textContent = 'Writing… don’t unplug.';
-    try {
-      await updater.install({force: $('switch').checked});
-      status('Done. The FM-1 restarts into Viscera.', 100);
-      $('inst-meta').textContent = 'Installed.';
-    } catch (e) {
-      error(e); status('The install stopped. Don’t unplug; connect again to resume.');
+    /* Writing: stop every animation so each block request from the FM-1 is
+     * answered at once, keep the screen awake, and watch for the tab hiding. */
+    fx.pause && fx.pause();
+    fx.state.rain = 0.9; fx.state.progress = 0.01;
+    let lock = null;
+    try { lock = navigator.wakeLock ? await navigator.wakeLock.request('screen') : null; } catch { lock = null; }
+    const hidden = () => { if (document.visibilityState !== 'visible') $('inst-meta').textContent = 'Bring this tab back to the front: the FM-1 is waiting for data.'; };
+    document.addEventListener('visibilitychange', hidden);
+    try { await job(); return true; }
+    catch (e) {
+      error(e);
+      status('The install stopped. If the FM-1 shows an update error, switch it off and on: it starts its previous firmware, ' +
+             'or comes back in update mode. Either way, connect and install again from this page.');
       $('inst-meta').textContent = 'Stopped.';
-    } finally { busy = false; fx.state.rain = 0.15; }
+      return false;
+    } finally {
+      busy = false; fx.state.rain = 0.15;
+      document.removeEventListener('visibilitychange', hidden);
+      try { lock && await lock.release(); } catch {}
+      fx.resume && fx.resume();
+    }
+  }
+  function arm(btn, label) {
+    /* two presses: the first asks, the second installs */
+    if (!btn.dataset.armed) {
+      btn.dataset.armed = '1'; btn.textContent = 'Press again to install';
+      $('inst-meta').textContent = 'Keep the FM-1 on, connected and this tab in front until it restarts.';
+      setTimeout(() => { if (!busy) { delete btn.dataset.armed; btn.textContent = label; } }, 6000);
+      return false;
+    }
+    delete btn.dataset.armed; btn.textContent = label;
+    return true;
+  }
+
+  $('install-btn').addEventListener('click', async () => {
+    if (!prepared || !route || busy || !arm($('install-btn'), 'Install Viscera')) return;
+    $('inst-meta').textContent = 'Writing… don’t unplug.';
+    const ok = await writing(async () => {
+      if (route === 'bridge') {
+        const stock = await FM1Web.prepare({...STOCK});
+        await installOne(stock, true, stepStatus(1, 2));
+        status('Step 1 of 2 done: M-VAVE’s V15 is on. Installing Viscera…', 0);
+        await installOne(prepared, true, stepStatus(2, 2));
+      } else {
+        await installOne(prepared, route !== 'direct' && route !== 'resume', stepStatus(1, 1));
+      }
+    });
+    if (ok) {
+      status('Done. The FM-1 restarts into Viscera. Press Connect to check the installed build.', 100);
+      $('inst-meta').textContent = 'Installed.';
+      route = 'direct';
+    }
+  });
+  $('stock-btn').addEventListener('click', async () => {
+    if (!route || busy || !arm($('stock-btn'), 'Put M-VAVE’s V15 back')) return;
+    $('inst-meta').textContent = 'Writing M-VAVE’s V15… don’t unplug.';
+    const ok = await writing(async () => {
+      const stock = await FM1Web.prepare({...STOCK});
+      await installOne(stock, true, stepStatus(1, 1));
+    });
+    if (ok) { status('Done. The FM-1 runs M-VAVE’s V15 again.', 100); $('inst-meta').textContent = 'V15 installed.'; route = 'stock'; }
   });
 
   findLatest();

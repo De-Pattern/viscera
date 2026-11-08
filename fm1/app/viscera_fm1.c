@@ -14,6 +14,8 @@
 
 /* ------------------------------------------------------------ audio */
 static volatile uint8_t ready;
+static uint8_t over_count; static uint16_t rest_blocks;
+volatile uint8_t vsc_fm1_overload;   /* set while the CPU guard has silenced the engine */
 static float in_bt[VSC_BLOCK * 2], in_usb[VSC_BLOCK * 2], mix[VSC_BLOCK * 2];
 static int32_t usb_raw[VSC_BLOCK * 2];
 static int16_t bt_raw[VSC_BLOCK * 2];
@@ -30,7 +32,11 @@ void vsc_fm1_start(void)
  * block of signed Q23 stereo. */
 FM1_AUDIO_CODE int vsc_fm1_render(int32_t *out)
 {
-    if (!ready) { for (unsigned i = 0; i < VSC_BLOCK * 2; ++i) out[i] = 0; return 0; }
+    if (!ready || rest_blocks) {
+        if (rest_blocks && !--rest_blocks) vsc_fm1_overload = 0;
+        for (unsigned i = 0; i < VSC_BLOCK * 2; ++i) out[i] = 0;
+        return 0;
+    }
     uint32_t t0 = fm1_device_ticks();
     struct vsc_inputs in = {0, 0};
     uint16_t gains[2];
@@ -53,6 +59,11 @@ FM1_AUDIO_CODE int vsc_fm1_render(int32_t *out)
     uint32_t used = fm1_device_ticks() - t0;
     render_ticks = used;
     if (used > render_peak_ticks) render_peak_ticks = used;
+    /* CPU guard: if rendering eats more than 90% of a block three times in a
+     * row, rest for about a second. The audio interrupt must never starve the
+     * USB and control tasks: they carry the update protocol. */
+    if (used > 69660u * 9u / 10u) { if (++over_count >= 3) { over_count = 0; rest_blocks = 350; vsc_fm1_overload = 1; } }
+    else over_count = 0;
     return 0;
 }
 /* Render time as a share of one block (0..100+), and its peak since the last read. */

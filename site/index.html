@@ -39,6 +39,9 @@ body::after{content:"";position:fixed;inset:-50%;pointer-events:none;z-index:50;
   animation:grain 1.2s steps(6) infinite}
 @keyframes grain{0%{transform:translate(0,0)}20%{transform:translate(-3%,2%)}40%{transform:translate(2%,-4%)}60%{transform:translate(-4%,-1%)}80%{transform:translate(3%,3%)}100%{transform:translate(0,0)}}
 @media (prefers-reduced-motion:reduce){body::after{animation:none}}
+/* while writing the FM-1: no motion anywhere, so every block request is answered at once */
+.flashing body::after{animation:none;display:none}
+.flashing *{animation:none!important;transition:none!important}
 
 .wrap{max-width:980px;margin:0 auto;padding-left:max(28px,env(safe-area-inset-left,0px));padding-right:max(28px,env(safe-area-inset-right,0px))}
 header{display:flex;align-items:center;justify-content:space-between;padding:26px 0 0}
@@ -165,22 +168,23 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
       <div class="step off" id="s2">
         <span class="n">02</span>
         <h3>Connect the FM-1</h3>
-        <p>Allow MIDI access when the browser asks. Close other MIDI software first.</p>
+        <p>Allow MIDI access when the browser asks. Close other MIDI software first. The page works out how to install from whatever the FM-1 runs now.</p>
         <canvas data-mini="gather"></canvas>
         <p class="meta" id="dev-meta">Not connected.</p>
         <div class="row">
           <button id="connect">Connect</button>
         </div>
-        <label class="check"><input type="checkbox" id="switch"> Switching from the stock firmware or another custom firmware (Ravel, SLOOP…)</label>
+        <p class="meta" id="route" style="margin:12px 0 0;min-height:0"></p>
       </div>
       <div class="step off" id="s3">
         <span class="n">03</span>
         <h3>Install</h3>
-        <p>Keep the cable in and the FM-1 on until it restarts. It takes about a minute.</p>
+        <p>Keep the cable in, the FM-1 on and this tab in front until it restarts. One to three minutes.</p>
         <canvas data-mini="rain"></canvas>
         <p class="meta" id="inst-meta">Waiting.</p>
         <div class="row">
           <button id="install-btn">Install Viscera</button>
+          <button id="stock-btn" class="ghost">Put M-VAVE's V15 back</button>
         </div>
       </div>
     </div>
@@ -219,7 +223,8 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
       <ul>
         <li><span>Backup</span>Save your projects and samples with M-VAVE's workbench first. Switching firmware doesn't convert them.</li>
         <li><span>Samples</span>Viscera reads the same flash sample bank, so samples uploaded with the workbench still play.</li>
-        <li><span>Return</span>M-VAVE's <a href="https://open.m-vave.com/fm1-workbench">workbench</a> can put the stock firmware back at any time.</li>
+        <li><span>Return</span>"Put M-VAVE's V15 back" installs M-VAVE's original firmware from this page; M-VAVE's <a href="https://open.m-vave.com/fm1-workbench">workbench</a> can too.</li>
+        <li><span>From</span>Coming from Ravel, SLOOP or another Felucca-based firmware, the page installs M-VAVE's V15 first, then Viscera, in one go. Those firmwares only accept M-VAVE's own packages.</li>
         <li><span>Risk</span>Any firmware update can fail. Don't unplug the FM-1 while it's writing.</li>
       </ul>
     </div>

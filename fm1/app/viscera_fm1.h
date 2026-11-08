@@ -11,6 +11,7 @@
 #define VSC_SAMPLE_LIMIT ((uint32_t)GROOVE_SAMPLE_LIMIT - VSC_STORE_BYTES)
 
 void vsc_fm1_start(void);
+extern volatile uint8_t vsc_fm1_overload;
 int vsc_fm1_render(int32_t *out);                 /* audio interrupt */
 unsigned vsc_fm1_cpu(unsigned *peak);
 void vsc_fm1_bank_entry(unsigned slot, const uint8_t *data, uint32_t frames, const char *name);

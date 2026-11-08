@@ -13,6 +13,7 @@
 static uint16_t pixels[VSC_SCREEN_W * VSC_BAND];
 static uint32_t band_hash[VSC_SCREEN_H / VSC_BAND];
 static unsigned next_band, bt_features, status_at, slots_at;
+static uint8_t safe_mode;   /* OCT- and OCT+ held at power-on: no engine, no UI, updates still work */
 static uint32_t frame_at;
 
 static uint32_t hash(const uint16_t *p, unsigned n)
@@ -84,6 +85,20 @@ static void host(unsigned req, unsigned arg)
 
 void groove_screen_init(void)
 {
+    struct fm1_controls c;
+    /* the panel scanner may need a moment after power-on: sample for ~60 ms */
+    safe_mode = 0;
+    for (unsigned i = 0; i < 6 && !safe_mode; ++i) {
+        fm1_controls_read(&c);
+        safe_mode = (c.buttons & 3u) == 3u;       /* buttons 0 and 1: OCT- and OCT+ */
+        if (!safe_mode) fm1_device_delay(10);
+    }
+    if (safe_mode) {
+        vsc_project_defaults(&vsc);               /* for the screen only: the engine never starts */
+        vsc_ui_init();
+        vsc_ui_notice("SAFE MODE: CONNECT TO REINSTALL", 0x7fffffffu);
+        return;
+    }
     vsc_fm1_start();
     vsc_ui_init();
     configure_bt(FM1_BT_AUDIO | FM1_BT_MIDI);
@@ -104,6 +119,15 @@ void groove_screen_control(void)
     struct fm1_controls c;
     fm1_controls_read(&c);
     uint32_t now = fm1_millis();
+    if (safe_mode) {
+        /* only the screen: the engine never starts, so nothing can stall */
+        if (fm1_screen_pending() != 0) return;
+        if (next_band == 0) { if (now - frame_at < 250u) return; frame_at = now; }
+        vsc_ui_paint_band(next_band * VSC_BAND, pixels);
+        (void)fm1_screen_submit(0, next_band * VSC_BAND, VSC_SCREEN_W, VSC_BAND, pixels, VSC_SCREEN_W * VSC_BAND);
+        next_band = (next_band + 1) % (VSC_SCREEN_H / VSC_BAND);
+        return;
+    }
     (void)groove_master_update(c.knob);   /* the MASTER knob sets the output level */
 
     struct vsc_ui_input in;
@@ -112,7 +136,10 @@ void groove_screen_control(void)
     unsigned arg = 0, req = vsc_ui_update(&in, &arg);
     if (req) host(req, arg);
 
-    if (now - status_at >= 250u) { status_at = now; refresh_status(); vsc_host.battery = (uint8_t)(c.battery >> 2); }
+    if (now - status_at >= 250u) {
+        status_at = now; refresh_status(); vsc_host.battery = (uint8_t)(c.battery >> 2);
+        if (vsc_fm1_overload) vsc_ui_notice("CPU OVERLOAD: SOUND PAUSED", 1200);
+    }
     if (now - slots_at >= 3000u) { slots_at = now; refresh_slots(); }
 
     /* screen: one band per call while the DMA is free; a new frame every ~33 ms */

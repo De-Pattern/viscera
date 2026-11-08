@@ -86,11 +86,11 @@ nav a:hover{color:var(--ink)}
 #blackrow{transform:translateX(calc((100% + 8px) / -32))}
 .key{position:relative;height:74px;border-radius:999px;cursor:pointer;display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px;
   background:linear-gradient(180deg,#2c2a27,#1c1b19);border:1px solid #0a0a09;box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 3px 4px rgba(0,0,0,.6)}
-.key::before{content:"";position:absolute;top:10px;height:20px;left:50%;width:3px;margin-left:-1.5px;border-radius:2px;background:#d8d1c3;opacity:.85}
-.key.b{height:62px}
+.key::before{content:"";position:absolute;top:9px;height:16px;left:50%;width:3px;margin-left:-1.5px;border-radius:2px;background:#d8d1c3;opacity:.85}
+.key.b{height:64px}
 .key.gap{visibility:hidden}
-.key span{font:400 7.5px/1.15 var(--mono);color:#8a8478;text-align:center;pointer-events:none}
-.key span i{display:block;font-style:normal;color:#5f5a52}
+.key span{position:absolute;left:0;right:0;bottom:7px;font:500 8px/1.2 var(--mono);letter-spacing:.04em;color:#c8c1b3;text-align:center;pointer-events:none}
+.key span i{display:block;font-style:normal;color:#8a8478}
 .key.down{background:linear-gradient(180deg,#d9d2c3,#b9b1a1);box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 0 14px rgba(230,223,209,.45)}
 .key.down::before{background:#1a1917}
 .key.down span,.key.down span i{color:#1a1917}
@@ -133,7 +133,7 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
   .enc{--k:38px}.knobs4 .enc{--k:36px}
   .btns{gap:5px}.btn{height:42px}.btn .l{font-size:8.5px;letter-spacing:.04em}.btn .f{font-size:6.5px}
   .keybed{padding:8px;gap:6px}.krow{gap:3px}#blackrow{transform:translateX(calc((100% + 3px) / -32))}
-  .key{height:50px;padding-bottom:5px}.key.b{height:44px}.key::before{top:9px;height:16px;width:2px}.key span{display:none}
+  .key{height:50px;padding-bottom:5px}.key.b{height:44px}.key::before{top:7px;height:12px;width:2px}.key span{display:none}
   .side{grid-template-columns:1fr;gap:22px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}

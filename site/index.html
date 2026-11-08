@@ -32,7 +32,7 @@ body::after{content:"";position:fixed;inset:-50%;pointer-events:none;z-index:50;
 .wrap{max-width:980px;margin:0 auto;padding-left:max(28px,env(safe-area-inset-left,0px));padding-right:max(28px,env(safe-area-inset-right,0px))}
 header{display:flex;align-items:center;justify-content:space-between;padding:26px 0 0}
 .mark{display:flex;align-items:center;gap:14px;border:0}
-.mark img{display:block;width:24px;height:32px}
+.mark img{display:block;width:30px;height:36px}
 .word{font:400 13px/1 var(--mono);letter-spacing:.42em;text-transform:lowercase}
 nav{display:flex;gap:26px;font:400 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--grey)}
 nav a{border:0}
@@ -106,7 +106,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
 <div class="wrap">
   <header>
     <a class="mark" href="./" aria-label="Viscera home">
-      <img src="logo.svg" width="24" height="32" alt="">
+      <img src="logo.svg" width="30" height="36" alt="">
       <span class="word">viscera</span>
     </a>
     <nav>
@@ -209,6 +209,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
 
 <script src="vendor/I18n.js"></script>
 <script src="vendor/WebUpdate.js"></script>
+<script src="mark.js"></script>
 <script src="fx.js"></script>
 <script src="app.js"></script>
 </body>

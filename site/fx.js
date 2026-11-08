@@ -63,10 +63,12 @@
 
   /* ---------------------------------------------------------------- field */
   const PHASES = ['vapour', 'rain', 'swell', 'melt', 'settle'];
+  let meltBreak = 0;
   const HOLD = 7.5, BLEND = 2.6;
 
   function field(canvas) {
     const ctx = canvas.getContext('2d', {alpha: false});
+    let MARK = {w: 120, h: 144};
     let n = 0, X, Y, S1, S2, S3, SZ, TONE, ST, AL, logo = [], W = 0, H = 0, dpr = 1;
     const label = document.getElementById('phase-name'), num = document.getElementById('phase-n');
     let shown = -1;
@@ -85,7 +87,13 @@
         SZ[i] = (k < 0.7 ? 0.8 + r() * 0.9 : 1.6 + r() * 1.6) * dpr;
         TONE[i] = r() < 0.55 ? 0 : r() < 0.6 ? 1 : 2;
       }
-      logo = dropPoints(Math.min(Math.round(n * 0.55), 1300));
+      /* reel fibres (site/mark.js); fall back to the drop if it didn't load */
+      const src = window.VISCERA_MARK;
+      if (src && src.p.length) {
+        MARK = src;
+        const want = Math.min(Math.round(n * 0.6), 1500), step = src.p.length / want;
+        logo = []; for (let k = 0; k < want; k++) logo.push(src.p[Math.floor(k * step) % src.p.length]);
+      } else { MARK = {w: 120, h: 160}; logo = dropPoints(Math.min(Math.round(n * 0.55), 1300)); }
     }
 
     /* Target for particle i in phase p at time t: [x, y, stretch, alpha] */
@@ -135,24 +143,37 @@
           return out;
         }
         const rate = 0.07 + 0.09 * hash(col, 9);
-        /* grains travel in clumps, so a drip neck stretches then lets go of a drop */
+        /* unbroken streams first ... */
+        const d1 = (t * rate + w * 0.999 + hash(col, 5)) % 1;
+        const sx = cx + (v - 0.75) * (10 * (1 - d1) + 2) * dpr, sy = H * 0.2 + d1 * d1 * H * 0.95;
+        /* ... then the necks thin and let go of drops */
         const group = Math.floor(w * 3), within = (w * 3) % 1;
         const d = (t * rate + group / 3 + hash(col, 5) + within * (0.03 + 0.05 * hash(col, group))) % 1;
         const fall = d < 0.25 ? d * 0.25 : 0.0625 + (d - 0.25) * (d - 0.25) * 1.75;
         const sway = Math.sin(d * 5 + col * 1.7 + t * 0.4) * 5 * dpr * d;
-        out[0] = cx + sway + (v - 0.75) * (14 * (1 - d) * (1 - d) + 2) * dpr;
-        out[1] = H * 0.19 + fall * H * 0.95;
-        out[2] = d > 0.25 ? (d - 0.25) * 6 : 0; out[3] = 1 - d * 0.5;
+        const dx = cx + sway + (v - 0.75) * (14 * (1 - d) * (1 - d) + 2) * dpr, dy = H * 0.19 + fall * H * 0.95;
+        const k = meltBreak;
+        out[0] = sx + (dx - sx) * k; out[1] = sy + (dy - sy) * k;
+        out[2] = d1 * 5 * (1 - k) + (d > 0.25 ? (d - 0.25) * 6 : 0) * k;
+        out[3] = (1 - d1 * 0.6) * (1 - k) + (1 - d * 0.5) * k;
         return out;
       }
-      default: { /* settle: grains gather into the drop and breathe */
+      default: { /* settle: grains gather into the reel, which turns slowly */
         if (i < logo.length) {
-          const sc = Math.min(W, H) / 180 * (1 + 0.025 * Math.sin(t * 0.9));
+          const mw = MARK.w, mh = MARK.h;
           const narrow = W < H * 0.9;
-          const ox = (narrow ? W * 0.5 : W * 0.72) - 60 * sc, oy = (narrow ? H * 0.36 : H * 0.5) - 85 * sc;
-          const jitter = (noise(i * 0.37, t * 0.6) - 0.5) * 2.2 * dpr;
-          out[0] = ox + logo[i][0] * sc + jitter;
-          out[1] = oy + logo[i][1] * sc + (noise(i * 0.11 + 9, t * 0.5) - 0.5) * 2.2 * dpr;
+          const sc = Math.min(W, H) / (mh * 1.25) * (1 + 0.02 * Math.sin(t * 0.8));
+          const ox = (narrow ? W * 0.5 : W * 0.72) - mw / 2 * sc, oy = (narrow ? H * 0.38 : H * 0.48) - mh / 2 * sc;
+          /* the reel turns slowly; the hanging tape (below the rim) stays put */
+          let [px, py] = logo[i];
+          const rx = px - 60, ry = py - 60;
+          if (rx * rx + ry * ry < 51 * 51) {
+            const ang = t * 0.25, c = Math.cos(ang), s2 = Math.sin(ang);
+            px = 60 + rx * c - ry * s2; py = 60 + rx * s2 + ry * c;
+          }
+          const jitter = (noise(i * 0.37, t * 0.6) - 0.5) * 1.6 * dpr;
+          out[0] = ox + px * sc + jitter;
+          out[1] = oy + py * sc + (noise(i * 0.11 + 9, t * 0.5) - 0.5) * 1.6 * dpr;
           out[2] = 0; out[3] = 1;
           return out;
         }
@@ -173,6 +194,7 @@
       const pos = t % cycle, idx = Math.floor(pos / (HOLD + BLEND)), local = pos - idx * (HOLD + BLEND);
       const a = idx, b = (idx + 1) % PHASES.length;
       const e = smooth((local - HOLD) / BLEND);
+      meltBreak = a === 3 ? smooth((local - 1.5) / 3.5) : 0;
       if (a !== shown && label) { shown = a; label.textContent = PHASES[a]; num.textContent = '0' + (a + 1) + ' / 0' + PHASES.length; }
 
       /* trails: wash the paper over the last frame instead of clearing */

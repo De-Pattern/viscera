@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Viscera · FM-1 firmware</title>
+<meta name="description" content="Viscera: a four-track sculpting sampler firmware for the M-VAVE FM-1. Install it from your browser.">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=Inter+Tight:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#f3efe7; --beige:#e6dfd1; --sand:#d8cfbd; --stone:#a9a397; --grey:#6f6b64;
+  --ink:#1a1917; --ink-soft:#3a3833; --line:#cfc7b7;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --sans:"Inter Tight",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink)}
+body{font:300 15px/1.6 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit;text-decoration:none;border-bottom:1px solid var(--stone)}
+a:hover{border-color:var(--ink)}
+/* grain over everything: a fixed noise layer, very faint */
+body::after{content:"";position:fixed;inset:-50%;pointer-events:none;z-index:50;opacity:.07;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1.4 -.25'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation:grain 1.2s steps(6) infinite}
+@keyframes grain{0%{transform:translate(0,0)}20%{transform:translate(-3%,2%)}40%{transform:translate(2%,-4%)}60%{transform:translate(-4%,-1%)}80%{transform:translate(3%,3%)}100%{transform:translate(0,0)}}
+@media (prefers-reduced-motion:reduce){body::after{animation:none}}
+
+.wrap{max-width:980px;margin:0 auto;padding:0 28px}
+header{display:flex;align-items:center;justify-content:space-between;padding:26px 0 0}
+.mark{display:flex;align-items:center;gap:14px;border:0}
+.mark img{display:block;width:24px;height:32px}
+.word{font:400 13px/1 var(--mono);letter-spacing:.42em;text-transform:lowercase}
+nav{display:flex;gap:26px;font:400 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--grey)}
+nav a{border:0}
+nav a:hover{color:var(--ink)}
+
+.hero{position:relative;height:min(72vh,620px);min-height:420px;margin-top:18px}
+#field{position:absolute;inset:0;width:100%;height:100%;display:block}
+.hero-copy{position:absolute;left:0;bottom:34px;max-width:430px;pointer-events:none}
+.hero-copy::before{content:"";position:absolute;inset:-60px -90px -40px -60px;z-index:-1;background:radial-gradient(closest-side,rgba(243,239,231,.92),rgba(243,239,231,.7) 55%,rgba(243,239,231,0))}
+.hero-copy{z-index:1}
+.hero-copy h1{font:300 clamp(34px,6vw,64px)/1 var(--sans);letter-spacing:-.02em;margin:0 0 18px}
+.hero-copy p{margin:0;color:var(--ink-soft);font-size:15px}
+.phase{position:absolute;right:0;bottom:38px;font:400 10px/1.8 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--grey);text-align:right}
+.phase b{display:block;font-weight:400;color:var(--ink)}
+
+.rule{height:1px;background:var(--line);margin:0}
+section{padding:72px 0}
+.eyebrow{font:400 10px/1 var(--mono);letter-spacing:.24em;text-transform:uppercase;color:var(--grey);margin:0 0 26px}
+h2{font:300 28px/1.15 var(--sans);letter-spacing:-.01em;margin:0 0 14px}
+
+.notice{display:flex;gap:16px;align-items:flex-start;background:var(--beige);padding:18px 20px;margin:0 0 40px;font-size:14px;color:var(--ink-soft)}
+.notice .dot{flex:0 0 7px;height:7px;margin-top:8px;border-radius:50%;background:var(--ink);animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25;transform:scale(.6)}}
+
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line)}
+.step{background:var(--paper);padding:24px 22px 26px;display:flex;flex-direction:column;min-height:330px}
+.step .n{font:400 10px/1 var(--mono);letter-spacing:.2em;color:var(--grey)}
+.step h3{font:400 17px/1.3 var(--sans);margin:12px 0 8px}
+.step p{font-size:13px;color:var(--ink-soft);margin:0 0 16px}
+.step canvas{width:100%;height:64px;display:block;margin:auto 0 16px}
+.step.off>*{opacity:.38}
+.step.off button,.step.off label{pointer-events:none}
+button,.file{font:400 11px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--paper);background:var(--ink);
+  border:1px solid var(--ink);padding:13px 16px;cursor:pointer;border-radius:0;transition:background .2s,color .2s;text-align:center;display:block;width:100%}
+button:hover,.file:hover{background:var(--paper);color:var(--ink)}
+button.ghost,.file.ghost{background:transparent;color:var(--ink)}
+button.ghost:hover,.file.ghost:hover{background:var(--ink);color:var(--paper)}
+button:disabled{opacity:.35;cursor:default;background:var(--ink);color:var(--paper)}
+.file input{display:none}
+.row{display:flex;flex-direction:column;gap:8px}
+.check{display:flex;gap:10px;align-items:flex-start;font-size:12px;color:var(--grey);margin:12px 0 0;cursor:pointer}
+.check input{accent-color:var(--ink);margin:2px 0 0}
+.meta{font:400 11px/1.7 var(--mono);color:var(--grey);margin:0 0 14px;min-height:38px;word-break:break-word}
+.meta b{font-weight:400;color:var(--ink)}
+
+.console{margin-top:1px;border:1px solid var(--line);border-top:0;background:var(--beige);padding:18px 22px;font:400 12px/1.7 var(--mono);color:var(--ink-soft)}
+.console #status{color:var(--ink)}
+.console #error{color:#7a2d22;white-space:pre-wrap}
+#sediment{width:100%;height:46px;display:block;margin:12px 0 4px}
+
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:56px}
+.cols p,.cols li{font-size:14px;color:var(--ink-soft)}
+.cols ul{padding:0;margin:0;list-style:none}
+.cols li{padding:11px 0;border-top:1px solid var(--line);display:flex;gap:16px}
+.cols li span{font:400 10px/2.2 var(--mono);letter-spacing:.16em;color:var(--grey);flex:0 0 70px;text-transform:uppercase}
+footer{padding:42px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;color:var(--grey)}
+footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
+
+@media (max-width:760px){
+  .wrap{padding:0 16px}
+  nav{gap:16px}
+  .steps{grid-template-columns:1fr}
+  .step{min-height:0}
+  .cols{grid-template-columns:1fr;gap:30px}
+  .phase{display:none}
+  .hero{height:62vh}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="mark" href="./" aria-label="Viscera home">
+      <img src="logo.svg" width="24" height="32" alt="">
+      <span class="word">viscera</span>
+    </a>
+    <nav>
+      <a href="#install">Install</a>
+      <a href="#about">About</a>
+      <a href="https://github.com/De-Pattern/viscera">Source</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <canvas id="field" aria-hidden="true"></canvas>
+    <div class="hero-copy">
+      <h1>Matter, unmade<br>and remade.</h1>
+      <p>A four-track sculpting sampler for the M-VAVE FM-1. Bring sound in over Bluetooth or USB, then grind it, filter it, stain it and let it settle.</p>
+    </div>
+    <div class="phase" aria-hidden="true"><span id="phase-n">01 / 05</span><b id="phase-name">vapour</b></div>
+  </div>
+</div>
+
+<div class="rule"></div>
+
+<section id="install">
+  <div class="wrap">
+    <p class="eyebrow">Install</p>
+    <h2>Flash from the browser.</h2>
+    <p style="color:var(--ink-soft);max-width:560px;margin:0 0 30px">Chrome or Edge on a computer, the FM-1 switched on and connected by USB. The page talks to the FM-1 over USB MIDI using M-VAVE's own update protocol.</p>
+
+    <div class="notice" id="release-notice"><span class="dot"></span><span id="release-text">Looking for a published build…</span></div>
+
+    <div class="steps">
+      <div class="step" id="s1">
+        <span class="n">01</span>
+        <h3>Choose the firmware</h3>
+        <p>The latest published build, or a <code>.fwsc</code> file you built yourself.</p>
+        <canvas data-mini="sift"></canvas>
+        <p class="meta" id="pkg-meta">Nothing chosen yet.</p>
+        <div class="row">
+          <button id="use-latest" disabled>Use latest build</button>
+          <label class="file ghost">Open a .fwsc file<input type="file" id="pkg-file" accept=".fwsc,application/octet-stream"></label>
+        </div>
+      </div>
+      <div class="step off" id="s2">
+        <span class="n">02</span>
+        <h3>Connect the FM-1</h3>
+        <p>Allow MIDI access when the browser asks. Close other MIDI software first.</p>
+        <canvas data-mini="gather"></canvas>
+        <p class="meta" id="dev-meta">Not connected.</p>
+        <div class="row">
+          <button id="connect">Connect</button>
+        </div>
+        <label class="check"><input type="checkbox" id="switch"> Switching from the stock firmware or another custom firmware (Ravel, SLOOP…)</label>
+      </div>
+      <div class="step off" id="s3">
+        <span class="n">03</span>
+        <h3>Install</h3>
+        <p>Keep the cable in and the FM-1 on until it restarts. It takes about a minute.</p>
+        <canvas data-mini="rain"></canvas>
+        <p class="meta" id="inst-meta">Waiting.</p>
+        <div class="row">
+          <button id="install-btn">Install Viscera</button>
+        </div>
+      </div>
+    </div>
+    <div class="console" role="status" aria-live="polite">
+      <canvas id="sediment" aria-hidden="true"></canvas>
+      <div id="status">Ready.</div>
+      <div id="error"></div>
+    </div>
+  </div>
+</section>
+
+<div class="rule"></div>
+
+<section id="about">
+  <div class="wrap cols">
+    <div>
+      <p class="eyebrow">About</p>
+      <h2>Four tracks of material.</h2>
+      <p>Each track takes a sample from the FM-1's flash bank, a live loop, a playable keyboard voice, or the live input itself, then passes it through grains, a filter and colour into a shared delay and reverb. Four modulators per track, four macros, eight scenes to morph between, and a step sequencer with parameter locks.</p>
+      <p>Viscera is early and on hold. The engine exists; the screen, controls and first hardware build are next.</p>
+    </div>
+    <div>
+      <p class="eyebrow">Before you flash</p>
+      <ul>
+        <li><span>Backup</span>Save your projects and samples with M-VAVE's workbench first. Switching firmware doesn't convert them.</li>
+        <li><span>Samples</span>Viscera reads the same flash sample bank, so samples uploaded with the workbench still play.</li>
+        <li><span>Return</span>M-VAVE's <a href="https://open.m-vave.com/fm1-workbench">workbench</a> can put the stock firmware back at any time.</li>
+        <li><span>Risk</span>Any firmware update can fail. Don't unplug the FM-1 while it's writing.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>Viscera · GPL-3.0 with the FM1 SDK linking exception</span>
+    <span>Built on M-VAVE's FM1 Open SDK · updater © M-VAVE</span>
+  </div>
+</footer>
+
+<script src="vendor/I18n.js"></script>
+<script src="vendor/WebUpdate.js"></script>
+<script src="fx.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

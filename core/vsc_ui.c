@@ -386,13 +386,13 @@ static void draw_knobs(void)
             rect(x + 3, KNOB_Y + 30, 34, 3, C_LINE);
             rect(x + 3, KNOB_Y + 30, (int)(34.f * bar + 0.5f), 3, C_FG);
         }
-        if (i) vline(x, KNOB_Y - 2, 40, C_PANEL);
+        if (i) vline(x, KNOB_Y - 2, 40, C_LINE);   /* each knob keeps to its own column */
     }
     /* key and button hints along the bottom */
     const char *hint = page == PG_STEPS && vsc.t[track][P_SEQM] == SEQ_REBOUND ? "REC: ADD BALLS  HOLD REC: CLEAR"
         : page == PG_STEPS ? "KEYS: STEPS  OCT: PAGE  REC: RECORD"
         : page == PG_PROJECT ? "E1: SLOT  REC: LOAD/SAVE  SAVE+PLAY: SAVE"
-        : page == PG_SETTINGS ? "E1 AUDIO E2 MIDI E3 ROLE E4 DEV E5 FORGET"
+        : page == PG_SETTINGS ? "E1-3 AUDIO/MIDI/ROLE E4 DEV E5 UNPAIR"
         : page == PG_MODS ? "HOLD LFO + TURN: AMOUNT  E7: MODULATOR"
         : page == PG_SCENE ? "ARP+KEY: RECALL  ARP+SAVE+KEY: STORE"
         : "E7: ROW   HOLD HOME + TOP KEYS: TRACK";

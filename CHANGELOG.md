@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- **Fixed:** the knob columns have clear dividers, so long values never seem to run into the next knob.
+- **Fixed:** the SETTINGS hint fits on screen.
+
 ## 0.1.0
 
 First build for the FM-1. Untested on hardware.

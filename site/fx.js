@@ -166,10 +166,11 @@
           const ox = (narrow ? W * 0.5 : W * 0.72) - mw / 2 * sc, oy = (narrow ? H * 0.38 : H * 0.48) - mh / 2 * sc;
           /* the reel turns slowly; the hanging tape (below the rim) stays put */
           let [px, py] = logo[i];
-          const rx = px - 60, ry = py - 60;
-          if (rx * rx + ry * ry < 51 * 51) {
-            const ang = t * 0.25, c = Math.cos(ang), s2 = Math.sin(ang);
-            px = 60 + rx * c - ry * s2; py = 60 + rx * s2 + ry * c;
+          const cx = MARK.cx || mw / 2, cy = MARK.cy || mh / 2, rim = (MARK.r || mw * 0.4) + 3;
+          const rx = px - cx, ry = py - cy;
+          if (rx * rx + ry * ry < rim * rim) {
+            const ang = t * 0.22, c = Math.cos(ang), s2 = Math.sin(ang);
+            px = cx + rx * c - ry * s2; py = cy + rx * s2 + ry * c;
           }
           const jitter = (noise(i * 0.37, t * 0.6) - 0.5) * 1.6 * dpr;
           out[0] = ox + px * sc + jitter;

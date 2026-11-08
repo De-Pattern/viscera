@@ -1,115 +1,191 @@
-# Generates the Viscera mark: a tape reel made of tendons. The rim, hub and
-# three spokes are bundles of thin fibres, like tendon strands: they pinch
-# in the middle and splay where they attach, and a single strand of "tape"
-# peels off the rim. Deterministic (seeded), so the logo never changes.
+# Generates the Viscera mark: a tape reel whose three spokes are swept
+# membranes of fibre. Each blade is string art, a ruled surface between a
+# spiral leading edge and the rim, so the fibres crowd into a dark core around
+# the hub and fan out into thin crescents. Toward the rim the fibres break up
+# into grains, part of the rim dissolves, and the bottom sags into drips.
+# Deterministic (seeded), so the logo never changes.
 #
-#   python3 tools/make_logo.py            -> site/logo.svg, site/mark.js
+#   python3 tools/make_logo.py
+#     -> site/logo.svg        full mark (hairlines; large sizes and the README)
+#        site/logo-small.svg  fewer, heavier fibres, for the header and favicon
+#        site/mark.js         points along the fibres, for the hero animation
 import math, random, os
-random.seed(23)
-S = 120.0
+S = 200.0
 C = S / 2
-R_RIM, R_HUB, R_PACK = 50.0, 9.5, 23.0
-paths = []      # (points, width, alpha)
+R = 78.0       # rim
+HUB = 10.0     # hub hole
+INK = '#1a1917'
 
-def noise_fn(seed, k=3):
-    rnd = random.Random(seed)
-    terms = [(rnd.uniform(1, 4.5), rnd.uniform(0, 6.283), rnd.uniform(0.3, 1.0)) for _ in range(k)]
-    return lambda t: sum(a * math.sin(f * t + p) for f, p, a in terms) / k
+def P(r, a):
+    return (C + r * math.cos(a), C + r * math.sin(a))
 
-def strand_arc(r, a0, a1, wobble, seed, steps=90):
-    n = noise_fn(seed)
-    pts = []
-    for i in range(steps + 1):
-        a = a0 + (a1 - a0) * i / steps
-        rr = r + n(a * 2.0) * wobble
-        pts.append((C + rr * math.cos(a), C + rr * math.sin(a)))
-    return pts
+def blades(lines_per_blade, rnd):
+    """Fibres of the three membranes: [(p0, p1, width, alpha, u)].
+    A blade is a twisted ribbon between two spiral edges that meet at the hub
+    and again at a point on the rim. Fibres join one edge at u to the other at
+    u + skew, so they cross and their envelope draws the crescent."""
+    out = []
+    sweep = 2.15
+    def edge_a(a0, u):
+        return P(HUB + 1 + (R - HUB - 1) * u, a0 + sweep * u)
+    def edge_b(a0, u):
+        return P(HUB + 1 + (R - HUB - 1) * u ** 0.62, a0 + sweep * u - 1.05 * math.sin(math.pi * u) ** 0.85)
+    for b in range(3):
+        a0 = math.radians(-150 + b * 120)
+        for k in range(lines_per_blade):
+            u = k / (lines_per_blade - 1)
+            skew = 0.16 + 0.08 * math.sin(u * 3)
+            p0 = edge_a(a0, u)
+            p1 = edge_b(a0, min(1.0, u + skew))
+            p0 = (p0[0] + rnd.gauss(0, 0.25), p0[1] + rnd.gauss(0, 0.25))
+            p1 = (p1[0] + rnd.gauss(0, 0.25), p1[1] + rnd.gauss(0, 0.25))
+            alpha = 0.14 + 0.62 * (1 - u) ** 1.8 + rnd.uniform(-0.04, 0.04)
+            out.append((p0, p1, 0.28 + 0.3 * (1 - u), max(0.07, alpha), u))
+            if k % 4 == 0:  # a second, opposite family of veins: the webbed texture
+                q0 = edge_b(a0, u)
+                q1 = edge_a(a0, min(1.0, u + skew * 0.7))
+                out.append((q0, q1, 0.2, max(0.05, alpha * 0.45), u))
+    return out
 
-def bundle_arc(r, count, spread, a0, a1, base_w):
+def fibre_marks(lines, rnd, scale=1.0):
+    """Fibres stay solid near the hub; toward the rim they break up, drawn
+    partly as a line and partly as loose square grains."""
+    strokes, grains = [], []
+    for (x0, y0), (x1, y1), w, a, u in lines:
+        if u < 0.55 or rnd.random() < 0.4:
+            strokes.append(((x0, y0), (x1, y1), w * scale, a))
+            continue
+        solid = rnd.uniform(0.2, 0.75)
+        xs, ys = x0 + (x1 - x0) * solid, y0 + (y1 - y0) * solid
+        strokes.append(((x0, y0), (xs, ys), w * scale, a))
+        n = int(math.hypot(x1 - xs, y1 - ys) / (3.0 / scale))
+        for _ in range(n):
+            t = solid + (1 - solid) * rnd.random()
+            s_ = (0.45 + rnd.random() * 0.7) * scale
+            grains.append(((x0 + (x1 - x0) * t + rnd.gauss(0, 0.5), y0 + (y1 - y0) * t + rnd.gauss(0, 0.5)), s_, min(1, a * 2.2)))
+    return strokes, grains
+
+def rim(rnd, count, scale=1.0):
+    """The rim, mostly as grains, dissolving along the left and lower right."""
+    g = []
+    for _ in range(count):
+        a = rnd.uniform(0, 2 * math.pi)
+        deg = math.degrees(a) % 360
+        loose = 110 <= deg <= 245 or deg <= 70     # these stretches come apart
+        r = R + rnd.gauss(0, 2.2 if loose else 0.6) + (rnd.random() ** 3) * (7 if loose else 1.5)
+        if loose and rnd.random() < 0.35:
+            continue
+        if not loose and rnd.random() < 0.55:
+            continue
+        s = (0.6 + rnd.random() * (1.8 if loose else 0.9)) * scale
+        g.append((P(r, a), s, 0.45 + 0.55 * rnd.random()))
+    return g
+
+def drips(rnd, scale=1.0):
+    """The bottom of the rim sags and lets go of a few drops."""
+    out = []
+    for deg, length in ((96, 16), (104, 26), (81, 10)):
+        a = math.radians(deg)
+        x0, y0 = P(R, a)
+        y = y0
+        k = 0
+        while y < y0 + length:
+            step = 0.9 + k * 0.18
+            y += step
+            k += 1
+            neck = 1 - (y - y0) / length
+            s = (0.7 + 1.1 * neck + rnd.random() * 0.4) * scale
+            out.append(((x0 + rnd.gauss(0, 0.25), y), s, 0.85))
+        out.append(((x0, y + 4 + length * 0.12), 2.1 * scale, 0.95))   # the drop that fell
+    return out
+
+def specks(rnd, count, scale=1.0):
+    s = []
+    while len(s) < count:
+        x, y = rnd.uniform(4, S - 4), rnd.uniform(4, S - 4)
+        if math.hypot(x - C, y - C) < R + 8:
+            continue
+        s.append(((x, y), (0.6 + rnd.random() * 1.0) * scale, 0.3 + 0.5 * rnd.random()))
+    return s
+
+def hub_grit(rnd, count):
+    """Dark grains packed into the core around the hub."""
+    g = []
+    for _ in range(count):
+        a = rnd.uniform(0, 2 * math.pi)
+        r = HUB + 1 + abs(rnd.gauss(0, 7))
+        g.append((P(r, a), 0.5 + rnd.random() * 0.9, 0.5 + 0.5 * rnd.random()))
+    return g
+
+def core(rnd, count, scale=1.0):
+    """String art around the hub: chords tangent to the hole, crowding into a
+    dark ring with a clean opening in the middle."""
+    out = []
     for k in range(count):
-        off = (k - (count - 1) / 2) * spread + random.uniform(-0.35, 0.35)
-        # each fibre starts and stops a little differently: a sketched, not closed, loop
-        s = a0 + random.uniform(-0.25, 0.35)
-        e = a1 + random.uniform(-0.35, 0.25)
-        paths.append((strand_arc(r + off, s, e, 0.9 + random.random() * 0.8, random.random() * 1e6),
-                      base_w * random.uniform(0.6, 1.25), random.uniform(0.55, 1.0)))
+        a = 2 * math.pi * k / count + rnd.uniform(-0.02, 0.02)
+        r = HUB + 1.0 + rnd.random() * 2.5          # the chord's nearest approach to the centre
+        half = 0.45 + rnd.random() * 0.45
+        rr = r / math.cos(half)
+        out.append((P(rr, a - half), P(rr, a + half), 0.3 * scale, 0.3 + 0.35 * rnd.random()))
+    return out
 
-# rim: a thick bundle, two overlapping sweeps so the joins never line up
-bundle_arc(R_RIM, 6, 0.85, -0.2, 2 * math.pi - 0.05, 0.9)
-bundle_arc(R_RIM + 0.4, 3, 1.1, 2.2, 2 * math.pi + 1.4, 0.7)
-# hub
-bundle_arc(R_HUB, 4, 0.8, 0.3, 2 * math.pi + 0.2, 0.8)
-# the wound tape: a full pack of fibres around the hub, loosely wound
-for k in range(5):
-    bundle_arc(R_PACK - 2.4 + k * 1.2 + random.uniform(-0.3, 0.3), 1, 0, 0.0 + k * 0.9, 2 * math.pi + k * 0.9 - 0.2, 0.55)
-# drive slots in the hub
-for k in range(3):
-    a = math.radians(-90 + k * 120)
-    x, y = C + 5.2 * math.cos(a), C + 5.2 * math.sin(a)
-    paths.append(([(x + 1.3 * math.cos(t), y + 1.3 * math.sin(t)) for t in [i * 0.42 for i in range(16)]], 0.7, 0.9))
+def rim_lines(rnd, scale=1.0):
+    """Hairline strands of the rim, solid where the rim holds together."""
+    out = []
+    for arc0, arc1 in ((-0.25, 1.85), (4.35, 5.95)):
+        for k in range(5):
+            r = R + rnd.gauss(0, 0.5)
+            a0, a1 = arc0 + rnd.uniform(-0.15, 0.1), arc1 + rnd.uniform(-0.1, 0.15)
+            n = 40
+            pts = [P(r + math.sin(i * 0.7 + k) * 0.3, a0 + (a1 - a0) * i / n) for i in range(n + 1)]
+            for i in range(n):
+                out.append((pts[i], pts[i + 1], 0.3 * scale, 0.25 + 0.25 * rnd.random()))
+    return out
 
-# spokes: tendon bundles from hub to rim, pinched in the middle, splayed at both ends
-for k in range(3):
-    ang = math.radians(-90 + 60 + k * 120)
-    nx, ny = math.cos(ang), math.sin(ang)
-    tx, ty = -ny, nx
-    fibres = 9
-    for f in range(fibres):
-        u = (f - (fibres - 1) / 2) / ((fibres - 1) / 2)       # -1..1 across the bundle
-        n = noise_fn(random.random() * 1e6)
-        pts = []
-        for i in range(41):
-            s = i / 40
-            r = R_HUB + 1.0 + s * (R_RIM - R_HUB - 1.8)
-            # width profile: splays at the hub (s=0) and wider at the rim (s=1), pinched near 0.45
-            width = 1.8 + 3.0 * (abs(s - 0.4) / 0.6) ** 1.6 + 10.5 * s ** 3.2
-            # fibres twist slightly around each other
-            lateral = u * width + n(s * 5) * 0.55 + 0.5 * math.sin(s * 7 + f) * (1 - abs(u))
-            pts.append((C + nx * r + tx * lateral, C + ny * r + ty * lateral))
-        # trim some fibres short: frayed ends
-        cut0 = random.randint(0, 3); cut1 = 41 - random.randint(0, 4)
-        paths.append((pts[cut0:cut1], random.uniform(0.45, 1.0), random.uniform(0.6, 1.0)))
+def svg(strokes, grains, title):
+    o = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %d" role="img" aria-label="%s">' % (S, S + 24, title),
+         '<g fill="none" stroke="%s" stroke-linecap="round">' % INK]
+    for (x0, y0), (x1, y1), w, a in strokes:
+        o.append('<path d="M%.1f %.1fL%.1f %.1f" stroke-width="%.2f" stroke-opacity="%.2f"/>' % (x0, y0, x1, y1, w, a))
+    o.append('</g><g fill="%s">' % INK)
+    for (x, y), s, a in grains:
+        o.append('<rect x="%.1f" y="%.1f" width="%.2f" height="%.2f" fill-opacity="%.2f"/>' % (x - s / 2, y - s / 2, s, s, a))
+    o.append('</g></svg>')
+    return ''.join(o)
 
-# the leader: tape peels off the pack, runs out through a window, over the rim, and hangs
-lead = []
-a0 = math.radians(22)
-px, py = C + R_PACK * math.cos(a0), C + R_PACK * math.sin(a0)
-for i in range(60):
-    s_ = i / 59
-    x = px + 33 * (1 - (1 - s_) ** 2.2)              # runs out, then stops travelling sideways
-    y = py + 6 * s_ + 52 * s_ ** 2.4                 # and falls
-    lead.append((x + math.sin(s_ * 11) * 0.6 * s_, y))
-paths.append((lead, 0.95, 0.95))
-paths.append(([(x + 0.8, y + 0.5) for x, y in lead[4:52]], 0.4, 0.55))
-paths.append(([(x - 0.6, y + 0.9) for x, y in lead[20:58]], 0.35, 0.5))
-
-def to_path(pts):
-    # Catmull-Rom through the points, as cubic Beziers
-    d = 'M%.2f %.2f' % pts[0]
-    for i in range(len(pts) - 1):
-        p0 = pts[i - 1] if i else pts[i]
-        p1, p2 = pts[i], pts[i + 1]
-        p3 = pts[i + 2] if i + 2 < len(pts) else p2
-        c1 = (p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6)
-        c2 = (p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6)
-        d += 'C%.2f %.2f %.2f %.2f %.2f %.2f' % (c1 + c2 + p2)
-    return d
-
-H = S + 24   # room below for the hanging leader
-svg = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %d" fill="none" stroke="#1a1917" stroke-linecap="round" role="img" aria-label="Viscera">' % (S, H)]
-for pts, w, a in paths:
-    svg.append('<path d="%s" stroke-width="%.2f" stroke-opacity="%.2f"/>' % (to_path(pts), w, a))
-svg.append('</svg>')
-
-# points along every fibre, for the hero animation's "settle" state
-pts_out = []
-for pts, w, a in paths:
-    for i in range(0, len(pts), 2):
-        pts_out.append('[%.1f,%.1f]' % pts[i])
 here = os.path.dirname(os.path.abspath(__file__))
 site = os.path.join(here, '..', 'site')
-open(os.path.join(site, 'logo.svg'), 'w').write(''.join(svg))
+
+rnd = random.Random(23)
+full_lines = blades(170, rnd)
+strokes, grains = fibre_marks(full_lines, rnd)
+strokes += core(rnd, 150) + rim_lines(rnd)
+grains += rim(rnd, 300) + drips(rnd) + hub_grit(rnd, 110) + specks(rnd, 44)
+open(os.path.join(site, 'logo.svg'), 'w').write(svg(strokes, grains, 'Viscera'))
+
+rnd = random.Random(23)
+small = blades(18, rnd)
+s_strokes, s_grains = fibre_marks(small, rnd, 3.0)
+s_strokes += [(a, b, w * 2.6, min(1.0, al * 1.6)) for a, b, w, al in core(rnd, 26)]
+s_strokes = [(a, b, w, min(1.0, al * 2.3)) for a, b, w, al in s_strokes]
+s_grains = s_grains[::4] + rim(rnd, 90, 2.4) + drips(rnd, 2.2)[::2]
+open(os.path.join(site, 'logo-small.svg'), 'w').write(svg(s_strokes, s_grains, 'Viscera'))
+
+# points for the hero animation: along each fibre (more toward the hub,
+# where the membrane is darkest), plus the rim, drips and core
+rnd = random.Random(5)
+pts = []
+for (x0, y0), (x1, y1), w, a, u in full_lines:
+    for _ in range(1 + int(a * 4)):
+        t = rnd.random() ** 1.4
+        pts.append((x0 + (x1 - x0) * t, y0 + (y1 - y0) * t))
+for (x0, y0), (x1, y1), w, a in core(random.Random(4), 150):
+    t = rnd.random(); pts.append((x0 + (x1 - x0) * t, y0 + (y1 - y0) * t))
+for (x, y), s, a in rim(random.Random(9), 420) + drips(random.Random(9)) + hub_grit(random.Random(9), 60):
+    pts.append((x, y))
+rnd.shuffle(pts)
 open(os.path.join(site, 'mark.js'), 'w').write(
-    '/* Generated by tools/make_logo.py: points along the logo\'s fibres (box %dx%d). */\n'
-    'window.VISCERA_MARK={w:%d,h:%d,p:[%s]};\n' % (S, H, S, H, ','.join(pts_out)))
-print(len(paths), 'fibres,', len(pts_out), 'points')
+    "/* Generated by tools/make_logo.py: points along the logo's fibres (box %dx%d). */\n"
+    "window.VISCERA_MARK={w:%d,h:%d,cx:%d,cy:%d,r:%d,p:[%s]};\n"
+    % (S, S + 24, S, S + 24, C, C, R, ','.join('[%.1f,%.1f]' % p for p in pts)))
+print(len(strokes), 'strokes,', len(grains), 'grains,', len(pts), 'points')

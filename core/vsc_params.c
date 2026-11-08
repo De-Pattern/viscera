@@ -1,0 +1,235 @@
+/* SPDX-License-Identifier: GPL-3.0-only WITH GPL-3.0-linking-exception
+ * Viscera: parameter table, labels, defaults, scenes and routing. */
+#include "vsc.h"
+
+static const char *const n_mode[] = {"PLAY", "LOOP", "KEYS", "THRU"};
+static const char *const n_loopm[] = {"ONCE", "LOOP", "BOUNCE"};
+static const char *const n_input[] = {"BT", "USB", "BT+USB", "T1", "T2", "T3", "T4", "MAIN"};
+static const char *const n_qual[] = {"HI", "LO"};
+static const char *const n_off_on[] = {"OFF", "ON"};
+static const char *const n_gquant[] = {"FREE", "SEMI", "OCT", "5TH"};
+static const char *const n_ftype[] = {"LP", "BP", "HP", "PEAKS", "OFF"};
+static const char *const n_fscale[] = {"OCT", "5TH", "MAJ", "MIN", "SUS", "HARM", "WHOLE", "CLUST"};
+static const char *const n_ntype[] = {"HISS", "DUST"};
+static const char *const n_lfo[] = {"SINE", "TRI", "SAW", "RAMP", "SQUARE", "S+H"};
+static const char *const n_sync[] = {"FREE", "1/16", "1/8", "1/4", "1/2", "1BAR", "2BAR", "4BAR"};
+static const char *const n_reset[] = {"FREE", "NOTE"};
+static const char *const n_dtime[] = {"1/32", "1/16T", "1/16", "1/8T", "1/16D", "1/8", "1/4T", "1/8D", "1/4"};
+static const char *const n_clock[] = {"INT", "MIDI"};
+
+#define C(n, d) {n, 127, d, 0, 0}
+#define B(n, d) {n, 127, d, VSC_PF_BIPOLAR, 0}
+#define E(n, list, d) {n, sizeof list / sizeof list[0] - 1, d, VSC_PF_ENUM, list}
+#define X {"", 0, 0, VSC_PF_ENUM, 0}
+
+static const struct vsc_pinfo tinfo[VSC_NP] = {
+    /* MATERIAL */
+    E("MODE", n_mode, 0), {"SLOT", 16, 0, VSC_PF_ENUM, 0}, C("START", 0), C("LENGTH", 127),
+    B("SPEED", 96), {"PITCH", 48, 24, VSC_PF_BIPOLAR, 0},
+    E("LOOP", n_loopm, 1), E("INPUT", n_input, 0), C("DUB", 100), {"SIZE", 3, 0, VSC_PF_ENUM, 0},
+    E("RATE", n_qual, 0), C("GAIN", 100),
+    C("ATTACK", 0), C("DECAY", 64), C("SUSTN", 127), C("RELEAS", 30), C("GLIDE", 0), C("VELO", 64),
+    /* GRAIN */
+    C("MIX", 0), C("SIZE", 50), C("DENSE", 60), {"PITCH", 48, 24, VSC_PF_BIPOLAR, 0}, C("SPRAY", 20), C("SHAPE", 64),
+    C("TIME", 30), C("REVRS", 0), E("FREEZE", n_off_on, 0), C("DETUNE", 0), E("QUANT", n_gquant, 0), C("FDBK", 0),
+    /* FILTER */
+    E("TYPE", n_ftype, 0), C("CUTOFF", 120), C("RESO", 20), C("SPREAD", 64), E("SCALE", n_fscale, 0), C("MIX", 127),
+    /* COLOR */
+    C("DRIVE", 0), C("COMP", 0), C("BITS", 0), C("RATE", 0), C("NOISE", 0), B("TONE", 64),
+    E("NOISE", n_ntype, 0), C("MIX", 127), X, X, X, X,
+    /* MIX */
+    C("LEVEL", 100), B("PAN", 64), C("SEND", 0), E("MUTE", n_off_on, 0), X, X,
+    /* MOD 0: LFO */
+    E("SHAPE", n_lfo, 0), C("RATE", 50), E("SYNC", n_sync, 0), E("RESET", n_reset, 0),
+    /* MOD 1: RANDOM */
+    C("RATE", 50), C("SMOOTH", 64), X, X,
+    /* MOD 2: FOLLOW */
+    C("ATTACK", 10), C("RELEAS", 50), C("GAIN", 64), X,
+    /* MOD 3: ENV */
+    C("ATTACK", 5), C("DECAY", 50), C("SUSTN", 0), C("RELEAS", 30),
+};
+static const struct vsc_pinfo ginfo[VSC_NG] = {
+    C("SWING", 0), E("TIME", n_dtime, 5), C("FDBK", 50), B("TONE", 64), E("LONG", n_off_on, 0), C("DELAY", 100),
+    C("SIZE", 70), C("DAMP", 50), C("REVERB", 100), C("MAIN", 110), E("CLOCK", n_clock, 0), E("MONITR", n_off_on, 0),
+    C("MORPH", 0), {"TARGET", VSC_SCENES - 1, 1, VSC_PF_ENUM, 0}, {"MACRO", VSC_MACROS - 1, 0, VSC_PF_ENUM, 0},
+    C("M1", 0), C("M2", 0), C("M3", 0), C("M4", 0),
+};
+
+const struct vsc_pinfo *vsc_tparam_info(unsigned track, unsigned p)
+{
+    (void)track;
+    return p < VSC_NP ? &tinfo[p] : &tinfo[P_CRES1];
+}
+const struct vsc_pinfo *vsc_gparam_info(unsigned p) { return p < VSC_NG ? &ginfo[p] : &ginfo[0]; }
+
+static void put_int(char *o, int v)
+{
+    char tmp[8];
+    int n = 0, neg = v < 0;
+    unsigned u = neg ? (unsigned)-v : (unsigned)v;
+    do { tmp[n++] = (char)('0' + u % 10); u /= 10; } while (u && n < 6);
+    int i = 0;
+    if (neg) o[i++] = '-';
+    while (n) o[i++] = tmp[--n];
+    o[i] = 0;
+}
+static void put_str(char *o, const char *s)
+{
+    int i = 0;
+    while (s[i] && i < 7) { o[i] = s[i]; ++i; }
+    o[i] = 0;
+}
+void vsc_param_label(const struct vsc_pinfo *info, unsigned p, unsigned v, char out[8], int global)
+{
+    out[0] = 0;
+    if (!info->name[0]) return;
+    if (info->names) { put_str(out, info->names[v > info->max ? info->max : v]); return; }
+    if (!global) {
+        if (p == P_SLOT) {
+            if (v >= VSC_BANK_SLOTS) { put_str(out, "LOOP"); return; }
+            out[0] = 'S'; put_int(out + 1, (int)v + 1); return;
+        }
+        if (p == P_PITCH || p == P_GPITCH) { put_int(out, (int)v - 24); return; }
+        if (p == P_SIZE) { put_int(out, (int)v + 1); return; }
+        if (p == P_SPEED) {
+            /* -2.00 .. +2.00 */
+            int c = ((int)v - 64) * 100 / 32;
+            int neg = c < 0; if (neg) c = -c;
+            int i = 0;
+            if (neg) out[i++] = '-';
+            out[i++] = (char)('0' + c / 100); out[i++] = '.';
+            out[i++] = (char)('0' + (c / 10) % 10); out[i++] = (char)('0' + c % 10);
+            out[i++] = 'X'; out[i] = 0; return;
+        }
+    } else if (p == G_TARGET) { out[0] = 'S'; out[1] = 'C'; put_int(out + 2, (int)v + 1); return; }
+    else if (p == G_MSEL) { out[0] = 'M'; put_int(out + 1, (int)v + 1); return; }
+    if (info->flags & VSC_PF_BIPOLAR) { put_int(out, (int)v - (int)(info->max + 1) / 2); return; }
+    put_int(out, (int)v);
+}
+
+void vsc_memset(void *d, int v, size_t n) { uint8_t *p = d; while (n--) *p++ = (uint8_t)v; }
+void vsc_memcpy(void *d, const void *s, size_t n)
+{
+    uint8_t *a = d; const uint8_t *b = s;
+    while (n--) *a++ = *b++;
+}
+size_t vsc_strlen(const char *s) { size_t n = 0; while (s[n]) ++n; return n; }
+
+uint32_t vsc_crc32(const void *data, size_t bytes)
+{
+    const uint8_t *p = data;
+    uint32_t c = 0xffffffffu;
+    while (bytes--) {
+        c ^= *p++;
+        for (int k = 0; k < 8; ++k) c = (c >> 1) ^ (0xedb88320u & (0u - (c & 1u)));
+    }
+    return ~c;
+}
+
+void vsc_track_defaults(struct vsc_project *p, unsigned t)
+{
+    for (unsigned i = 0; i < VSC_NP; ++i) p->t[t][i] = tinfo[i].def;
+    /* A useful start: track 1 plays the first sample, track 2 loops the
+     * Bluetooth input, track 3 plays notes, track 4 passes input through. */
+    static const uint8_t modes[VSC_TRACKS] = {MODE_PLAY, MODE_LOOP, MODE_KEYS, MODE_THRU};
+    p->t[t][P_MODE] = modes[t % VSC_TRACKS];
+    p->t[t][P_SLOT] = (uint8_t)t;
+    p->t[t][P_SIZE] = 0;
+    if (p->t[t][P_MODE] == MODE_KEYS) p->t[t][P_LOOPM] = 1;
+    p->length[t] = 16;
+    for (unsigned s = 0; s < VSC_STEPS; ++s) {
+        struct vsc_step *st = &p->step[t][s];
+        vsc_memset(st, 0, sizeof *st);
+        st->note = 60; st->vel = 100; st->lp[0] = st->lp[1] = 255;
+    }
+    for (unsigned r = 0; r < VSC_MOD_ROUTES; ++r) { p->route[t][r].param = 255; p->route[t][r].depth = 0; }
+}
+void vsc_project_defaults(struct vsc_project *p)
+{
+    vsc_memset(p, 0, sizeof *p);
+    p->magic = VSC_MAGIC; p->version = 1; p->bytes = sizeof *p;
+    vsc_memcpy(p->name, "NEW PROJECT", 12);
+    p->tempo = 110;
+    for (unsigned t = 0; t < VSC_TRACKS; ++t) vsc_track_defaults(p, t);
+    for (unsigned g = 0; g < VSC_NG; ++g) p->g[g] = ginfo[g].def;
+    for (unsigned m = 0; m < VSC_MACROS; ++m)
+        for (unsigned r = 0; r < VSC_MACRO_ROUTES; ++r) { p->macro[m][r].param = 255; p->macro[m][r].depth = 0; }
+}
+int vsc_project_valid(const struct vsc_project *p)
+{
+    if (p->magic != VSC_MAGIC || p->version != 1 || p->bytes != sizeof *p) return 0;
+    uint32_t want = p->crc;
+    /* CRC covers everything after the crc field. */
+    const uint8_t *body = (const uint8_t *)&p->name;
+    return vsc_crc32(body, sizeof *p - offsetof(struct vsc_project, name)) == want;
+}
+
+void vsc_scene_store(unsigned s)
+{
+    if (s >= VSC_SCENES) return;
+    struct vsc_scene *sc = &vsc.scene[s];
+    vsc_memcpy(sc->t, vsc.t, sizeof sc->t);
+    for (unsigned m = 0; m < VSC_MACROS; ++m) sc->macro[m] = vsc.g[G_M0 + m];
+    sc->used = 1;
+}
+void vsc_scene_recall(unsigned s)
+{
+    if (s >= VSC_SCENES || !vsc.scene[s].used) return;
+    const struct vsc_scene *sc = &vsc.scene[s];
+    /* Material mode and loop sizes change buffers: keep the running ones. */
+    for (unsigned t = 0; t < VSC_TRACKS; ++t)
+        for (unsigned p = 0; p < VSC_NP; ++p) {
+            if (p == P_MODE || p == P_SIZE || p == P_QUAL || p == P_INPUT) continue;
+            vsc.t[t][p] = sc->t[t][p];
+        }
+    for (unsigned m = 0; m < VSC_MACROS; ++m) vsc.g[G_M0 + m] = sc->macro[m];
+}
+
+void vsc_route_set(unsigned t, unsigned src, unsigned param, int depth)
+{
+    if (t >= VSC_TRACKS || src >= VSC_MODS || param >= VSC_NP) return;
+    if (depth > 127) depth = 127;
+    if (depth < -127) depth = -127;
+    struct vsc_route *free_slot = 0;
+    for (unsigned r = 0; r < VSC_MOD_ROUTES; ++r) {
+        struct vsc_route *ro = &vsc.route[t][r];
+        if (ro->param == param && ro->src == src) {
+            if (!depth) { ro->param = 255; ro->depth = 0; }
+            else ro->depth = (int8_t)depth;
+            return;
+        }
+        if (ro->param == 255 && !free_slot) free_slot = ro;
+    }
+    if (depth && free_slot) { free_slot->src = (uint8_t)src; free_slot->param = (uint8_t)param; free_slot->depth = (int8_t)depth; }
+}
+int vsc_route_get(unsigned t, unsigned src, unsigned param)
+{
+    if (t >= VSC_TRACKS) return 0;
+    for (unsigned r = 0; r < VSC_MOD_ROUTES; ++r)
+        if (vsc.route[t][r].param == param && vsc.route[t][r].src == src) return vsc.route[t][r].depth;
+    return 0;
+}
+void vsc_macro_set(unsigned m, unsigned t, unsigned param, int depth)
+{
+    if (m >= VSC_MACROS || t >= VSC_TRACKS || param >= VSC_NP) return;
+    if (depth > 127) depth = 127;
+    if (depth < -127) depth = -127;
+    struct vsc_mroute *free_slot = 0;
+    for (unsigned r = 0; r < VSC_MACRO_ROUTES; ++r) {
+        struct vsc_mroute *ro = &vsc.macro[m][r];
+        if (ro->param == param && ro->track == t) {
+            if (!depth) { ro->param = 255; ro->depth = 0; }
+            else ro->depth = (int8_t)depth;
+            return;
+        }
+        if (ro->param == 255 && !free_slot) free_slot = ro;
+    }
+    if (depth && free_slot) { free_slot->track = (uint8_t)t; free_slot->param = (uint8_t)param; free_slot->depth = (int8_t)depth; }
+}
+int vsc_macro_get(unsigned m, unsigned t, unsigned param)
+{
+    if (m >= VSC_MACROS) return 0;
+    for (unsigned r = 0; r < VSC_MACRO_ROUTES; ++r)
+        if (vsc.macro[m][r].param == param && vsc.macro[m][r].track == t) return vsc.macro[m][r].depth;
+    return 0;
+}

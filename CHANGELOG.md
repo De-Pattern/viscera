@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.3
+
+- **Fixed (the reason 0.2.2 never started on a real FM-1):** Viscera's screen.c replaces M-VAVE's, and it never brought up the board: it didn't start the panel scanner (`fm1_controls_init`) or set up and switch on the LCD (`fm1_screen_init`). The linker dropped both, so the shipped firmware didn't contain them, and it then sent frames to a display that was never set up. Viscera now does what M-VAVE's start-up does, in the same order: panel, LEDs off, display.
+- **Fixed:** safe mode (OCT- and OCT+ held at power-on) could never trigger, because the buttons were read before the scanner was running. They're read after it now.
+- **New:** a start guard. Two starts in a row that never ran well (8 seconds) make the next power-on start in safe mode, where the install page can reinstall. Its count and Viscera's settings are read and written on the first control pass, not at start-up (the SDK allows flash only from the control task).
+- **New:** the build refuses a firmware that doesn't contain the board start-up.
+- **Changed:** the stock-engine removal from 0.2.2 is narrowed to the engines' seven render functions. The library calls them only from its own render(), which Viscera never runs; the build checks that before changing anything and refuses otherwise. Everything else of the engines (init, notes, MIDI, parameters) keeps its code.
+
 ## 0.2.2
 
 - **New:** the panel lights up. The open page's button and PLAY light, REC blinks while recording, the octave buttons show the octave, the pads show steps and the playhead on SEQ, scenes on ARP and tracks on HOME, and held keys light.
@@ -11,7 +19,6 @@
 - **Changed:** BACKLIT, KNOB CC, METRO, the MIDI learn mappings and the sounds belong to the FM-1. They are kept through power-off and loading a project, in their own flash sector (in the emulator, in the browser).
 - **Changed:** SETTINGS moved to GLO (press GLO on SPACE). SAVE is where things are kept: PROJECT, then SOUNDS.
 - **New:** SETTINGS → AUDIO IN (the second view under GLO): every way sound gets in, in one place. Bluetooth audio on/off and its state, USB audio, level meters for both, and the selected track's INPUT, level and monitoring. PRESETS picks the track; REC opens its MATERIAL page. The FM-1 has no analogue input; samples are loaded over USB with M-VAVE's workbench.
-- **Changed:** M-VAVE's stock sound engines (DX7, 303, PSG, 808, pluck, sampler) are left out of the firmware: Viscera never played them. About 36 KB of flash and 35 KB of RAM come back for Viscera.
 - **Changed:** LFO opens the MATRIX first, then MOD 1–4. The matrix lists every route on every track, with live bars, and its knobs are SOURCE, DEVICE, PARAM and AMOUNT (REC: bipolar or unipolar). DEVICE walks Viscera's pages (each track's MATERIAL to MODS, then SPACE, PERFORM and MASTER) and PARAM follows the page's knob order. A NEW row makes a route with any knob.
 - **New:** a modulator on one track can move another track's parameters, from the matrix or with LFO + a knob on MIX.
 - **New:** while LFO is held, the bottom line says which modulator a knob turn maps.

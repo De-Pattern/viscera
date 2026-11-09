@@ -24,4 +24,7 @@ int vsc_fm1_load(unsigned slot);
 /* The FM-1's own settings: loaded at start, written when changed (control task). */
 void vsc_fm1_device_load(void);
 int vsc_fm1_device_save(void);
+/* The start guard: starts since the last good one (-1: no flash), and marking a good one. */
+int vsc_fm1_boot_begin(void);
+int vsc_fm1_boot_good(void);
 #endif

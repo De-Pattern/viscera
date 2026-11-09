@@ -41,6 +41,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--sdk', help='existing fm1_open V14 checkout (cloned at the pinned commit if absent)')
     ap.add_argument('--version', default=open(os.path.join(root, 'VERSION')).read().strip())
+    ap.add_argument('--keep-engines', action='store_true',
+                    help="link M-VAVE's library unchanged (the engines' render functions stay; the app no longer fits)")
     a = ap.parse_args()
     tc = os.environ.get('JIELI_TOOLCHAIN', os.path.expanduser('~/.jieli/toolchain'))
     bin_ = os.path.join(tc, 'pi32v2', 'bin')
@@ -120,10 +122,13 @@ def main():
     linker = linker.replace('@SBC_DECODER@', 'sbc_decoder\n').replace('@ACL_TX_EXTRA@', ' + 1024').replace('@ACL_RX_EXTRA@', ' + 4096')
     open(os.path.join(out, 'generated', 'linker'), 'w').write(linker)
     elf = os.path.join(out, 'sdk.elf')
-    # the stock sound engines stay out (tools/strip_engines.py): Viscera never plays them
-    engine_lib = os.path.join(out, 'libfm1_engine_viscera.a')
-    run([sys.executable, os.path.join(here, 'strip_engines.py'), os.path.join(sdk, 'lib', 'libfm1_engine.a'), engine_lib,
-         '--toolchain', bin_, '--report', os.path.join(out, 'engines.json')])
+    # the stock engines' render functions stay out (tools/strip_engines.py): the library
+    # calls them only from its own render path, which Viscera never runs
+    engine_lib = os.path.join(sdk, 'lib', 'libfm1_engine.a')
+    if not a.keep_engines:
+        engine_lib = os.path.join(out, 'libfm1_engine_viscera.a')
+        run([sys.executable, os.path.join(here, 'strip_engines.py'), os.path.join(sdk, 'lib', 'libfm1_engine.a'), engine_lib,
+             '--toolchain', bin_, '--report', os.path.join(out, 'engines.json')])
     link = ['--plugin', os.path.join(bin_, 'LLVMgold.so'), '-o', elf] + objects + [
         '-flto', '--plugin-opt=-pi32v2-always-use-itblock=false', '--plugin-opt=-enable-ipra=true',
         '--plugin-opt=-pi32v2-merge-max-offset=4096', '--plugin-opt=-pi32v2-enable-simd=true', '--plugin-opt=mcpu=r3',
@@ -158,6 +163,12 @@ def main():
                    if n in syms and (syms[n][0] >> 24) == 0x02]
     if flash_audio:
         raise SystemExit('audio functions ended up in flash: ' + ', '.join(flash_audio))
+    # the board must be brought up: the panel scanner and the LCD. 0.2.2 shipped without
+    # either (screen.c never called them, so the linker dropped them) and never started.
+    missing = [n for n in ('fm1_controls_init', 'fm1_screen_init', 'fm1_device_start', 'groove_screen_init')
+               if n not in syms]
+    if missing:
+        raise SystemExit('board start-up missing from the firmware (nothing calls it): ' + ', '.join(missing))
 
     # package
     gen = os.path.join(out, 'generated')

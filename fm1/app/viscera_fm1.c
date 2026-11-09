@@ -197,13 +197,34 @@ int vsc_fm1_load(unsigned slot)
 
 /* The FM-1's own settings, in the sector after the eight project slots. */
 #define DEVICE_OFFSET (VSC_STORE_OFFSET + 8u * SLOT_BYTES)
-_Static_assert(sizeof(struct vsc_device) <= FM1_FLASH_SECTOR_BYTES, "device settings fit one sector");
+#define BOOT_AT (DEVICE_OFFSET + FM1_FLASH_SECTOR_BYTES - 16u)   /* the start guard: the sector's last 16 bytes */
+_Static_assert(sizeof(struct vsc_device) <= FM1_FLASH_SECTOR_BYTES - 16u, "device settings fit one sector, before the start guard");
 _Static_assert(8u * SLOT_BYTES + FM1_FLASH_SECTOR_BYTES <= VSC_STORE_BYTES, "the settings sector is inside the store");
 void vsc_fm1_device_load(void)
 {
     if (!vsc_fm1_storage_ok() || fm1_flash_read(DEVICE_OFFSET, &vsc_dev, sizeof vsc_dev) || !vsc_device_valid(&vsc_dev))
         vsc_device_defaults();
 }
+/* The start guard. Each start programs one more byte of a 16-byte erased area to 0
+ * (no erase needed: flash bits only go from 1 to 0); a start that runs well for a
+ * few seconds erases the sector again (rewriting the settings). So the count is the
+ * starts since the last good one. Returns that count before this start, or -1 if the
+ * flash can't be used (then there is no guard). */
+int vsc_fm1_boot_begin(void)
+{
+    uint8_t b[16];
+    if (!vsc_fm1_storage_ok() || fm1_flash_read(BOOT_AT, b, sizeof b)) return -1;
+    /* ours looks like zeros then 0xff; anything else (old sample data, a first start
+     * after installing) isn't a count: start the sector afresh and count from 0 */
+    unsigned tries = 0;
+    while (tries < sizeof b && b[tries] == 0u) ++tries;
+    for (unsigned i = tries; i < sizeof b; ++i)
+        if (b[i] != 0xffu) { if (vsc_fm1_device_save()) return -1; tries = 0; break; }
+    if (tries < sizeof b) { uint8_t z = 0; (void)fm1_flash_write(BOOT_AT + tries, &z, 1); }
+    return (int)tries;
+}
+/* a good start: clear the count (erases the sector and writes the settings back) */
+int vsc_fm1_boot_good(void) { return vsc_fm1_device_save(); }
 int vsc_fm1_device_save(void)
 {
     if (!vsc_fm1_storage_ok()) return -1;

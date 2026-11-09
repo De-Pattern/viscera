@@ -13,7 +13,12 @@
 static uint16_t pixels[VSC_SCREEN_W * VSC_BAND];
 static uint32_t band_hash[VSC_SCREEN_H / VSC_BAND];
 static unsigned next_band, bt_features, status_at, slots_at;
-static uint8_t safe_mode;   /* OCT- and OCT+ held at power-on: no engine, no UI, updates still work */
+static uint8_t safe_mode;   /* OCT- and OCT+ held at power-on, or two failed starts: no engine, updates still work */
+static uint8_t boot_pending;            /* this start hasn't yet been marked good */
+static uint8_t started;                 /* the first control pass has run start() */
+static uint32_t boot_at;
+#define BOOT_FAILED_STARTS 2u           /* starts that never ran well before safe mode takes over */
+#define BOOT_GOOD_MS 8000u              /* running this long counts as a good start */
 static uint32_t frame_at;
 
 static uint32_t hash(const uint16_t *p, unsigned n)
@@ -90,26 +95,60 @@ static void host(unsigned req, unsigned arg)
 
 void groove_screen_init(void)
 {
+    /* The panel and the display first, as M-VAVE's own start-up does: the scanner
+     * (keys, buttons, encoders, LEDs) and the LCD (its controller set up and switched
+     * on). Without these the screen stays dark and nothing on the panel answers. */
+    fm1_controls_init();
+    for (unsigned key = 0; key < 41; ++key) fm1_led_set(key, 0);
+    fm1_screen_init();
+    boot_at = fm1_millis();
+
+    /* safe mode: OCT- and OCT+ held. Give the scanner ~100 ms to see them. */
     struct fm1_controls c;
-    /* the panel scanner may need a moment after power-on: sample for ~60 ms */
     safe_mode = 0;
-    for (unsigned i = 0; i < 6 && !safe_mode; ++i) {
+    for (unsigned i = 0; i < 10 && !safe_mode; ++i) {
+        fm1_device_delay(10);
         fm1_controls_read(&c);
         safe_mode = (c.buttons & 3u) == 3u;       /* buttons 0 and 1: OCT- and OCT+ */
-        if (!safe_mode) fm1_device_delay(10);
     }
-    if (safe_mode) {
-        vsc_project_defaults(&vsc);               /* for the screen only: the engine never starts */
-        vsc_ui_init();
-        vsc_ui_notice("SAFE MODE: CONNECT TO REINSTALL", 0x7fffffffu);
+    /* the screen can draw from here; the engine starts on the first control pass,
+     * after the start guard (flash is for the control task only) */
+    vsc_project_defaults(&vsc);
+    vsc_ui_init();
+    if (safe_mode) vsc_ui_notice("SAFE MODE: CONNECT TO REINSTALL", 0x7fffffffu);
+    for (unsigned i = 0; i < VSC_SCREEN_H / VSC_BAND; ++i) band_hash[i] = 0;
+    next_band = 0;
+    started = 0;
+}
+
+/* First control pass: the FM-1's settings, the start guard, then the engine (or safe
+ * mode, after two starts that never ran well). */
+static void start(void)
+{
+    started = 1;
+    vsc_fm1_device_load();                       /* the settings first: the guard may rewrite their sector */
+    int tries = vsc_fm1_boot_begin();
+    boot_pending = tries >= 0;
+    if (safe_mode) return;
+    if (tries >= (int)BOOT_FAILED_STARTS) {
+        safe_mode = 1;
+        vsc_ui_notice("SAFE MODE: LAST STARTS FAILED", 0x7fffffffu);
         return;
     }
     vsc_fm1_start();
     vsc_ui_init();
     configure_bt(FM1_BT_AUDIO | FM1_BT_MIDI);
-    for (unsigned i = 0; i < VSC_SCREEN_H / VSC_BAND; ++i) band_hash[i] = 0;
-    next_band = 0;
     refresh_slots();
+}
+
+/* A start that has run for a while is a good one: clear the guard's count. In safe
+ * mode too, so the next power-on tries Viscera again. Only while stopped (it writes
+ * flash), and only once. */
+static void boot_check(uint32_t now)
+{
+    if (!boot_pending || now - boot_at < BOOT_GOOD_MS || (!safe_mode && vsc_meter.playing)) return;
+    boot_pending = 0;
+    (void)vsc_fm1_boot_good();
 }
 
 /* MIDI Machine Control from the transport layer: 1 stop, 2 play. */
@@ -152,8 +191,10 @@ void groove_screen_control(void)
     struct fm1_controls c;
     fm1_controls_read(&c);
     uint32_t now = fm1_millis();
+    if (!started) start();
     if (safe_mode) {
         /* only the screen: the engine never starts, so nothing can stall */
+        boot_check(now);
         if (fm1_screen_pending() != 0) return;
         if (next_band == 0) { if (now - frame_at < 250u) return; frame_at = now; }
         vsc_ui_paint_band(next_band * VSC_BAND, pixels);
@@ -170,6 +211,7 @@ void groove_screen_control(void)
     if (req) host(req, arg);
     leds(now);
     device_settings(now);
+    boot_check(now);
 
     if (now - status_at >= 250u) {
         status_at = now; refresh_status(); vsc_host.battery = (uint8_t)(c.battery >> 2);

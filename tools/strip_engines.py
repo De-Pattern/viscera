@@ -7,12 +7,10 @@ never plays them (board/audio.c calls vsc_fm1_render instead of the library's
 fm1_engine_render), but the library's own audio code still calls them, so the
 linker keeps them: about 26 KB of RAM code, plus their tables and state.
 
-This rewrites a copy of the library object so that every engine function symbol
-points at one tiny function that returns 0. Nothing that stays in the firmware
-can reach the engines' code any more, and --gc-sections drops it with
-everything only it used. The stub is only ever reached from the stock engine's
-render and note paths, which Viscera doesn't run; if anything did call it, it
-returns 0 and does nothing.
+This rewrites a copy of the library object so that the engines' seven render
+functions point at one tiny function that returns 0 (see RENDERS below for why
+they are unreachable in Viscera); --gc-sections then drops their code and what
+only they used. Everything else in the engines keeps its code.
 
   python3 tools/strip_engines.py LIB.a OUT.a --toolchain BIN [--report OUT.json]
 
@@ -25,10 +23,14 @@ Steps:
 """
 import argparse, json, os, re, struct, subprocess, sys, tempfile
 
-ENGINE = re.compile(r'^\.(volatile_ram_code\.fm1_|text\.)(synth_dx7|dx7|bass303|bass_|psg|PSG|drum808|pluck|sampledrum|fm1_dx7)', re.I)
-# Functions that hand back a pointer (parameter tables, names, the DX7 instance) keep
-# their own code: a caller may read through what they return, and 0 would not do.
-KEEP = re.compile(r'(_param|_name|_label|_create)$')
+# Only the engines' render functions: each is called from one place, the library's own
+# render(), which runs only for the stock audio path (fm1_engine_render and the
+# second core's render jobs it hands out). Viscera's audio interrupt never calls
+# fm1_engine_render, so these are never reached. Everything else (init, notes, MIDI,
+# parameters, panic) keeps its code. The script checks the callers before changing
+# anything and refuses if any other code calls one of them.
+RENDERS = ('synth_dx7_render', 'bass303_bank_render', 'psg_render', 'pluck_render',
+           'drum808_kit_render', 'drum808_kit_render_st', 'sampledrum_render')
 
 def run(cmd, **kw):
     r = subprocess.run(cmd, capture_output=True, **kw)
@@ -88,36 +90,57 @@ def main():
             raise SystemExit(f'unexpected stub size {len(stub)}')
 
         elf = Elf(open(obj, 'rb').read())
-        engine = {i for i, n in enumerate(elf.names) if ENGINE.match(n) and elf.sh[i][1] == 1 and elf.sh[i][2] & 4}   # PROGBITS, exec
-        if not engine:
-            raise SystemExit('no engine sections found: has the SDK changed?')
-        # the host: the smallest engine function that can hold the stub
-        host_name = min((elf.names[i] for i in engine if elf.sh[i][5] >= len(stub)), key=lambda n: elf.sh[elf.index(n)][5])
-        # its relocations go first (objcopy renumbers sections, so read the ELF again after)
-        if '.rela' + host_name in elf.names:
-            run([os.path.join(tc, 'objcopy'), '--remove-section', '.rela' + host_name, obj])
-        elf = Elf(open(obj, 'rb').read())
-        engine = {i for i, n in enumerate(elf.names) if ENGINE.match(n) and elf.sh[i][1] == 1 and elf.sh[i][2] & 4}
+        syms = list(elf.symbols())
+        index_of = {}
+        for k, (at, name, value, sz, info, shndx) in enumerate(syms):
+            if name in RENDERS and (info & 15) == 2:
+                if name in index_of:
+                    raise SystemExit('two functions named ' + name)
+                index_of[name] = (k, shndx, value, sz)
+        if set(index_of) != set(RENDERS):
+            raise SystemExit('render functions not found: ' + ', '.join(sorted(set(RENDERS) - set(index_of))) + ' (has the SDK changed?)')
+        # every reference to them must come from inside render() in the hub section
+        hub = elf.index('.volatile_ram_code')
+        rnd = [(v, sz) for (at, n, v, sz, info, sh) in syms if n == 'render' and sh == hub and (info & 15) == 2]
+        if len(rnd) != 1:
+            raise SystemExit("the library's render() not found where expected")
+        r0, rsz = rnd[0]
+        wanted = {k for (k, _, _, _) in index_of.values()}
+        for i, sh in enumerate(elf.sh):
+            if sh[1] != 4:   # SHT_RELA
+                continue
+            target = sh[7]   # sh_info: the section the relocations apply to
+            for e in range(sh[5] // 12):
+                off, info, add = struct.unpack_from('<IIi', elf.d, sh[4] + e * 12)
+                if info >> 8 in wanted and not (target == hub and r0 <= off < r0 + rsz):
+                    who = elf.names[target]
+                    raise SystemExit(f'{syms[info >> 8][1]} is also called from {who}+{off:#x}: not stubbing')
+        # the host: the smallest of their sections that can hold the stub
+        sec = {name: shndx for name, (k, shndx, v, sz) in index_of.items()}
+        for name, shndx in sec.items():
+            if index_of[name][2] != 0:
+                raise SystemExit(name + ' is not at the start of its own section')
+        host_name = min((elf.names[x] for x in sec.values() if elf.sh[x][5] >= len(stub)), key=lambda n: elf.sh[elf.index(n)][5])
         host = elf.index(host_name)
+        # its relocations go: it holds only the stub now (an empty relocation section)
+        if '.rela' + host_name in elf.names:
+            shoff, = struct.unpack_from('<I', elf.d, 32)
+            shentsize, = struct.unpack_from('<H', elf.d, 46)
+            struct.pack_into('<I', elf.d, shoff + elf.index('.rela' + host_name) * shentsize + 20, 0)   # sh_size = 0
         off, size = elf.sh[host][4], elf.sh[host][5]
-        body = (stub * (size // len(stub) + 1))[:size]
-        elf.d[off:off + size] = body
-
-        moved, kept_bytes = [], 0
+        elf.d[off:off + size] = (stub * (size // len(stub) + 1))[:size]
+        moved = []
         for at, name, value, sz, info, shndx in elf.symbols():
-            if shndx in engine and shndx != host and (info & 15) == 2 and not KEEP.search(name):   # STT_FUNC
-                struct.pack_into('<IH', elf.d, at + 4, 0, 0)               # st_value = 0 (st_size left)
-                struct.pack_into('<H', elf.d, at + 14, host)              # st_shndx = host
+            if name in RENDERS and (info & 15) == 2:
+                struct.pack_into('<I', elf.d, at + 4, 0)          # st_value = 0
+                struct.pack_into('<H', elf.d, at + 14, host)      # st_shndx = host
                 moved.append(name)
-        if not moved:
-            raise SystemExit('no engine functions moved')
+        engine = set()
         open(obj, 'wb').write(elf.d)
         if os.path.exists(a.out):
             os.remove(a.out)
         run([os.path.join(tc, 'ar'), 'rcs', os.path.abspath(a.out), members[0]], cwd=tmp)
-        engine_bytes = sum(elf.sh[i][5] for i in engine)
-        report = {'host': host_name, 'stub_bytes': len(stub), 'functions': len(moved), 'engine_sections': len(engine),
-                  'engine_code_bytes': engine_bytes}
+        report = {'host': host_name, 'stub_bytes': len(stub), 'functions': len(moved)}
         print('engines stubbed:', json.dumps(report))
         if a.report:
             json.dump(dict(report, moved=sorted(moved)), open(a.report, 'w'), indent=1)

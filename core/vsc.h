@@ -71,6 +71,11 @@ void vsc_mod_defaults(unsigned track, unsigned slot);
 const struct vsc_pinfo *vsc_gparam_info(unsigned p);
 /* Writes a short value label (up to 7 chars) into out. */
 void vsc_param_label(const struct vsc_pinfo *info, unsigned p, unsigned value, char out[8], int global);
+/* The panel's LEDs as the UI wants them: 0..13 buttons, 14..40 the 27 keys;
+ * 0 off, 1 the backlight's glow, 2 lit. */
+void vsc_ui_leds(uint8_t out[41]);
+/* CC 110-113 from MIDI: turn KNOB 1-4 of the page on screen (MIDI task). */
+void vsc_ui_knob_cc(unsigned knob, unsigned value);
 /* Every destination the mod matrix offers, in menu order (track and global codes). */
 unsigned vsc_mod_dest_count(void);
 unsigned vsc_mod_dest(unsigned i);
@@ -86,7 +91,7 @@ struct vsc_route { uint8_t src, param; int8_t depth; uint8_t flags; };   /* flag
 struct vsc_learn { uint8_t ch, cc, track, param; };
 #define VSC_LEARN 16
 #define VSC_GDEST 128
-#define VSC_FORMAT 3   /* project layout version: bump when the parameters change */
+#define VSC_FORMAT 4   /* project layout version: bump when the parameters change */
 struct vsc_mroute { uint8_t track, param; int8_t depth; uint8_t pad; };
 struct vsc_scene { uint8_t used, pad[3]; uint8_t t[VSC_TRACKS][VSC_NP]; uint8_t macro[VSC_MACROS]; };
 struct vsc_project {
@@ -100,8 +105,23 @@ struct vsc_project {
     struct vsc_mroute macro[VSC_MACROS][VSC_MACRO_ROUTES];
     struct vsc_step step[VSC_TRACKS][VSC_STEPS];
     struct vsc_scene scene[VSC_SCENES];
+};
+/* Settings that belong to the FM-1, not to a project: kept through power-off and
+ * whatever project loads. The platform stores them when vsc_dev_changed moves. */
+enum { BACKLIGHT_OFF, BACKLIGHT_LOW, BACKLIGHT_MID, BACKLIGHT_HIGH };
+struct vsc_device {
+    uint32_t magic, version, bytes, crc;
+    uint8_t backlight, knob_cc, metro, pad;
     struct vsc_learn learn[VSC_LEARN];
 };
+#define VSC_DEV_MAGIC 0x44435356u   /* 'VSCD' */
+extern struct vsc_device vsc_dev;
+extern volatile uint32_t vsc_dev_changed;   /* bumped on every change */
+void vsc_device_defaults(void);
+int vsc_device_valid(const struct vsc_device *d);
+void vsc_device_seal(void);
+/* Learned controls let go and wait to be picked up again (after a project or scene change). */
+void vsc_learn_release(void);
 #define VSC_MAGIC 0x31435356u /* "VSC1" */
 
 /* ---- Platform services (implemented per target) ----------------------- */
@@ -205,6 +225,7 @@ struct vsc_host_status {
     uint8_t bt_audio, bt_midi, bt_audio_connected, bt_audio_playing, usb_connected;
     uint8_t ble_role, ble_state, ble_count;
     char ble_name[8][16];
+    uint8_t cpu, cpu_peak;            /* render load, percent */
     uint8_t slot_used[VSC_PROJECTS];
     char slot_name[VSC_PROJECTS][12];
     uint8_t storage_ok, battery;

@@ -5,8 +5,9 @@
 #include <stddef.h>
 #include "instrument.h"
 
-/* Project storage: the top 64 KB of the sample-bank area. */
-#define VSC_STORE_BYTES  65536u
+/* Project storage: the top 68 KB of the sample-bank area: eight 8 KB project
+ * slots, then one 4 KB sector for the FM-1's own settings. */
+#define VSC_STORE_BYTES  69632u
 #define VSC_STORE_OFFSET ((uint32_t)GROOVE_LIBRARY_OFFSET - VSC_STORE_BYTES)
 #define VSC_SAMPLE_LIMIT ((uint32_t)GROOVE_SAMPLE_LIMIT - VSC_STORE_BYTES)
 
@@ -20,4 +21,7 @@ int vsc_fm1_storage_ok(void);
 int vsc_fm1_slot_info(unsigned slot, char name[12]);
 int vsc_fm1_save(unsigned slot);
 int vsc_fm1_load(unsigned slot);
+/* The FM-1's own settings: loaded at start, written when changed (control task). */
+void vsc_fm1_device_load(void);
+int vsc_fm1_device_save(void);
 #endif

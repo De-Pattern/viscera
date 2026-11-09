@@ -25,6 +25,7 @@ void vsc_fm1_start(void)
 {
     vsc_init();
     vsc_project_defaults(&vsc);
+    vsc_fm1_device_load();
     ready = 1;
 }
 
@@ -172,7 +173,7 @@ int vsc_fm1_load(unsigned slot)
     if (slot >= VSC_PROJECTS) return -1;
     uint32_t base = slot_offset(slot), head[4];
     if (fm1_flash_read(base, head, sizeof head)) return -3;
-    if (head[0] != VSC_MAGIC || head[1] != 1 || head[2] != sizeof(struct vsc_project)) return -4;
+    if (head[0] != VSC_MAGIC || head[1] != VSC_FORMAT || head[2] != sizeof(struct vsc_project)) return -4;
     uint8_t buf[256];
     uint32_t c = 0xffffffffu, at = offsetof(struct vsc_project, name), end = sizeof(struct vsc_project);
     while (at < end) {
@@ -188,5 +189,25 @@ int vsc_fm1_load(unsigned slot)
     vsc_event(EV_STOP, 0, 0, 0);
     vsc_event(EV_PANIC, 0, 0, 0);
     if (fm1_flash_read(base, &vsc, sizeof vsc)) return -3;
+    vsc_learn_release();
+    return 0;
+}
+
+/* The FM-1's own settings, in the sector after the eight project slots. */
+#define DEVICE_OFFSET (VSC_STORE_OFFSET + 8u * SLOT_BYTES)
+_Static_assert(sizeof(struct vsc_device) <= FM1_FLASH_SECTOR_BYTES, "device settings fit one sector");
+_Static_assert(8u * SLOT_BYTES + FM1_FLASH_SECTOR_BYTES <= VSC_STORE_BYTES, "the settings sector is inside the store");
+void vsc_fm1_device_load(void)
+{
+    static struct vsc_device d;
+    if (!vsc_fm1_storage_ok() || fm1_flash_read(DEVICE_OFFSET, &d, sizeof d)) return;
+    if (vsc_device_valid(&d)) vsc_memcpy(&vsc_dev, &d, sizeof d);
+}
+int vsc_fm1_device_save(void)
+{
+    if (!vsc_fm1_storage_ok()) return -1;
+    vsc_device_seal();
+    if (fm1_flash_erase(DEVICE_OFFSET)) return -3;
+    if (fm1_flash_write(DEVICE_OFFSET, &vsc_dev, sizeof vsc_dev)) return -3;
     return 0;
 }

@@ -163,6 +163,7 @@ static uint8_t mod_enum[4][VSC_MOD_PARAMS];
 static uint8_t vsc_tparam_max[VSC_NP], vsc_gparam_max[VSC_NG];   /* RAM copies for the audio context */
 static void handle_panic(void);
 static float main_comp_env;
+static VSC_HOT void metro_tick(void);
 volatile uint8_t vsc_learn_armed, vsc_learn_track, vsc_learn_param, vsc_learn_seen;
 static uint8_t space_frozen;
 static uint32_t frame_counter;
@@ -1194,7 +1195,7 @@ static VSC_HOT void sequencer(unsigned n)
     }
     if (!seq_running) return;
     if (follow_clock()) { /* MIDI clock: steps fire on every sixth pulse */
-        while (seq_ext_pending) { --seq_ext_pending; fire_step(); ++seq_step; }
+        while (seq_ext_pending) { --seq_ext_pending; metro_tick(); fire_step(); ++seq_step; }
         return;
     }
     float step_frames = 15.f / tempo_now * (float)VSC_SR;
@@ -1204,8 +1205,17 @@ static VSC_HOT void sequencer(unsigned n)
     if (seq_phase >= this_len) {
         seq_phase -= this_len;
         ++seq_step;
+        metro_tick();
         fire_step();
     }
+}
+/* METRO: a click on every beat, louder on the bar, straight to the output */
+static float metro_env, metro_ph, metro_inc;
+static VSC_HOT void metro_tick(void)
+{
+    if (!vsc_dev.metro || (seq_step & 3u)) return;
+    metro_env = 1.f; metro_ph = 0.f;
+    metro_inc = ((seq_step & 15u) == 0 ? 2400.f : 1600.f) / (float)VSC_SR;
 }
 static VSC_HOT void seq_start(int from_zero)
 {
@@ -1249,6 +1259,24 @@ static VSC_HOTDATA const uint8_t cc_global[128] = {
     [28] = G_M0 + 1, [29] = G_M1 + 1, [30] = G_M2 + 1, [31] = G_M3 + 1,
     [102] = G_M4 + 1, [103] = G_M5 + 1, [104] = G_M6 + 1, [105] = G_M7 + 1, [106] = G_SWING + 1,
 };
+/* pickup state for learned controls; released when the sound changes underneath them */
+static uint8_t learn_held[VSC_LEARN];
+static int16_t learn_last[VSC_LEARN];
+void vsc_learn_release(void) { for (unsigned l = 0; l < VSC_LEARN; ++l) { learn_held[l] = 0; learn_last[l] = -1; } }
+/* the parameter's value on the CC's 0..127 scale, -1 if it has none */
+static VSC_HOT int cc_value_now(unsigned track, unsigned code)
+{
+    if (code < VSC_NP) {
+        if (track >= VSC_TRACKS) return -1;
+        unsigned max = code >= P_MOD0 && code < P_MOD0 + 4 * VSC_MOD_PARAMS ? 127u : vsc_tparam_max[code];
+        return max ? (int)((vsc.t[track][code] * 127u + max / 2u) / max) : -1;
+    }
+    if (code >= VSC_GDEST && code < VSC_GDEST + VSC_NG) {
+        unsigned g = code - VSC_GDEST, max = vsc_gparam_max[g];
+        return max ? (int)((vsc.g[g] * 127u + max / 2u) / max) : -1;
+    }
+    return -1;
+}
 static VSC_HOT void set_from_cc(unsigned track, unsigned code, unsigned value)
 {
     if (code < VSC_NP) {
@@ -1265,18 +1293,31 @@ static VSC_HOT void midi_cc(unsigned ch, unsigned cc, unsigned value)
     if (vsc_learn_armed) {
         struct vsc_learn *slot = 0;
         for (unsigned l = 0; l < VSC_LEARN; ++l) {
-            struct vsc_learn *L = &vsc.learn[l];
+            struct vsc_learn *L = &vsc_dev.learn[l];
             if (L->param != 255 && L->ch == ch && L->cc == cc) { slot = L; break; }
             if (L->param == 255 && !slot) slot = L;
         }
-        if (!slot) slot = &vsc.learn[VSC_LEARN - 1];
+        if (!slot) slot = &vsc_dev.learn[VSC_LEARN - 1];
         slot->ch = (uint8_t)ch; slot->cc = (uint8_t)cc; slot->track = vsc_learn_track; slot->param = vsc_learn_param;
-        vsc_learn_armed = 0; ++vsc_learn_seen;
+        vsc_learn_armed = 0; ++vsc_learn_seen; ++vsc_dev_changed;
+        learn_held[slot - vsc_dev.learn] = 1;          /* the control that was just moved has it */
     }
     int learned = 0;
     for (unsigned l = 0; l < VSC_LEARN; ++l) {
-        const struct vsc_learn *L = &vsc.learn[l];
-        if (L->param != 255 && L->ch == ch && L->cc == cc) { set_from_cc(L->track, L->param, value); learned = 1; }
+        const struct vsc_learn *L = &vsc_dev.learn[l];
+        if (L->param == 255 || L->ch != ch || L->cc != cc) continue;
+        learned = 1;
+        /* pickup: a control takes hold once it reaches (or passes) the parameter's value,
+         * so a page, project or scene change never makes a value jump */
+        if (!learn_held[l]) {
+            int now = cc_value_now(L->track, L->param);
+            int prev = learn_last[l];
+            if (now < 0 || (prev >= 0 && ((prev <= now && (int)value >= now) || (prev >= now && (int)value <= now))) ||
+                ((int)value - now <= 1 && now - (int)value <= 1)) learn_held[l] = 1;
+            learn_last[l] = (int16_t)value;
+            if (!learn_held[l]) continue;
+        }
+        set_from_cc(L->track, L->param, value);
     }
     if (learned || cc >= 128) return;
     if (cc == 123 || cc == 120) { handle_panic(); return; }      /* all notes / sound off */
@@ -1295,7 +1336,7 @@ static VSC_HOT void handle(uint32_t e)
 {
     unsigned type = e & 15u, t = (e >> 4) & 15u, a = (e >> 8) & 255u, b = (e >> 16) & 255u;
     if (type == EV_CC) { midi_cc(t, a, b); return; }
-    if (type == EV_PC) { if (a < VSC_SCENES) vsc_scene_recall(a); return; }
+    if (type == EV_PC) { if (a < VSC_SCENES) { vsc_scene_recall(a); vsc_learn_release(); } return; }
     if (t >= VSC_TRACKS) t = 0;
     /* transport from MIDI counts only when the clock setting allows it */
     int ext_ok = vsc.g[G_CLOCK] != CLOCK_INT;
@@ -1352,6 +1393,8 @@ static VSC_HOT void drain(struct queue *q)
 void vsc_init(void)
 {
     ulaw_build();
+    vsc_device_defaults();
+    vsc_learn_release();
     for (unsigned p = 0; p < VSC_NP; ++p) is_enum[p] = (vsc_tparam_info(0, p)->flags & VSC_PF_ENUM) != 0;
     for (unsigned ty = 0; ty < 4; ++ty)
         for (unsigned kk = 0; kk < VSC_MOD_PARAMS; ++kk) mod_enum[ty][kk] = (vsc_mod_info(ty, kk)->flags & VSC_PF_ENUM) != 0;
@@ -1452,7 +1495,12 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
             main_comp_env += (a - main_comp_env) * (a > main_comp_env ? 0.01f : 0.0003f);
             gl *= (1.f + mc * 2.f) / (1.f + mc * 8.f * main_comp_env);
         }
-        float l = tanha(out[2 * i] * gl), r = tanha(out[2 * i + 1] * gl);
+        float click = 0.f;
+        if (metro_env > 0.0005f) {
+            metro_ph += metro_inc; if (metro_ph >= 1.f) metro_ph -= 1.f;
+            click = (metro_ph < 0.5f ? 0.3f : -0.3f) * metro_env; metro_env *= 0.9965f;   /* ~15 ms */
+        }
+        float l = tanha(out[2 * i] * gl) + click, r = tanha(out[2 * i + 1] * gl) + click;
         out[2 * i] = l; out[2 * i + 1] = r;
         main_prev[i] = (l + r) * 0.5f;
         vsc_scope[0][i] = l; vsc_scope[1][i] = r;

@@ -136,9 +136,11 @@ static const struct slot v_steps[2][4] = {{{S_STEP, 0, 0}, {S_STEP, 1, 0}, {S_ST
 static const struct slot v_carom[3][4] = {{T(P_SEQM), T(P_RSPEED), T(P_RGRAV), T(P_RLOSS)},
                                           {T(P_RSPREAD), T(P_RQUANT), T(P_RCOUNT), T(P_RWALLS)},
                                           {T(P_RJITTER), T(P_RGATE), N, N}};
-static const struct slot v_settings[3][4] = {{{S_SET, 0, 0}, {S_SET, 1, 0}, {S_SET, 2, 0}, {S_SET, 3, 0}},
+static const struct slot v_settings[4][4] = {{{S_SET, 0, 0}, {S_SET, 1, 0}, {S_SET, 2, 0}, {S_SET, 3, 0}},
                                              {G(G_CLOCK), {S_TEMPO, 0, 0}, G(G_SWING), G(G_INMON)},
+                                             {{S_SET, 4, 0}, {S_SET, 5, 0}, {S_SET, 6, 0}, N},
                                              {N, N, N, N}};
+#define SET_LEARN 3   /* SETTINGS views: 0 Bluetooth, 1 clock, 2 panel, 3 MIDI learn */
 #define MATRIX_VIEW 12   /* MODS: views 0..11 are four modulators x three pages, then the matrix */
 static const char *const mtype_name[4] = {"WAVE", "RANDOM", "FOLLOW", "ADSR"};
 
@@ -161,7 +163,8 @@ static unsigned row_count(void)
     switch (page) {
     case PG_MIX: return 6;
     case PG_MAT: { unsigned m = vsc.t[track][P_MODE]; return m == MODE_PLAY ? 2 : m == MODE_LOOP ? 3 : m == MODE_KEYS ? 4 : 1; }
-    case PG_GRAIN: case PG_COLOR: case PG_SCENE: case PG_SETTINGS: return 3;
+    case PG_GRAIN: case PG_COLOR: case PG_SCENE: return 3;
+    case PG_SETTINGS: return 4;
     case PG_FILTER: { unsigned f = vsc.t[track][P_FTYPE]; return f == FT_RING ? 4 : f == FT_PEAKS ? 2 : 1; }
     case PG_MODS: return MATRIX_VIEW + 1;
     case PG_SPACE: return 2;
@@ -205,7 +208,8 @@ static struct slot slot_at(unsigned i)
     }
 }
 static const char *const step_names[6] = {"NOTE", "VELO", "LOCK", "VALUE", "LENGTH", "TRIG"};
-static const char *const set_names[4] = {"BT AUD", "BT MIDI", "ROLE", "UNPAIR"};
+static const char *const set_names[7] = {"BT AUD", "BT MIDI", "ROLE", "UNPAIR", "BACKLIT", "KNOB CC", "METRO"};
+static const char *const backlight_names[4] = {"OFF", "LOW", "MID", "HIGH"};
 static const char *const mat_names[4] = {"SOURCE", "DEST", "DEPTH", "POLAR"};
 static void copy_n(char *d, const char *s, unsigned n) { unsigned i = 0; while (s[i] && i < n) { d[i] = s[i]; ++i; } d[i] = 0; }
 static void slot_text(struct slot s, char name[10], char val[10], float *bar)
@@ -228,11 +232,14 @@ static void slot_text(struct slot s, char name[10], char val[10], float *bar)
     } else if (s.kind == S_TEMPO) {
         copy_n(name, "TEMPO", 7); num(val, vsc.tempo);
     } else if (s.kind == S_SET) {
-        copy_n(name, set_names[s.id & 3], 7);
+        copy_n(name, set_names[s.id < 7 ? s.id : 0], 7);
         switch (s.id) {
         case 0: copy_n(val, vsc_host.bt_audio ? "ON" : "OFF", 7); break;
         case 1: copy_n(val, vsc_host.bt_midi ? "ON" : "OFF", 7); break;
         case 2: copy_n(val, vsc_host.ble_role ? "CENTRL" : "PERIPH", 7); break;
+        case 4: copy_n(val, backlight_names[vsc_dev.backlight & 3], 7); break;
+        case 5: copy_n(val, vsc_dev.knob_cc ? "110-3" : "OFF", 7); break;
+        case 6: copy_n(val, vsc_dev.metro ? "ON" : "OFF", 7); break;
         default: copy_n(val, "TURN", 7); break;
         }
     } else if (s.kind == S_MAT) {
@@ -290,7 +297,10 @@ static void edit_slot(struct slot s, int d, unsigned *req, unsigned *arg)
         if (s.id == 0) { *arg = !vsc_host.bt_audio; *req = HOST_BT_AUDIO; }
         else if (s.id == 1) { *arg = !vsc_host.bt_midi; *req = HOST_BT_MIDI; }
         else if (s.id == 2) { *arg = !vsc_host.ble_role; *req = HOST_BLE_ROLE; }
-        else *req = HOST_BLE_FORGET;
+        else if (s.id == 3) *req = HOST_BLE_FORGET;
+        else if (s.id == 4) { vsc_dev.backlight = (uint8_t)clampi((int)vsc_dev.backlight + d, 0, BACKLIGHT_HIGH); ++vsc_dev_changed; }
+        else if (s.id == 5) { vsc_dev.knob_cc = d > 0; ++vsc_dev_changed; }
+        else if (s.id == 6) { vsc_dev.metro = d > 0; ++vsc_dev_changed; }
     } else if (s.kind == S_MAT) {
         struct vsc_route *ro = &vsc.route[track][route_sel % VSC_MOD_ROUTES];
         if (s.id == 0) ro->src = (uint8_t)clampi((int)ro->src + d, 0, VSC_MODS - 1);
@@ -327,6 +337,7 @@ static void say(const char *a, const char *b, uint32_t ms)
 }
 
 /* ------------------------------------------------------------- input */
+static void apply_knob_cc(unsigned *req, unsigned *arg);
 void vsc_ui_init(void) { notice = "VISCERA " VSC_VERSION; notice_until = 1500; }
 
 #define B(n) (1u << (n))
@@ -401,7 +412,7 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
         }
         else if (page == PG_PROJECT) { *arg = proj_slot; req = vsc_host.slot_used[proj_slot] ? HOST_LOAD : HOST_SAVE; }
         else if (page == PG_SETTINGS && row == 0) { if (vsc_host.ble_count) { *arg = set_dev; req = HOST_BLE_CONNECT; } else req = HOST_BLE_SCAN; }
-        else if (page == PG_SETTINGS && row == 2) { vsc.learn[learn_sel % VSC_LEARN].param = 255; vsc_ui_notice("MAPPING CLEARED", 800); }
+        else if (page == PG_SETTINGS && row == SET_LEARN) { vsc_dev.learn[learn_sel % VSC_LEARN].param = 255; ++vsc_dev_changed; vsc_ui_notice("MAPPING CLEARED", 800); }
         else if (page == PG_GRAIN) { vsc.t[track][P_GFREEZE] ^= 1; vsc_ui_notice(vsc.t[track][P_GFREEZE] ? "GRAINS LOCKED" : "GRAINS LISTENING", 900); }
         else if (page == PG_SPACE) { vsc_event(EV_ACTION, 0, ACT_SPACE_FREEZE, 0); vsc_ui_notice(vsc_meter.space_frozen ? "SPACE FLOWING" : "SPACE FROZEN", 900); }
         else if (page == PG_MAT && vsc.t[track][P_MODE] == MODE_PLAY) vsc_event(EV_ACTION, track, ACT_TAPE_REWIND, 0);
@@ -441,7 +452,7 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
         }
         case PG_PROJECT: proj_slot = (unsigned)clampi((int)proj_slot + d, 0, VSC_PROJECTS - 1); break;
         case PG_SETTINGS:
-            if (row == 2) learn_sel = (unsigned)clampi((int)learn_sel + d, 0, VSC_LEARN - 1);
+            if (row == SET_LEARN) learn_sel = (unsigned)clampi((int)learn_sel + d, 0, VSC_LEARN - 1);
             else set_dev = (unsigned)clampi((int)set_dev + d, 0, vsc_host.ble_count ? vsc_host.ble_count - 1 : 0);
             break;
         case PG_SCENE: vsc.g[G_TARGET] = (uint8_t)clampi((int)vsc.g[G_TARGET] + d, 0, VSC_SCENES - 1); break;
@@ -505,6 +516,7 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
             vsc_event(EV_NOTE_OFF, track, note, 0);
         }
     }
+    apply_knob_cc(&req, arg);
     prev_buttons = (in->buttons & 0x7fffffffu) | used;
     prev_keys = in->keys;
     return req;
@@ -620,7 +632,8 @@ static void draw_knobs(void)
     case PG_SCENE: hint = "ARP+PAD: SCENE  ARP+KNOB: MAP MACRO"; break;
     case PG_STEPS: hint = vsc.t[track][P_SEQM] == SEQ_CAROM ? "PRESETS: STEPS  REC: ADD  HOLD: CLEAR" : "PRESETS: CAROM  OCT: PAGE  REC: REC"; break;
     case PG_PROJECT: hint = "PRESETS: SLOT REC: LOAD SAVE+PLAY: SAVE"; break;
-    case PG_SETTINGS: hint = row == 0 ? "PRESETS: DEVICE  REC: SCAN/CONNECT" : row == 2 ? "SAVE+KNOB: LEARN  REC: CLEAR" : "SELECT: PAGE"; break;
+    case PG_SETTINGS: hint = row == 0 ? "PRESETS: DEVICE  REC: SCAN/CONNECT" : row == SET_LEARN ? "SAVE+KNOB: LEARN  REC: CLEAR"
+                                  : row == 2 ? "KEPT THROUGH POWER-OFF" : "SELECT: PAGE"; break;
     default: hint = "SELECT: PAGE  ALGORITHM: TRACK"; break;
     }
     int live = notice && (int32_t)(notice_until - now_ms) > 0;
@@ -920,10 +933,25 @@ static void draw_vis(void)
         text(6, VIS_Y + 80, "PROGRAM CHANGE: SCENES.", C_DIM, 1);
         break;
     } else if (row == 2) {
+        /* PANEL: the FM-1's own settings, the version and the load */
+        text(6, VIS_Y + 4, "VISCERA " VSC_VERSION, C_FG, 1);
+        text(6, VIS_Y + 18, "THESE SETTINGS BELONG TO THE FM-1:", C_DIM, 1);
+        text(6, VIS_Y + 30, "KEPT THROUGH POWER-OFF AND LOADS.", C_DIM, 1);
+        text(6, VIS_Y + 50, "BACKLIT: HOW THE UNLIT KEYS GLOW", C_DIM, 1);
+        text(6, VIS_Y + 62, "KNOB CC: CC 110-113 TURN KNOB 1-4", C_DIM, 1);
+        text(6, VIS_Y + 74, "METRO: A CLICK ON EVERY BEAT", C_DIM, 1);
+        if (vsc_host.cpu == 255) { text(6, VIS_Y + 100, "CPU: SHOWN ON THE FM-1", C_DIM, 1); break; }   /* the emulator */
+        char b[16] = "CPU "; num(b + 4, vsc_host.cpu); unsigned l = (unsigned)vsc_strlen(b); b[l] = '%'; b[l + 1] = 0;
+        text(6, VIS_Y + 100, b, vsc_host.cpu > 85 ? C_WARN : C_FG, 1);
+        rect(60, VIS_Y + 102, 170, 3, C_PANEL);
+        rect(60, VIS_Y + 102, vsc_host.cpu * 170 / 100, 3, vsc_host.cpu > 85 ? C_WARN : C_FG);
+        if (vsc_host.cpu_peak) { int px0 = 60 + vsc_host.cpu_peak * 170 / 100; vline(px0 > 229 ? 229 : px0, VIS_Y + 99, 9, C_INK); }
+        break;
+    } else if (row == SET_LEARN) {
         int any = 0;
         unsigned first = learn_sel > 8 ? learn_sel - 8 : 0;
         for (unsigned l = first; l < first + 9 && l < VSC_LEARN; ++l) {
-            const struct vsc_learn *L = &vsc.learn[l];
+            const struct vsc_learn *L = &vsc_dev.learn[l];
             int y = VIS_Y + 3 + (int)(l - first) * 15;
             if (l == learn_sel) rect(0, y - 3, VSC_SCREEN_W, 13, C_PANEL);
             if (L->param == 255) { text(6, y, "--", C_LINE, 1); continue; }
@@ -1152,4 +1180,70 @@ void vsc_ui_paint_band(unsigned y0, uint16_t *pixels)
     frame_box();
     draw_vis();
     draw_knobs();
+}
+
+/* ------------------------------------------------------------- panel LEDs */
+void vsc_ui_leds(uint8_t out[41])
+{
+    uint8_t glow = vsc_dev.backlight ? 1 : 0;
+    for (unsigned i = 0; i < 41; ++i) out[i] = glow;
+    /* the open page's button */
+    static const uint8_t page_btn[PG_COUNT] = {BTN_HOME, BTN_EDIT, BTN_FX, BTN_SCL, BTN_ENV, BTN_LFO, BTN_GLO,
+                                               BTN_ARP, BTN_SEQ, BTN_SAVE, BTN_SAVE};
+    out[page_btn[page]] = 2;
+    if (vsc_meter.playing) out[BTN_PLAY] = 2;
+    int recording = live_rec || (vsc.t[track][P_MODE] == MODE_LOOP && (vsc_meter.loop_state[track] == 1 || vsc_meter.loop_state[track] == 3));
+    if (recording) out[BTN_REC] = (now_ms / 250u) & 1u ? 2 : 0;
+    if (octave < 2) out[BTN_OCTD] = 2;
+    if (octave > 2) out[BTN_OCTU] = 2;
+    if (temp_on) out[BTN_OCTD] = out[BTN_OCTU] = 2;
+    for (unsigned b = 0; b < 14; ++b) if (prev_buttons & (1u << b)) out[b] = 2;
+    /* keys: what's held, the steps of the pattern on STEPS, scenes with ARP, tracks with HOME */
+    if (page == PG_STEPS && vsc.t[track][P_SEQM] == SEQ_STEPS) {
+        unsigned len = vsc.length[track] ? vsc.length[track] : 16;
+        for (unsigned k = 0; k < 16; ++k) {
+            unsigned st = step_page * 16 + k;
+            out[14 + k] = st >= len ? 0 : vsc.step[track][st].on ? 2 : glow;
+            if (vsc_meter.playing && vsc_meter.step[track] == st) out[14 + k] = vsc.step[track][st].on ? 0 : 2;
+        }
+    }
+    if (prev_buttons & (1u << BTN_ARP)) for (unsigned k = 0; k < VSC_SCENES; ++k) out[14 + k] = vsc.scene[k].used ? 2 : glow;
+    if (prev_buttons & (1u << BTN_HOME)) for (unsigned k = 23; k < 27; ++k) out[14 + k] = k - 23 == track ? 2 : glow;
+    for (unsigned k = 0; k < 27; ++k) if (prev_keys & (1u << k)) out[14 + k] = 2;
+}
+
+/* CC 110-113: the knob of that column on the page on screen, with pickup. Called from the
+ * MIDI task; it only queues, the control task applies it in vsc_ui_update. */
+static volatile uint8_t knob_cc_val[4], knob_cc_new[4];
+static int16_t knob_cc_last[4] = {-1, -1, -1, -1};
+static uint8_t knob_cc_held[4];
+static unsigned knob_cc_view = 0xffff;
+void vsc_ui_knob_cc(unsigned knob, unsigned value)
+{
+    if (knob > 3) return;
+    knob_cc_val[knob] = (uint8_t)value; knob_cc_new[knob] = 1;
+}
+static void apply_knob_cc(unsigned *req, unsigned *arg)
+{
+    unsigned view = page * 64u + row * 4u + track;
+    if (view != knob_cc_view) { knob_cc_view = view; for (unsigned k = 0; k < 4; ++k) { knob_cc_held[k] = 0; knob_cc_last[k] = -1; } }
+    for (unsigned k = 0; k < 4; ++k) {
+        if (!knob_cc_new[k]) continue;
+        knob_cc_new[k] = 0;
+        int v = knob_cc_val[k];
+        struct slot s = slot_at(k);
+        int cur = -1, max = 0;
+        if (s.kind == S_T || s.kind == S_TT) { unsigned t = s.kind == S_TT ? s.tk : track; max = vsc_tparam_info(t, s.id)->max; cur = vsc.t[t][s.id]; }
+        else if (s.kind == S_G) { max = vsc_gparam_info(s.id)->max; cur = vsc.g[s.id]; }
+        if (cur < 0 || !max) { knob_cc_last[k] = (int16_t)v; continue; }   /* steps, settings: not by CC */
+        int target = (v * max + 63) / 127, now127 = (cur * 127 + max / 2) / max, prev = knob_cc_last[k];
+        if (!knob_cc_held[k] && ((v - now127 <= 1 && now127 - v <= 1) ||
+            (prev >= 0 && ((prev <= now127 && v >= now127) || (prev >= now127 && v <= now127))))) knob_cc_held[k] = 1;
+        knob_cc_last[k] = (int16_t)v;
+        if (!knob_cc_held[k]) continue;
+        if (target == cur) continue;
+        if (s.kind == S_G) vsc.g[s.id] = (uint8_t)target;
+        else vsc.t[s.kind == S_TT ? s.tk : track][s.id] = (uint8_t)target;   /* absolute: no acceleration */
+        touch_at[k] = now_ms | 1u;
+    }
 }

@@ -24,7 +24,15 @@ void vsc_midi_in(unsigned port, const uint8_t *m, unsigned n, uint32_t now_ms)
     if (type == 0xc0 && n >= 2) { vsc_midi_event(EV_PC, ch, m[1] & 127u, 0); return; }
     if (n < 3) return;
     unsigned a = m[1] & 127u, b = m[2] & 127u;
-    if (type == 0xb0) { vsc_midi_event(EV_CC, ch, a, b); return; }
+    if (type == 0xb0) {
+        /* CC 110-113 turn KNOB 1-4 of the page on screen, on any channel (unless learned) */
+        if (a >= 110 && a <= 113 && vsc_dev.knob_cc) {
+            int learned = 0;
+            for (unsigned l = 0; l < VSC_LEARN; ++l) learned |= vsc_dev.learn[l].param != 255 && vsc_dev.learn[l].cc == a && vsc_dev.learn[l].ch == ch;
+            if (!learned) { vsc_ui_knob_cc(a - 110, b); return; }
+        }
+        vsc_midi_event(EV_CC, ch, a, b); return;
+    }
     if (ch >= VSC_TRACKS) return;
     if (type == 0x90) vsc_midi_event(b ? EV_NOTE_ON : EV_NOTE_OFF, ch, a, b);
     else if (type == 0x80) vsc_midi_event(EV_NOTE_OFF, ch, a, 0);

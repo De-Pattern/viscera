@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.2
+
+- **New:** the panel lights up. The open page's button and PLAY light, REC blinks while recording, the octave buttons show the octave, the pads show steps and the playhead on SEQ, scenes on ARP and tracks on HOME, and held keys light.
+- **New:** BACKLIT (SETTINGS → PANEL): how the unlit keys glow, OFF, LOW, MID or HIGH.
+- **New:** KNOB CC: CC 110–113 on any channel turn KNOB 1–4 of the page on screen, with pickup. It can be switched off.
+- **New:** learned CCs pick up too. A controller far from the value does nothing until it passes it, so nothing jumps.
+- **New:** METRO, a click on every beat with an accent on the bar, while playing.
+- **New:** SETTINGS → PANEL shows the version and the CPU load, with the peak.
+- **Changed:** BACKLIT, KNOB CC, METRO and the MIDI learn mappings belong to the FM-1. They are kept through power-off and loading a project, in their own flash sector (in the emulator, in the browser).
+- **Fixed:** a saved project would not load back (the format check compared against the wrong number).
+- **Changed:** projects saved by 0.2.1 don't load in 0.2.2 (MIDI learn moved out of the project).
+
 ## 0.2.1
 
 - **Changed:** on the SEQ page, PRESETS switches the sequencer between STEPS and CAROM (it was a knob on the second page). The bottom line says which way it goes; pads still pick steps.

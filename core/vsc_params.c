@@ -203,7 +203,6 @@ void vsc_project_defaults(struct vsc_project *p)
     for (unsigned g = 0; g < VSC_NG; ++g) p->g[g] = ginfo[g].def;
     for (unsigned m = 0; m < VSC_MACROS; ++m)
         for (unsigned r = 0; r < VSC_MACRO_ROUTES; ++r) { p->macro[m][r].param = 255; p->macro[m][r].depth = 0; }
-    for (unsigned l = 0; l < VSC_LEARN; ++l) p->learn[l].param = 255;
 }
 int vsc_project_valid(const struct vsc_project *p)
 {
@@ -334,4 +333,25 @@ void vsc_mod_dest_name(unsigned code, char out[10])
     out[i++] = s; out[i++] = '.';
     for (unsigned j = 0; n[j] && j < 7; ++j) out[i++] = n[j];
     out[i] = 0;
+}
+
+/* ---- the FM-1's own settings ---- */
+struct vsc_device vsc_dev;
+volatile uint32_t vsc_dev_changed;
+void vsc_device_defaults(void)
+{
+    vsc_memset(&vsc_dev, 0, sizeof vsc_dev);
+    vsc_dev.backlight = BACKLIGHT_LOW; vsc_dev.knob_cc = 1; vsc_dev.metro = 0;
+    for (unsigned l = 0; l < VSC_LEARN; ++l) vsc_dev.learn[l].param = 255;
+}
+void vsc_device_seal(void)
+{
+    vsc_dev.magic = VSC_DEV_MAGIC; vsc_dev.version = 1; vsc_dev.bytes = sizeof vsc_dev;
+    vsc_dev.crc = vsc_crc32(&vsc_dev.backlight, sizeof vsc_dev - offsetof(struct vsc_device, backlight));
+}
+int vsc_device_valid(const struct vsc_device *d)
+{
+    return d->magic == VSC_DEV_MAGIC && d->version == 1 && d->bytes == sizeof *d &&
+           d->crc == vsc_crc32(&d->backlight, sizeof *d - offsetof(struct vsc_device, backlight)) &&
+           d->backlight <= BACKLIGHT_HIGH;
 }

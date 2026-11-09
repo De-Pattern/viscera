@@ -63,7 +63,7 @@ static float in_bt[VSC_BLOCK * 2], out_buf[VSC_BLOCK * 2];
 static uint8_t have_input;
 W_EXPORT(input_buffer) float *w_input(void) { return in_bt; }
 W_EXPORT(output_buffer) float *w_output(void) { return out_buf; }
-W_EXPORT(init) void w_init(void) { vsc_init(); vsc_project_defaults(&vsc); vsc_ui_init(); }
+W_EXPORT(init) void w_init(void) { vsc_init(); vsc_project_defaults(&vsc); vsc_ui_init(); vsc_host.cpu = 255; }
 /* has_input: the page's live input (standing in for Bluetooth/USB audio) */
 W_EXPORT(render) void w_render(int has_input)
 {
@@ -145,5 +145,15 @@ W_EXPORT(mod_value) float w_mod_value(unsigned t, unsigned m) { return t < VSC_T
 W_EXPORT(track_peak) float w_track_peak(unsigned t) { return t < VSC_TRACKS ? vsc_meter.peak[t] : 0.f; }
 W_EXPORT(tempo_now) float w_tempo_now(void) { return vsc_meter.tempo; }
 W_EXPORT(playing) unsigned w_playing(void) { return vsc_meter.playing; }
-W_EXPORT(learn_entry) unsigned w_learn_entry(unsigned l) { return l < VSC_LEARN ? (unsigned)vsc.learn[l].ch | (unsigned)vsc.learn[l].cc << 8 | (unsigned)vsc.learn[l].track << 16 | (unsigned)vsc.learn[l].param << 24 : 0; }
+W_EXPORT(learn_entry) unsigned w_learn_entry(unsigned l) { return l < VSC_LEARN ? (unsigned)vsc_dev.learn[l].ch | (unsigned)vsc_dev.learn[l].cc << 8 | (unsigned)vsc_dev.learn[l].track << 16 | (unsigned)vsc_dev.learn[l].param << 24 : 0; }
 W_EXPORT(np) unsigned w_np(void) { return VSC_NP; }
+
+/* ---- the panel's LEDs and the FM-1's own settings ---- */
+static uint8_t leds[41];
+W_EXPORT(leds) uint8_t *w_leds(void) { vsc_ui_leds(leds); return leds; }
+W_EXPORT(device) struct vsc_device *w_device(void) { return &vsc_dev; }
+W_EXPORT(device_bytes) unsigned w_device_bytes(void) { return sizeof vsc_dev; }
+W_EXPORT(device_seal) void w_device_seal(void) { vsc_device_seal(); }
+W_EXPORT(device_check) int w_device_check(void) { return vsc_device_valid(&vsc_dev); }
+W_EXPORT(device_changed) unsigned w_device_changed(void) { return vsc_dev_changed; }
+W_EXPORT(cpu_set) void w_cpu_set(unsigned cpu) { vsc_host.cpu = (uint8_t)cpu; }

@@ -62,7 +62,8 @@ MIDI comes in from the FM-1's MIDI jack, USB and Bluetooth MIDI alike.
 
 - Notes on channels 1–4 play tracks 1–4.
 - **Clock** follows the CLOCK setting: AUTO follows MIDI clock whenever it arrives, MIDI always, INT never. Start, continue and stop drive the transport (except in INT). The tempo shown is measured from the clock. Clock is taken from one port at a time.
-- **MIDI learn**: hold SAVE and turn a knob, then move a controller: that CC drives the parameter. SETTINGS lists the mappings; REC clears one.
+- **MIDI learn**: hold SAVE and turn a knob, then move a controller: that CC drives the parameter. SETTINGS lists the mappings; REC clears one. Mappings belong to the FM-1, not the project, and pick up: the parameter doesn't move until the controller passes its value.
+- **KNOB CC**: CC 110–113 on any channel turn KNOB 1–4 of the page on screen, with pickup (unless that CC is learned). SETTINGS → PANEL switches it off.
 - **Fixed CCs** on a track's channel: 7 level, 10 pan, 11 send, 12 mix filter; 14–19 material (start, length, speed, pitch, level, SOS); 20–29 grain (pitch, rate, size, shape, scan, spray, detune, wet, feedback, reverse); 70–79 filter (cutoff, reso, decay, pitch, slope, tone, wet, waves, noise, tilt); 80–87 color (drive, comp, crush, tilt, noise, noise decay, noise tone, wet); 102–105 the four modulators' AMOUNT. On channel 16: 7 main, 9 master comp, 20 delay, 22 feedback, 23 delay tone, 24 reverb, 25 size, 26 damp, 27 morph, 28–31 and 102–105 macros 1–8, 106 swing. 120/123 stop all notes.
 
 ## Controls
@@ -81,7 +82,7 @@ The FM-1's left-hand encoders are the same kind of control on every page, but th
 | HOME | MIX: level, pan, send, filter and mute, each across the four tracks; hold HOME + a top pad = track |
 | ARP | PERFORM: macros and scenes; hold + turn = map a macro; hold + pad = scene |
 | SEQ | STEPS or CAROM |
-| SAVE | PROJECT, then SETTINGS (Bluetooth, clock, MIDI learn); hold + turn = MIDI learn |
+| SAVE | PROJECT, then SETTINGS (Bluetooth, clock, PANEL, MIDI learn); hold + turn = MIDI learn |
 | PLAY | Play / stop |
 | REC | The page's action: record or overdub (LOOP), restart (PLAY), lock (GRAIN), freeze (SPACE), trigger (ADSR), record steps; held, clear |
 | OCT− / OCT+ | Octave; both held = TEMP |
@@ -109,3 +110,9 @@ Projects (sound, sequences, scenes, macros; about 7 KB each) live in the top 64 
 ## Licence
 
 GPL-3.0 with M-VAVE's SDK linking exception, as required by the SDK's app sources. The SEA decoder and table are MIT (Dani Biro, M-VAVE).
+
+### The panel and the FM-1's own settings
+
+The page buttons light for the open page, PLAY while playing, REC blinks while recording, OCT shows the octave. The pads show steps and the playhead on SEQ, scenes on ARP and tracks on HOME. Unlit keys glow at the BACKLIT level (OFF/LOW/MID/HIGH, by PWM from the control loop, and only while that loop runs fast enough to keep the glow steady).
+
+SETTINGS → PANEL holds BACKLIT, KNOB CC and METRO (a click on each beat, accented on the bar, mixed after the limiter), and shows the version and the CPU load. These and the MIDI learn mappings are a `struct vsc_device` in their own 4 KB flash sector after the eight project slots, sealed with a CRC and written a second after a change, only while stopped. The emulator keeps them in the browser.

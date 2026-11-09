@@ -8,6 +8,7 @@ class Viscera extends AudioWorkletProcessor {
     this.x = new WebAssembly.Instance(options.processorOptions.module, {}).exports;
     this.x.init();
     this.start = currentTime;
+    this.devGen = this.x.device_changed();
     this.port.onmessage = e => this.message(e.data);
   }
   mem() { return this.x.memory.buffer; }
@@ -20,7 +21,14 @@ class Viscera extends AudioWorkletProcessor {
     } else if (m.type === 'paint') {
       x.paint(this.now());
       const px = new Uint16Array(this.mem(), x.screen(), 240 * 240).slice();
-      this.port.postMessage({type: 'screen', px}, [px.buffer]);
+      const leds = new Uint8Array(this.mem(), x.leds(), 41).slice();
+      this.port.postMessage({type: 'screen', px, leds}, [px.buffer]);
+      /* the FM-1's own settings changed: hand them to the page to keep */
+      const g = x.device_changed();
+      if (g !== this.devGen) {
+        this.devGen = g; x.device_seal();
+        this.port.postMessage({type: 'device', bytes: new Uint8Array(this.mem(), x.device(), x.device_bytes()).slice()});
+      }
     } else if (m.type === 'bank') {
       const n = Math.min(m.pcm.length, x.bank_stage_frames());
       new Int16Array(this.mem(), x.bank_stage(), n).set(m.pcm.subarray(0, n));
@@ -47,6 +55,12 @@ class Viscera extends AudioWorkletProcessor {
       const ok = x.project_check() === 1;
       if (!ok) p.set(keep);
       this.port.postMessage({type: 'loaded', ok});
+    } else if (m.type === 'device-load') {
+      const d = new Uint8Array(this.mem(), x.device(), x.device_bytes());
+      if (m.bytes.length === d.length) {
+        const keep = d.slice(); d.set(m.bytes);
+        if (x.device_check() !== 1) d.set(keep);
+      }
     } else if (m.type === 'midi') {
       x.midi(m.data[0], m.data[1] || 0, m.data[2] || 0);
     }

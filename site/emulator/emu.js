@@ -68,11 +68,13 @@
   makeEnc(1, lh, 'ALGORITHM', ENC_FN[1]);
   for (let i = 0; i < 4; i++) makeEnc(2 + i, $('knobs4'), 'KNOB ' + (i + 1), ENC_FN[2 + i]);
 
+  const btnEls = [];
   function makeBtn(name, parent, extra) {
     const i = BUTTONS.indexOf(name), b = document.createElement('button');
     b.className = 'btn' + (extra ? ' ' + extra : '');
     b.innerHTML = '<span class="l">' + (name === 'PLAY' ? 'PLAY/STOP' : name) + '</span>' + (BTN_FN[name] ? '<span class="f">' + BTN_FN[name] + '</span>' : '');
     b.setAttribute('aria-label', name.replace('−', '-'));
+    btnEls[i] = b;
     /* right-click latches the button held (for hold gestures: LFO + knob, ARP + pad, SAVE + knob);
      * a second right-click lets it go. A latched button ignores left clicks. */
     let latched = false;
@@ -153,6 +155,12 @@
       d[j] = (c >> 8) & 0xf8; d[j + 1] = (c >> 3) & 0xfc; d[j + 2] = (c << 3) & 0xf8; d[j + 3] = 255;
     }
     lcd.putImageData(img, 0, 0);
+  }
+
+  /* ---------- the panel's LEDs: 2 lit, 1 the backlight's glow ---------- */
+  function lights(l) {
+    for (let i = 0; i < 14; i++) if (btnEls[i]) { btnEls[i].classList.toggle('lit', l[i] === 2); btnEls[i].classList.toggle('glow', l[i] === 1); }
+    for (let k = 0; k < 27; k++) if (keyEls[k]) { keyEls[k].classList.toggle('lit', l[14 + k] === 2); keyEls[k].classList.toggle('glow', l[14 + k] === 1); }
   }
 
   /* ---------- projects in this browser ---------- */
@@ -269,7 +277,8 @@
       node.connect(outGain).connect(ctx.destination);
       node.port.onmessage = e => {
         const m = e.data;
-        if (m.type === 'screen') { pending = false; draw(m.px); }
+        if (m.type === 'screen') { pending = false; draw(m.px); if (m.leds) lights(m.leds); }
+        else if (m.type === 'device') { try { localStorage.setItem('viscera-device', toB64(m.bytes)); } catch {} }
         else if (m.type === 'host') host(m.req, m.arg);
         else if (m.type === 'saved') {
           try { localStorage.setItem(slotKey(m.slot), toB64(m.bytes)); note('Saved project ' + (m.slot + 1) + ' in this browser.'); }
@@ -279,6 +288,7 @@
       };
       await ctx.resume();
       made(); hostStatus();
+      try { const d = localStorage.getItem('viscera-device'); if (d) node.port.postMessage({type: 'device-load', bytes: fromB64(d)}); } catch {}
       $('power').hidden = true;
       (function loop() { if (!pending && node) { pending = true; node.port.postMessage({type: 'paint'}); } setTimeout(loop, 33); })();
       setInterval(send, 50);       /* keeps held-button timings (like a long REC) moving */

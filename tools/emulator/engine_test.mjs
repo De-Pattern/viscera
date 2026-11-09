@@ -143,6 +143,29 @@ x.midi(0x92, 60, 100); r = run(40); x.midi(0x82, 60, 0); ok(!r.nan, 'midi note')
 // program change recalls a scene without trouble
 x.midi(0xcf, 1, 0); run(2);
 
+// 6b. the panel: LEDs, knob CCs with pickup, metronome, the FM-1's own settings
+press(B.SCL);
+{ const l = new Uint8Array(mem(), x.leds(), 41); ok(l[B.SCL] === 2 && l[B.FX] !== 2, 'the open page lights its button'); }
+const dev = () => new Uint8Array(mem(), x.device(), 20);
+dev()[17] = 1; dev()[18] = 0;                  // KNOB CC on, METRO off (the page sweep above toggled them)
+x.set_param(0, P.P_FTYPE, 0); x.set_param(0, P.P_FCUT, 64);
+ctl(0, 0, [0, -8, 0, 0, 0, 0, 0]);             // track 1
+ctl(0, 0, [-20, 0, 0, 0, 0, 0, 0]);            // first view: CUTOFF on KNOB 1
+x.midi(0xb0, 110, 10); run(1); ctl(); ok(x.get_param(0, P.P_FCUT) === 64, 'knob CC far from the value waits (pickup)');
+x.midi(0xb0, 110, 63); run(1); ctl(); x.midi(0xb0, 110, 90); run(1); ctl();
+ok(Math.abs(x.get_param(0, P.P_FCUT) - 90) <= 1, 'knob CC picks up and follows: ' + x.get_param(0, P.P_FCUT));
+{ const g0 = x.device_changed();
+  press(B.SAVE); press(B.SAVE);                // SETTINGS
+  ctl(0, 0, [2, 0, 0, 0, 0, 0, 0]);            // PANEL view
+  ctl(0, 0, [0, 0, 0, 0, 1, 0, 0]);            // METRO on (KNOB 3)
+  ok(x.device_changed() !== g0, 'changing a panel setting marks the FM-1 settings to keep');
+  paintCheck('settings panel'); }
+{ // metronome: clicks while playing, with every track silent
+  for (let t = 0; t < 4; t++) x.set_param(t, P.P_LEVEL, 0);
+  x.set_global(10, 1); if (!x.playing()) press(12);
+  let r2 = run(400, false); ok(r2.peak > 0.1, 'metronome clicks: ' + r2.peak.toFixed(2));
+  press(12); for (let t = 0; t < 4; t++) x.set_param(t, P.P_LEVEL, 100); x.set_global(10, 0); }
+
 // 7. long run with everything moving: no NaN, no runaway
 for (let t = 0; t < 4; t++) { x.set_param(t, P.P_FTYPE, 4); x.set_param(t, P.P_GMIX, 100); x.set_param(t, P.P_GFDBK, 127); }
 x.set_global(2, 127); x.set_global(6, 127);

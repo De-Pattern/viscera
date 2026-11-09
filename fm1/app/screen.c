@@ -114,6 +114,35 @@ void groove_screen_mmc(unsigned command)
     else if (command == 2 && !vsc_meter.playing) vsc_event(EV_PLAY, 0, 0, 0);
 }
 
+/* The panel's LEDs: lit ones on, the backlight's glow as a short on-time every few
+ * calls. The glow only runs while this loop is fast enough not to flicker; otherwise
+ * unlit keys stay dark. fm1_led_set is called only when a LED changes. */
+static uint8_t led_now[41], led_want[41];
+static uint32_t led_calls, led_ms0;
+static uint8_t glow_ok;
+static void leds(uint32_t now)
+{
+    if (now - led_ms0 >= 1000u) { glow_ok = led_calls >= 1500u; led_calls = 0; led_ms0 = now; }   /* >= 1.5 kHz */
+    ++led_calls;
+    vsc_ui_leds(led_want);
+    static const uint8_t duty[4] = {0, 1, 2, 4};               /* of 16 calls */
+    unsigned phase = led_calls & 15u, d = duty[vsc_dev.backlight & 3];
+    for (unsigned i = 0; i < 41; ++i) {
+        uint8_t on = led_want[i] == 2 || (led_want[i] == 1 && glow_ok && phase < d);
+        if (on != led_now[i]) { led_now[i] = on; fm1_led_set(i, on); }
+    }
+}
+/* the FM-1's own settings go to flash a second after the last change, while stopped */
+static uint32_t dev_saved_gen, dev_seen_gen, dev_changed_at;
+static void device_settings(uint32_t now)
+{
+    uint32_t g = vsc_dev_changed;
+    if (g != dev_seen_gen) { dev_seen_gen = g; dev_changed_at = now; }
+    if (g == dev_saved_gen || vsc_meter.playing || now - dev_changed_at < 1000u) return;
+    dev_saved_gen = g;
+    if (vsc_fm1_device_save() != 0) vsc_ui_notice("SETTINGS NOT SAVED", 1200);
+}
+
 void groove_screen_control(void)
 {
     struct fm1_controls c;
@@ -135,9 +164,12 @@ void groove_screen_control(void)
     for (unsigned i = 0; i < 7; ++i) in.enc[i] = c.encoders[i];
     unsigned arg = 0, req = vsc_ui_update(&in, &arg);
     if (req) host(req, arg);
+    leds(now);
+    device_settings(now);
 
     if (now - status_at >= 250u) {
         status_at = now; refresh_status(); vsc_host.battery = (uint8_t)(c.battery >> 2);
+        { unsigned pk = 0, cpu = vsc_fm1_cpu(&pk); vsc_host.cpu = (uint8_t)(cpu > 255u ? 255u : cpu); vsc_host.cpu_peak = (uint8_t)(pk > 255u ? 255u : pk); }
         if (vsc_fm1_overload) vsc_ui_notice("CPU OVERLOAD: SOUND PAUSED", 1200);
     }
     if (now - slots_at >= 3000u) { slots_at = now; refresh_slots(); }

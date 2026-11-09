@@ -112,8 +112,8 @@ jobs:
       - name: Put the build behind the installer
         run: |
           mkdir -p site/firmware
-          cp build/viscera.fwsc "site/firmware/viscera-$V.fwsc"
-          cp build/latest.json site/firmware/latest.json
+          # paused: no firmware on the site until an install is confirmed on hardware
+          rm -f site/firmware/latest.json
           cp build/viscera.wasm site/emulator/viscera.wasm
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

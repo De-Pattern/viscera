@@ -64,6 +64,17 @@ async def run_case(browser, url, start, cfg_js, limit, meta):
         await page.check('#switch')
     await page.click('#connect')
     await page.wait_for_function("document.getElementById('dev-meta').textContent.startsWith('Connected')", timeout=15000)
+    if start.startswith('ravel'):
+        # from Felucca-based firmware the page must refuse, and send the FM-1 nothing
+        await page.wait_for_timeout(500)
+        route = await page.text_content('#route')
+        await page.click('#install-btn', force=True); await page.click('#install-btn', force=True)
+        await page.wait_for_timeout(1500)
+        rep = await page.evaluate('window.__FM1_SIM_REPORT')
+        await page.close()
+        ok = 'will not install' in (route or '') and rep.get('outcome') == 'idle' and not (rep.get('latencies') or [])
+        return ok, {'start': start, 'refused': 'will not install' in (route or ''), 'outcome': rep.get('outcome'),
+                    'blocks_sent': len(rep.get('latencies') or []), 'page_errors': errors}
     await page.click('#install-btn')
     await page.click('#install-btn')
     try:
@@ -102,7 +113,7 @@ async def main():
     ap.add_argument('--meta', default=os.path.join(root, 'build', 'latest.json'))
     ap.add_argument('--deadline', type=int, default=250, help='ms the simulated loader waits per block')
     ap.add_argument('--limit', type=float, default=60, help='slowest acceptable reply, ms')
-    ap.add_argument('--cases', default='ravel,stock,open,loader,ravel-slow')
+    ap.add_argument('--cases', default='ravel,stock,open,loader')
     ap.add_argument('--stock', default=os.path.join(root, 'site', 'firmware', 'stock', 'FM-1_015.fwsc'))
     a = ap.parse_args()
     from playwright.async_api import async_playwright

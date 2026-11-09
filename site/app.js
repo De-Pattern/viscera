@@ -122,8 +122,9 @@
         direct: 'Viscera installs directly.',
         'direct-force': 'Viscera installs directly, replacing this Open-family firmware.',
         stock: 'Installs through M-VAVE’s V15 updater.',
-        bridge: 'This firmware only accepts M-VAVE’s own packages, so the page installs M-VAVE’s V15 first, then Viscera. Both run in one go; projects and samples on the FM-1 may be replaced.'
+        bridge: 'This FM-1 runs Ravel or another Felucca-based firmware. The page will not install from it: handing over to M-VAVE’s updater from these firmwares can switch the FM-1 off part-way. Put M-VAVE’s V15 back first, then connect again.'
       }[route];
+      if (route === 'bridge') { stage(2); status('Not installing: this FM-1 runs a firmware the page cannot safely install from.'); return; }
       stage(3);
       status(device.same ? 'This build is already on the FM-1.' : 'Connected. Ready to install.');
     } catch (e) { fx.state.connected = 0; route = null; error(e); status('Could not connect. Switch the FM-1 off and on, close other MIDI apps, then connect again.'); }
@@ -181,10 +182,8 @@
     $('inst-meta').textContent = 'Writing… don’t unplug.';
     const ok = await writing(async () => {
       if (route === 'bridge') {
-        const stock = await FM1Web.prepare({...STOCK});
-        await installOne(stock, true, stepStatus(1, 2));
-        status('Step 1 of 2 done: M-VAVE’s V15 is on. Installing Viscera…', 0);
-        await installOne(prepared, true, stepStatus(2, 2));
+        /* Never: from Felucca-based firmware the hand-over to M-VAVE's loader can cut the FM-1's power */
+        throw new Error('Not installing from this firmware. Put M-VAVE’s V15 back first, then connect again.');
       } else {
         await installOne(prepared, route !== 'direct' && route !== 'resume', stepStatus(1, 1));
       }
@@ -196,7 +195,7 @@
     }
   });
   $('stock-btn').addEventListener('click', async () => {
-    if (!route || busy || !arm($('stock-btn'), 'Put M-VAVE’s V15 back')) return;
+    if (!route || route === 'bridge' || busy || !arm($('stock-btn'), 'Put M-VAVE’s V15 back')) return;
     $('inst-meta').textContent = 'Writing M-VAVE’s V15… don’t unplug.';
     const ok = await writing(async () => {
       const stock = await FM1Web.prepare({...STOCK});

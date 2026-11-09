@@ -73,10 +73,24 @@
     b.className = 'btn' + (extra ? ' ' + extra : '');
     b.innerHTML = '<span class="l">' + (name === 'PLAY' ? 'PLAY/STOP' : name) + '</span>' + (BTN_FN[name] ? '<span class="f">' + BTN_FN[name] + '</span>' : '');
     b.setAttribute('aria-label', name.replace('−', '-'));
+    /* right-click latches the button held (for hold gestures: LFO + knob, ARP + pad, SAVE + knob);
+     * a second right-click lets it go. A latched button ignores left clicks. */
+    let latched = false;
     const down = () => { state.buttons |= 1 << i; b.classList.add('down'); send(); };
-    const up = () => { state.buttons &= ~(1 << i); b.classList.remove('down'); send(); };
-    b.addEventListener('pointerdown', e => { b.setPointerCapture(e.pointerId); e.preventDefault(); down(); });
-    b.addEventListener('pointerup', up);
+    const up = () => { if (latched) return; state.buttons &= ~(1 << i); b.classList.remove('down'); send(); };
+    b.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      if (e.button === 2) {
+        latched = !latched;
+        b.classList.toggle('latched', latched);
+        b.setAttribute('aria-pressed', String(latched));
+        if (latched) down(); else { state.buttons &= ~(1 << i); b.classList.remove('down'); send(); }
+        return;
+      }
+      if (e.button !== 0 || latched) return;
+      b.setPointerCapture(e.pointerId); down();
+    });
+    b.addEventListener('pointerup', e => { if (e.button === 0) up(); });
     b.addEventListener('pointercancel', up);
     b.addEventListener('contextmenu', e => e.preventDefault());
     b.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); e.stopPropagation(); down(); } });

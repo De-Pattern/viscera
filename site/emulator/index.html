@@ -79,6 +79,8 @@ nav a:hover{color:var(--ink)}
 .btn.down{transform:translateY(1px);background:linear-gradient(180deg,#3a3834,#292724);box-shadow:inset 0 0 0 1px rgba(230,223,209,.35),0 1px 1px rgba(0,0,0,.55)}
 .btn.oct{height:34px}
 .btn:focus-visible{outline:1px solid var(--mark);outline-offset:2px}
+.btn.latched::after{content:"";position:absolute;top:5px;right:6px;width:5px;height:5px;border-radius:50%;background:var(--mark);box-shadow:0 0 6px rgba(230,223,209,.8)}
+.holdhint{font:400 8.5px/1 var(--mono);letter-spacing:.12em;color:#6f695f;text-transform:uppercase}
 
 /* the pads: tall rounded pills with a pale line, sharps on the row above, gaps as on the FM-1 */
 .keybed{border-radius:14px;padding:14px 18px;display:grid;gap:10px;background:#151413;box-shadow:inset 0 3px 10px rgba(0,0,0,.9),0 1px 0 rgba(255,255,255,.06)}
@@ -135,6 +137,7 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
   .keybed{padding:8px;gap:6px}.krow{gap:3px}#blackrow{transform:translateX(calc((100% + 3px) / -32))}
   .key{height:50px;padding-bottom:5px}.key.b{height:44px}.key::before{top:7px;height:12px;width:2px}.key span{display:none}
   .side{grid-template-columns:1fr;gap:22px}
+  .holdhint{display:none}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -156,7 +159,7 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
   <div class="stage">
     <div class="device" id="device">
       <div class="power" id="power"><button id="power-on">Switch on</button></div>
-      <div class="brand"><span>FM-1</span><span>VISCERA</span></div>
+      <div class="brand"><span>FM-1</span><span class="holdhint">Right-click a button to hold it · again to let go</span><span>VISCERA</span></div>
       <div class="upper">
         <div class="lefthand" id="lefthand"></div>
         <div class="screenwrap"><div class="screen"><canvas id="lcd" width="240" height="240" aria-label="FM-1 screen"></canvas></div></div>

@@ -56,7 +56,7 @@
       const r = await fetch('firmware/latest.json', {cache: 'no-cache'});
       if (!r.ok) throw 0;
       latest = await r.json();
-      $('release-text').textContent = 'Latest build: ' + (latest.version || latest.product) + '. Early firmware — back up first.';
+      $('release-text').textContent = 'Latest build: ' + (latest.version || latest.product) + '. Early firmware, being tested on hardware now: install from M-VAVE’s stock V15, and back up first.';
       $('use-latest').disabled = false;
     } catch {
       $('release-text').textContent = 'No build is published yet. You can still open a .fwsc file you built.';
@@ -204,14 +204,5 @@
     if (ok) { status('Done. The FM-1 runs M-VAVE’s V15 again.', 100); $('inst-meta').textContent = 'V15 installed.'; route = 'stock'; }
   });
 
-  /* Installing is paused until an install from Ravel and other firmwares has been confirmed
-   * on a real FM-1. The tests still run the installer with ?installer-test. */
-  const PAUSED = !/[?&]installer-test\b/.test(location.search);
-  if (PAUSED) {
-    $('release-text').textContent = 'Installing is paused while we fix an install problem on real hardware. ' +
-      'Nothing is offered for download until it is confirmed working. Try Viscera in the emulator meanwhile.';
-    ['use-latest', 'connect', 'install-btn', 'stock-btn', 'pkg-file'].forEach(id => { const el = $(id); if (el) el.disabled = true; });
-    $('pkg-meta').innerHTML = 'Paused. <a href="emulator/">Open the emulator</a>.';
-    status('Installing is paused.');
-  } else findLatest();
+  findLatest();
 })();

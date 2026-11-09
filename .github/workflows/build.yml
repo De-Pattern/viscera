@@ -38,6 +38,10 @@ jobs:
             -DVSC_VERSION="\"${{ steps.v.outputs.version }}\"" \
             -Wl,--no-entry -Wl,--export=__heap_base -Wl,--initial-memory=8388608 -Wl,--strip-all \
             -o build/viscera.wasm web/vsc_wasm.c core/vsc_engine.c core/vsc_params.c core/vsc_ui.c core/vsc_midi.c
+      - name: Build the sample codec for the install page
+        run: |
+          clang --target=wasm32 -O2 -nostdlib -ffreestanding -fno-builtin -Iweb/sea -isystem web/sea/shim \
+            -Wl,--no-entry -Wl,--export=__heap_base -Wl,--strip-all -o site/vendor/sea.wasm web/sea/sea_wasm.c
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -50,6 +54,13 @@ jobs:
           pip install -q playwright
           python -m playwright install --with-deps chromium >/dev/null
           python3 tools/emulator/flash_test.py
+      - name: Round-trip the sample codec
+        run: node tools/sea_test.mjs site/vendor/sea.wasm
+      - name: Manage samples through the install page on a simulated FM-1
+        run: |
+          npm install --no-save playwright@$(python -c "import importlib.metadata as m; print(m.version('playwright'))") >/dev/null 2>&1 || npm install --no-save playwright >/dev/null
+          npx playwright install chromium >/dev/null
+          node tools/emulator/samples_test.mjs site
       - uses: actions/upload-artifact@v4
         with:
           name: firmware

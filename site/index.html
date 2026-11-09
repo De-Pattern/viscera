@@ -108,7 +108,33 @@ button:disabled{opacity:.35;cursor:default;background:var(--ink);color:var(--pap
 footer{padding:42px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;color:var(--grey)}
 footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
 
+/* the sample manager */
+.smp-bar{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px}
+.smp-bar>*{width:auto;flex:1 1 150px;white-space:nowrap;letter-spacing:.1em;padding-left:10px;padding-right:10px}
+.space{height:5px;background:var(--beige);position:relative;margin:0 0 8px}
+.space i{position:absolute;left:0;top:0;bottom:0;background:var(--ink)}
+.space i.over{background:#7a2d22}
+.smp-meta{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;font:400 11px/1.7 var(--mono);color:var(--grey);margin:0 0 14px}
+#smp-slots{border:1px solid var(--line)}
+.slot{display:grid;grid-template-columns:28px minmax(0,1fr) 72px 84px 104px 84px;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid var(--line)}
+.slot:first-child{border-top:0}
+.slot .no{font:400 11px/1 var(--mono);color:var(--grey)}
+.slot .nm{font:400 13px/1 var(--mono);background:transparent;border:0;border-bottom:1px solid transparent;padding:6px 2px;color:var(--ink);min-width:0;width:100%}
+.slot .nm:focus{outline:none;border-color:var(--ink)}
+.slot .nm::placeholder{color:var(--stone)}
+.slot .len{font:400 11px/1 var(--mono);color:var(--grey);text-align:right}
+.slot button,.slot .file{padding:9px 8px;font-size:10px}
+.slot:not(.filled) .nm{color:var(--grey)}
+.file.off{opacity:.35;pointer-events:none}
+.smp-opts{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin:12px 0 0}
+.smp-opts .check{margin:0}
+#smp-progress-wrap{height:2px;background:var(--line);margin:0 0 10px}
+#smp-progress{height:2px;width:0;background:var(--ink)}
+
 @media (max-width:760px){
+  .slot{grid-template-columns:22px minmax(0,1fr) 1fr 1fr;grid-template-areas:"no nm nm len" ". play pick clear";row-gap:6px}
+  .slot .no{grid-area:no}.slot .nm{grid-area:nm}.slot .len{grid-area:len}
+  .slot .play{grid-area:play}.slot .pick{grid-area:pick}.slot .clear{grid-area:clear}
   .wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
   nav{gap:12px;letter-spacing:.06em;font-size:10px}
   .word{letter-spacing:.24em}
@@ -131,6 +157,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
     </a>
     <nav>
       <a href="#install">Install</a>
+      <a href="#samples">Samples</a>
       <a href="#about">About</a>
       <a href="emulator/">Emulator</a>
       <a href="https://github.com/De-Pattern/viscera">Source</a>
@@ -202,6 +229,35 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
 
 <div class="rule"></div>
 
+<section id="samples">
+  <div class="wrap">
+    <p class="eyebrow">Samples</p>
+    <h2>The sample bank, over USB.</h2>
+    <p style="color:var(--ink-soft);max-width:600px;margin:0 0 30px">Eight slots in the FM-1's flash, shared by every project: PLAY and KEYS tracks pick them with SLOT. Read them, swap in your own audio (WAV, AIFF, FLAC or MP3: the page turns it into the FM-1's format, mono at 32&nbsp;kHz), rename, clear, listen, then write the bank back. Works with Viscera or M-VAVE's own firmware, the FM-1 connected by USB.</p>
+    <div class="smp-bar">
+      <button id="smp-read">Read from FM-1</button>
+      <button id="smp-write">Write to FM-1</button>
+      <button id="smp-backup" class="ghost">Save backup</button>
+      <label class="file ghost" id="smp-open">Open backup<input type="file" id="smp-open-file" accept=".fm1s,application/octet-stream"></label>
+      <button id="smp-new" class="ghost">New bank</button>
+    </div>
+    <div class="space"><i id="smp-space-bar"></i></div>
+    <div class="smp-meta"><span id="smp-space">No bank loaded.</span><span id="smp-source"></span></div>
+    <div id="smp-slots"></div>
+    <div class="smp-opts">
+      <label class="check"><input type="checkbox" id="smp-norm" checked> Normalise new samples</label>
+      <span class="meta" style="margin:0;min-height:0">About 16.5 s in all. Writing replaces the whole bank; projects stay.</span>
+    </div>
+    <div class="console" role="status" aria-live="polite" style="margin-top:18px;border-top:1px solid var(--line)">
+      <div id="smp-progress-wrap"><div id="smp-progress"></div></div>
+      <div id="smp-status">Ready.</div>
+      <div id="smp-error" style="color:#7a2d22;white-space:pre-wrap"></div>
+    </div>
+  </div>
+</section>
+
+<div class="rule"></div>
+
 <section id="motion">
   <div class="wrap">
     <p class="eyebrow">In motion</p>
@@ -227,9 +283,9 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
       <p class="eyebrow">Before you flash</p>
       <ul>
         <li><span>Backup</span>Save your projects and samples with M-VAVE's workbench first. Switching firmware doesn't convert them.</li>
-        <li><span>Samples</span>Viscera reads the same flash sample bank, so samples uploaded with the workbench still play.</li>
+        <li><span>Samples</span>Viscera reads the same flash sample bank, so samples uploaded with the workbench still play. Manage them in <a href="#samples">Samples</a> above. Viscera keeps its projects at the end of that flash area, so a bank for it holds about 16.5 s, not 19.5.</li>
         <li><span>Return</span>"Put M-VAVE's V15 back" installs M-VAVE's original firmware from this page; M-VAVE's <a href="https://open.m-vave.com/fm1-workbench">workbench</a> can too.</li>
-        <li><span>From</span>Coming from Ravel, SLOOP or another Felucca-based firmware, the page installs M-VAVE's V15 first, then Viscera, in one go. Those firmwares only accept M-VAVE's own packages.</li>
+        <li><span>From</span>Coming from Ravel, SLOOP or another Felucca-based firmware, put M-VAVE's V15 back with M-VAVE's own tools first. The page won't install from those firmwares: handing over to M-VAVE's updater from them can switch the FM-1 off part-way.</li>
         <li><span>Risk</span>Any firmware update can fail. Don't unplug the FM-1 while it's writing.</li>
       </ul>
     </div>
@@ -248,5 +304,6 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
 <script src="mark.js"></script>
 <script src="fx.js"></script>
 <script src="app.js"></script>
+<script src="samples.js"></script>
 </body>
 </html>

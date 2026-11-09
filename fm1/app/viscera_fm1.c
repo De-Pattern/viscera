@@ -95,6 +95,8 @@ void vsc_fm1_bank_entry(unsigned slot, const uint8_t *data, uint32_t frames, con
     for (unsigned i = 0; i < 15; ++i) bank[slot].name[i] = name && data ? name[i] : 0;
     bank[slot].name[15] = 0;
     for (unsigned i = 0; i < VSC_CACHE; ++i) cache[i].slot = -1;
+    /* a new bank: MATERIAL redraws each sample's shape */
+    for (unsigned t = 0; t < VSC_TRACKS; ++t) vsc_meter.overview_slot[t] = 255;
     bank_ok = 1;
 }
 unsigned vsc_bank_frames(unsigned slot) { return slot < VSC_BANK_SLOTS && bank_ok ? bank[slot].frames : 0; }

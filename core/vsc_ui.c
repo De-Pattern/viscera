@@ -145,7 +145,10 @@ static const struct slot v_settings[5][4] = {{{S_SET, 0, 0}, {S_SET, 1, 0}, {S_S
 #define SET_CLOCK 2
 #define SET_PANEL 3
 #define SET_LEARN 4
-#define MATRIX_VIEW 12   /* MODS: views 0..11 are four modulators x three pages, then the matrix */
+#define MATRIX_VIEW 0    /* MODS: view 0 is the matrix, then 1..12: four modulators x three pages */
+#define MOD_VIEWS 13
+#define VMOD(r) (((r) - 1u) / 3u)   /* the modulator a view shows */
+#define VPAGE(r) (((r) - 1u) % 3u)
 static const char *const mtype_name[4] = {"WAVE", "RANDOM", "FOLLOW", "ADSR"};
 
 static unsigned track, page = PG_MIX, row, step_sel, step_page, octave, route_sel, learn_sel;
@@ -170,7 +173,7 @@ static unsigned row_count(void)
     case PG_GRAIN: case PG_COLOR: case PG_SCENE: return 3;
     case PG_SETTINGS: return 5;
     case PG_FILTER: { unsigned f = vsc.t[track][P_FTYPE]; return f == FT_RING ? 4 : f == FT_PEAKS ? 2 : 1; }
-    case PG_MODS: return MATRIX_VIEW + 1;
+    case PG_MODS: return MOD_VIEWS;
     case PG_SPACE: return 2;
     case PG_STEPS: return vsc.t[track][P_SEQM] == SEQ_CAROM ? 3 : 2;
     default: return 1;
@@ -203,7 +206,7 @@ static struct slot slot_at(unsigned i)
     case PG_SETTINGS: return v_settings[r][i];
     case PG_MODS: {
         if (r == MATRIX_VIEW) { struct slot s = {S_MAT, (uint8_t)i, 0}; return s; }
-        unsigned m = r / 3, pg = r % 3, k = pg < 2 ? 1 + pg * 4 + i : (i == 0 ? 9 : 99);
+        unsigned m = VMOD(r), pg = VPAGE(r), k = pg < 2 ? 1 + pg * 4 + i : (i == 0 ? 9 : 99);
         if (k > 9) return none;
         if (!vsc_tparam_info(track, P_MOD(m, k))->name[0]) return none;
         struct slot s = {S_T, (uint8_t)P_MOD(m, k), 0}; return s;
@@ -214,7 +217,131 @@ static struct slot slot_at(unsigned i)
 static const char *const step_names[6] = {"NOTE", "VELO", "LOCK", "VALUE", "LENGTH", "TRIG"};
 static const char *const set_names[7] = {"BT AUD", "BT MIDI", "ROLE", "UNPAIR", "BACKLIT", "KNOB CC", "METRO"};
 static const char *const backlight_names[4] = {"OFF", "LOW", "MID", "HIGH"};
-static const char *const mat_names[4] = {"SOURCE", "DEST", "DEPTH", "POLAR"};
+static void copy_n(char *d, const char *s, unsigned n);
+static const char *const mat_names[4] = {"SOURCE", "DEVICE", "PARAM", "AMOUNT"};
+static const char *const mtype_short[4] = {"WAV", "RND", "FOL", "ENV"};
+/* The matrix lists every route on every track (by the track it moves), then a NEW row. */
+static unsigned matrix_count(void)
+{
+    unsigned n = 0;
+    for (unsigned t = 0; t < VSC_TRACKS; ++t)
+        for (unsigned r = 0; r < VSC_MOD_ROUTES; ++r) n += vsc.route[t][r].param != 255;
+    return n;
+}
+static struct vsc_route *matrix_at(unsigned i, unsigned *tt)
+{
+    for (unsigned t = 0; t < VSC_TRACKS; ++t)
+        for (unsigned r = 0; r < VSC_MOD_ROUTES; ++r)
+            if (vsc.route[t][r].param != 255 && i-- == 0) { *tt = t; return &vsc.route[t][r]; }
+    *tt = track; return 0;
+}
+static unsigned matrix_index(const struct vsc_route *want)
+{
+    unsigned n = 0;
+    for (unsigned t = 0; t < VSC_TRACKS; ++t)
+        for (unsigned r = 0; r < VSC_MOD_ROUTES; ++r) {
+            if (&vsc.route[t][r] == want) return n;
+            n += vsc.route[t][r].param != 255;
+        }
+    return n;
+}
+/* the source as "T1 WAV1": track, the modulator's type and number */
+static void source_name(unsigned t, unsigned src, char *out)
+{
+    unsigned st = vsc_src_track(t, src), m = src & 3u;
+    out[0] = 'T'; out[1] = (char)('1' + st); out[2] = ' ';
+    copy_n(out + 3, mtype_short[vsc.t[st][P_MOD(m, 0)] & 3], 4);
+    out[6] = (char)('1' + m); out[7] = 0;
+}
+/* Destinations are grouped as the pages are: each track's MATERIAL, GRAIN, FILTER,
+ * COLOR, MIX and MODS, then SPACE, PERFORM and MASTER. Inside a device they come in
+ * the order of its page's knobs (for the track's current mode and filter), then any
+ * the page isn't showing now. */
+enum { D_MAT, D_GRAIN, D_FILTER, D_COLOR, D_MIX, D_MODS, D_TRACK_DEVICES };
+#define D_SPACE (VSC_TRACKS * D_TRACK_DEVICES)
+#define D_PERFORM (D_SPACE + 1)
+#define D_MASTER (D_SPACE + 2)
+#define D_COUNT (D_SPACE + 3)
+static const char *const dev_short[D_TRACK_DEVICES] = {"MATER", "GRAIN", "FILTR", "COLOR", "MIX", "MODS"};
+static unsigned dev_of(unsigned t, unsigned code)
+{
+    if (code >= VSC_GDEST) {
+        unsigned g = code - VSC_GDEST;
+        if (g == G_DTIME || g == G_DFEED || g == G_DTONE || g == G_DLONG || g == G_DLEVEL || g == G_RSIZE || g == G_RDAMP || g == G_RLEVEL) return D_SPACE;
+        if (g >= G_M0 || g == G_MORPH) return D_PERFORM;
+        return D_MASTER;
+    }
+    unsigned d = code < P_GMIX ? D_MAT : code < P_FTYPE ? D_GRAIN : code < P_DRIVE ? D_FILTER : code < P_LEVEL ? D_COLOR
+               : code < P_MOD0 ? D_MIX : D_MODS;
+    return t * D_TRACK_DEVICES + d;
+}
+static unsigned dest_add(unsigned *list, unsigned n, unsigned code)
+{
+    if (code == 255 || !vsc_mod_dest_valid(code)) return n;
+    for (unsigned i = 0; i < n; ++i) if (list[i] == code) return n;
+    list[n] = code; return n + 1;
+}
+static unsigned dest_views(unsigned *list, unsigned n, const struct slot (*v)[4], unsigned rows, unsigned t)
+{
+    for (unsigned r = 0; r < rows; ++r)
+        for (unsigned i = 0; i < 4; ++i) {
+            struct slot sl = v[r][i];
+            if (sl.kind == S_T) n = dest_add(list, n, sl.id);
+            else if (sl.kind == S_TT && sl.tk == t) n = dest_add(list, n, sl.id);
+            else if (sl.kind == S_G) n = dest_add(list, n, VSC_GDEST + sl.id);
+        }
+    return n;
+}
+#define ROWS(v) (sizeof v / sizeof v[0])
+/* every destination of a device, in page order; returns how many */
+static unsigned dest_list(unsigned dev, unsigned list[VSC_NP + VSC_NG])
+{
+    unsigned n = 0;
+    if (dev >= D_SPACE) {
+        if (dev == D_SPACE) n = dest_views(list, n, v_space, ROWS(v_space), 0);
+        else if (dev == D_PERFORM) n = dest_views(list, n, v_scene, ROWS(v_scene), 0);
+        else n = dest_views(list, n, &v_mix[5], 1, 0);
+        for (unsigned g = 0; g < VSC_NG; ++g) if (dev_of(0, VSC_GDEST + g) == dev) n = dest_add(list, n, VSC_GDEST + g);
+        return n;
+    }
+    unsigned t = dev / D_TRACK_DEVICES, d = dev % D_TRACK_DEVICES;
+    switch (d) {
+    case D_MAT: switch (vsc.t[t][P_MODE]) {
+        case MODE_PLAY: n = dest_views(list, n, v_play, ROWS(v_play), t); break;
+        case MODE_LOOP: n = dest_views(list, n, v_loop, ROWS(v_loop), t); break;
+        case MODE_KEYS: n = dest_views(list, n, v_keys, ROWS(v_keys), t); break;
+        default: n = dest_views(list, n, v_thru, ROWS(v_thru), t); break;
+        } break;
+    case D_GRAIN: n = dest_views(list, n, v_grain, ROWS(v_grain), t); break;
+    case D_FILTER: switch (vsc.t[t][P_FTYPE]) {
+        case FT_RING: n = dest_views(list, n, v_reson, ROWS(v_reson), t); break;
+        case FT_PEAKS: n = dest_views(list, n, v_peaks, ROWS(v_peaks), t); break;
+        default: n = dest_views(list, n, v_svf, ROWS(v_svf), t); break;
+        } break;
+    case D_COLOR: n = dest_views(list, n, v_color, ROWS(v_color), t); break;
+    case D_MIX: n = dest_views(list, n, v_mix, 5, t); break;
+    default: for (unsigned m = 0; m < VSC_MODS; ++m) for (unsigned k = 1; k < VSC_MOD_PARAMS; ++k) n = dest_add(list, n, P_MOD(m, k)); break;
+    }
+    for (unsigned c = 0; c < P_SEQM; ++c) if (dev_of(t, c) == dev) n = dest_add(list, n, c);
+    return n;
+}
+/* a destination's name as on its page: "CUTOFF"; a modulator's with its number, "2 RATE" */
+static void dest_name(unsigned t, unsigned code, char *out)
+{
+    if (code >= VSC_GDEST) { copy_n(out, vsc_gparam_info(code - VSC_GDEST)->name, 9); return; }
+    if (code >= P_MOD0 && code < P_SEQM) {
+        out[0] = (char)('1' + (code - P_MOD0) / VSC_MOD_PARAMS); out[1] = ' ';
+        copy_n(out + 2, vsc_tparam_info(t, code)->name, 7); return;
+    }
+    copy_n(out, vsc_tparam_info(t, code)->name, 9);
+}
+/* the device as "T2 FILTR", or SPACE, PERFORM, MASTER */
+static void dev_name(unsigned dev, char *out)
+{
+    if (dev >= D_SPACE) { copy_n(out, dev == D_SPACE ? "SPACE" : dev == D_PERFORM ? "PERFORM" : "MASTER", 8); return; }
+    out[0] = 'T'; out[1] = (char)('1' + dev / D_TRACK_DEVICES); out[2] = ' ';
+    copy_n(out + 3, dev_short[dev % D_TRACK_DEVICES], 5);
+}
 static void copy_n(char *d, const char *s, unsigned n) { unsigned i = 0; while (s[i] && i < n) { d[i] = s[i]; ++i; } d[i] = 0; }
 static void slot_text(struct slot s, char name[10], char val[10], float *bar)
 {
@@ -247,17 +374,14 @@ static void slot_text(struct slot s, char name[10], char val[10], float *bar)
         default: copy_n(val, "TURN", 7); break;
         }
     } else if (s.kind == S_MAT) {
-        const struct vsc_route *ro = &vsc.route[track][route_sel % VSC_MOD_ROUTES];
+        unsigned tt; const struct vsc_route *ro = matrix_at(route_sel, &tt);
         copy_n(name, mat_names[s.id & 3], 7);
-        int empty = ro->param == 255;
-        switch (s.id) {
-        case 0: val[0] = (char)('1' + (ro->src & 3)); val[1] = ' ';
-                copy_n(val + 2, mtype_name[vsc.t[track][P_MOD(ro->src & 3, 0)] & 3], 6); break;
-        case 1: if (empty) copy_n(val, "--", 3); else vsc_mod_dest_name(ro->param, val); break;
-        case 2:
-            if (empty) { copy_n(val, "--", 3); break; }
-            num(val, ro->depth); *bar = ((float)ro->depth + 127.f) / 254.f; break;
-        default: copy_n(val, ro->flags & 1 ? "BI" : "UNI", 4); break;
+        if (!ro) { copy_n(val, s.id == 0 ? "NEW" : "--", 4); }
+        else switch (s.id) {
+        case 0: source_name(tt, ro->src, val); break;
+        case 1: dev_name(dev_of(tt, ro->param), val); break;
+        case 2: dest_name(tt, ro->param, val); break;
+        default: num(val, ro->depth); *bar = ((float)ro->depth + 127.f) / 254.f; break;
         }
     } else if (s.kind == S_STEP) {
         const struct vsc_step *st = &vsc.step[track][step_sel];
@@ -306,16 +430,47 @@ static void edit_slot(struct slot s, int d, unsigned *req, unsigned *arg)
         else if (s.id == 5) { vsc_dev.knob_cc = d > 0; ++vsc_dev_changed; }
         else if (s.id == 6) { vsc_dev.metro = d > 0; ++vsc_dev_changed; }
     } else if (s.kind == S_MAT) {
-        struct vsc_route *ro = &vsc.route[track][route_sel % VSC_MOD_ROUTES];
-        if (s.id == 0) ro->src = (uint8_t)clampi((int)ro->src + d, 0, VSC_MODS - 1);
-        else if (s.id == 1) {
-            unsigned n = vsc_mod_dest_count(), at = 0;
-            if (ro->param != 255) for (unsigned i = 0; i < n; ++i) if (vsc_mod_dest(i) == ro->param) { at = i + 1; break; }
-            at = (unsigned)clampi((int)at + d, 0, (int)n);
-            if (!at) { ro->param = 255; ro->depth = 0; }
-            else { ro->param = (uint8_t)vsc_mod_dest(at - 1); if (!ro->depth) ro->depth = 32; }
-        } else if (s.id == 2) { if (ro->param != 255) { int v = clampi(ro->depth + d * 2, -127, 127); ro->depth = (int8_t)(v ? v : (d > 0 ? 1 : -1)); } }
-        else ro->flags ^= 1;
+        unsigned tt; struct vsc_route *ro = matrix_at(route_sel, &tt);
+        if (!ro) {
+            /* NEW: turning any knob makes a route, from this track's modulator to its first parameter */
+            for (unsigned r = 0; r < VSC_MOD_ROUTES && !ro; ++r) if (vsc.route[track][r].param == 255) ro = &vsc.route[track][r];
+            if (!ro) { vsc_ui_notice("THIS TRACK'S ROUTES ARE FULL", 1200); return; }
+            tt = track; ro->src = (uint8_t)vsc_src_code(track, track, mod_sel);
+            { unsigned l[VSC_NP + VSC_NG], k = dest_list(track * D_TRACK_DEVICES + D_FILTER, l); ro->param = (uint8_t)(k ? l[0] : P_FCUT); }
+            ro->depth = 32; ro->flags = 0;
+            route_sel = matrix_index(ro);
+            return;
+        }
+        if (s.id == 0) {   /* SOURCE: the sixteen modulators, T1 WAV1 .. T4 ENV4 */
+            unsigned st = vsc_src_track(tt, ro->src), i = (unsigned)clampi((int)(st * 4 + (ro->src & 3)) + d, 0, VSC_TRACKS * VSC_MODS - 1);
+            ro->src = (uint8_t)vsc_src_code(tt, i / 4, i % 4);
+        } else if (s.id == 1) {   /* DEVICE: T1 MATERIAL .. T4 MODS, SPACE, PERFORM, MASTER */
+            unsigned cur = dev_of(tt, ro->param), l[VSC_NP + VSC_NG], k = 0;
+            int nd = (int)cur;
+            for (int steps = d > 0 ? d : -d; steps > 0; --steps) {   /* one device a detent, skipping empty ones */
+                int at = nd;
+                do at += d > 0 ? 1 : -1; while (at >= 0 && at < D_COUNT && !dest_list((unsigned)at, l));
+                if (at < 0 || at >= D_COUNT) break;
+                nd = at;
+            }
+            if (nd == (int)cur || !(k = dest_list((unsigned)nd, l))) return;
+            unsigned nt = nd >= D_SPACE ? tt : (unsigned)nd / D_TRACK_DEVICES, st = vsc_src_track(tt, ro->src), m = ro->src & 3u;
+            struct vsc_route *to = nt == tt ? ro : 0;
+            for (unsigned r = 0; r < VSC_MOD_ROUTES && !to; ++r) if (vsc.route[nt][r].param == 255) to = &vsc.route[nt][r];
+            if (!to) { vsc_ui_notice("THAT TRACK'S ROUTES ARE FULL", 1200); return; }
+            struct vsc_route moved = *ro;
+            moved.param = (uint8_t)l[0];
+            moved.src = (uint8_t)vsc_src_code(nt, st, m);
+            if (to != ro) { ro->param = 255; ro->depth = 0; }
+            *to = moved;
+            route_sel = matrix_index(to);
+        } else if (s.id == 2) {   /* PARAM: the device's parameters in page order; before the first, the route goes */
+            unsigned list[VSC_NP + VSC_NG], k = dest_list(dev_of(tt, ro->param), list), at = 0;
+            for (unsigned i = 0; i < k; ++i) if (list[i] == ro->param) at = i;
+            int to = (int)at + d;
+            if (to < 0) { ro->param = 255; ro->depth = 0; ro->flags = 0; vsc_ui_notice("ROUTE REMOVED", 900); return; }
+            ro->param = (uint8_t)list[clampi(to, 0, (int)k - 1)];
+        } else { int v = clampi(ro->depth + d * 2, -127, 127); ro->depth = (int8_t)(v ? v : (d > 0 ? 1 : -1)); }
     } else if (s.kind == S_STEP) {
         struct vsc_step *st = &vsc.step[track][step_sel];
         switch (s.id) {
@@ -392,26 +547,27 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
     if ((up & B(BTN_HOME)) && !(prev_buttons & B(31))) { if (page != PG_MIX) { page = PG_MIX; row = 0; } else row = (row + 1) % row_count(); }
     if ((up & B(BTN_LFO)) && !(prev_buttons & B(31))) {
         /* LFO: the modulators, one press per modulator, then the matrix */
-        if (page != PG_MODS) { page = PG_MODS; row = mod_sel * 3; }
-        else { row = row >= MATRIX_VIEW ? 0 : (row / 3 + 1) * 3; if (row > MATRIX_VIEW) row = MATRIX_VIEW; }
+        /* LFO: the matrix first, then one press per modulator, then the matrix again */
+        if (page != PG_MODS) { page = PG_MODS; row = MATRIX_VIEW; }
+        else { row = row == MATRIX_VIEW ? 1 : (VMOD(row) + 1) * 3 + 1; if (row >= MOD_VIEWS) row = MATRIX_VIEW; }
     }
     if ((up & B(BTN_ARP)) && !(prev_buttons & B(31))) { if (page != PG_SCENE) { page = PG_SCENE; row = 0; } else row = (row + 1) % row_count(); }
     /* GLO: the global things, SPACE (the shared bus) then SETTINGS (the FM-1's own) */
     if (down & B(BTN_GLO)) { page = page == PG_SPACE ? PG_SETTINGS : PG_SPACE; row = 0; }
     /* SAVE: where things are kept, PROJECT then SOUNDS */
     if ((up & B(BTN_SAVE)) && !(prev_buttons & B(31))) { page = page == PG_PROJECT ? PG_SOUND : PG_PROJECT; row = 0; }
-    if (page == PG_MODS && row < MATRIX_VIEW) mod_sel = row / 3;
+    if (page == PG_MODS && row != MATRIX_VIEW) mod_sel = VMOD(row);
 
     /* transport */
     /* SAVE + PLAY saves on PROJECT and SOUNDS; it mustn't start the transport too */
     if ((down & B(BTN_PLAY)) && !(save_held && (page == PG_PROJECT || page == PG_SOUND))) vsc_event(EV_PLAY, track, 0, 0);
     /* REC: the open page's action; held, its clear */
-    int adsr_page = page == PG_MODS && row < MATRIX_VIEW && (vsc.t[track][P_MOD(row / 3, 0)] & 3) == MT_ADSR;
+    int adsr_page = page == PG_MODS && row != MATRIX_VIEW && (vsc.t[track][P_MOD(VMOD(row), 0)] & 3) == MT_ADSR;
     if (down & B(BTN_REC)) {
         rec_down_at = now_ms; rec_long = 0;
-        if (adsr_page) { vsc_event(EV_ACTION, track, ACT_MOD_TRIG, row / 3); rec_long = 2; }
+        if (adsr_page) { vsc_event(EV_ACTION, track, ACT_MOD_TRIG, VMOD(row)); rec_long = 2; }
     }
-    if ((up & B(BTN_REC)) && rec_long == 2) vsc_event(EV_ACTION, track, ACT_MOD_TRIG, 0x80 | (row / 3));
+    if ((up & B(BTN_REC)) && rec_long == 2) vsc_event(EV_ACTION, track, ACT_MOD_TRIG, 0x80 | VMOD(row));
     if ((in->buttons & B(BTN_REC)) && !rec_long && now_ms - rec_down_at > 900) {
         if (page == PG_STEPS && vsc.t[track][P_SEQM] == SEQ_CAROM) {
             rec_long = 1; vsc_event(EV_BALL_CLEAR, track, 0, 0); vsc_ui_notice("BALLS CLEARED", 900);
@@ -440,6 +596,10 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
             page = PG_MAT; row = m == MODE_LOOP ? 1 : 0;
         }
         else if (page == PG_SETTINGS && row == SET_LEARN) { vsc_dev.learn[learn_sel % VSC_LEARN].param = 255; ++vsc_dev_changed; vsc_ui_notice("MAPPING CLEARED", 800); }
+        else if (page == PG_MODS && row == MATRIX_VIEW) {
+            unsigned tt; struct vsc_route *ro = matrix_at(route_sel, &tt);
+            if (ro) { ro->flags ^= 1; vsc_ui_notice(ro->flags & 1 ? "BIPOLAR: SWINGS BOTH WAYS" : "UNIPOLAR: ONE WAY", 900); }
+        }
         else if (page == PG_GRAIN) { vsc.t[track][P_GFREEZE] ^= 1; vsc_ui_notice(vsc.t[track][P_GFREEZE] ? "GRAINS LOCKED" : "GRAINS LISTENING", 900); }
         else if (page == PG_SPACE) { vsc_event(EV_ACTION, 0, ACT_SPACE_FREEZE, 0); vsc_ui_notice(vsc_meter.space_frozen ? "SPACE FLOWING" : "SPACE FROZEN", 900); }
         else if (page == PG_MAT && vsc.t[track][P_MODE] == MODE_PLAY) vsc_event(EV_ACTION, track, ACT_TAPE_REWIND, 0);
@@ -467,9 +627,9 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
         case PG_MAT: vsc.t[track][P_MODE] = (uint8_t)clampi((int)vsc.t[track][P_MODE] + d, 0, MODE_THRU); row = 0; break;
         case PG_FILTER: vsc.t[track][P_FTYPE] = (uint8_t)clampi((int)vsc.t[track][P_FTYPE] + d, 0, FT_OFF); row = 0; break;
         case PG_MODS:
-            if (row >= MATRIX_VIEW) route_sel = (unsigned)clampi((int)route_sel + d, 0, VSC_MOD_ROUTES - 1);
+            if (row == MATRIX_VIEW) route_sel = (unsigned)clampi((int)route_sel + d, 0, (int)matrix_count());
             else {
-                unsigned m = row / 3, ty = (unsigned)clampi((int)(vsc.t[track][P_MOD(m, 0)] & 3) + d, 0, 3);
+                unsigned m = VMOD(row), ty = (unsigned)clampi((int)(vsc.t[track][P_MOD(m, 0)] & 3) + d, 0, 3);
                 if (ty != (vsc.t[track][P_MOD(m, 0)] & 3u)) { vsc.t[track][P_MOD(m, 0)] = (uint8_t)ty; vsc_mod_defaults(track, m); }
             }
             break;
@@ -499,8 +659,10 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
         int cont = code != 255 && (code >= VSC_GDEST ? !(vsc_gparam_info(code - VSC_GDEST)->flags & VSC_PF_ENUM)
                                                     : !(vsc_tparam_info(t, code)->flags & VSC_PF_ENUM));
         if (lfo_held && cont && page != PG_MODS) {
-            int depth = vsc_route_get(t, mod_sel, code) + d * 3;
-            vsc_route_set(t, mod_sel, code, depth);
+            /* the modulator is this track's; the parameter can be another track's (MIX) */
+            unsigned src = vsc_src_code(t, track, mod_sel);
+            int depth = vsc_route_get(t, src, code) + d * 3;
+            vsc_route_set(t, src, code, depth);
             char b[12]; num(b, clampi(depth, -127, 127));
             say("MOD AMOUNT ", b, 900);
             used = B(31);
@@ -565,8 +727,8 @@ static const char *page_title(void)
     case PG_MAT: { static const char *const m[] = {"PLAY", "LOOP", "KEYS", "THRU"}; return m[vsc.t[track][P_MODE] & 3]; }
     case PG_FILTER: return vsc.t[track][P_FTYPE] == FT_RING ? "RESON" : vsc.t[track][P_FTYPE] == FT_OFF ? "FILTER OFF" : "FILTER";
     case PG_MODS:
-        if (row >= MATRIX_VIEW) return "MATRIX";
-        { unsigned m = row / 3; copy_n(buf, mtype_name[vsc.t[track][P_MOD(m, 0)] & 3], 8);
+        if (row == MATRIX_VIEW) return "MATRIX";
+        { unsigned m = VMOD(row); copy_n(buf, mtype_name[vsc.t[track][P_MOD(m, 0)] & 3], 8);
           unsigned l = (unsigned)vsc_strlen(buf); buf[l] = ' '; buf[l + 1] = (char)('1' + m); buf[l + 2] = 0; return buf; }
     case PG_STEPS: return vsc.t[track][P_SEQM] == SEQ_CAROM ? "CAROM" : "STEPS";
     default: return page_name[page];
@@ -586,7 +748,7 @@ static void draw_header(void)
     int tx = 18 + tw + 6;
     unsigned views = row_count();
     if (page == PG_MODS) {
-        if (row < MATRIX_VIEW) for (unsigned r = 0; r < 3; ++r) rect(tx + (int)r * 5, 8, 3, 3, r == row % 3 ? C_FG : C_LINE);
+        if (row != MATRIX_VIEW) for (unsigned r = 0; r < 3; ++r) rect(tx + (int)r * 5, 8, 3, 3, r == VPAGE(row) ? C_FG : C_LINE);
     } else if (views > 1) {
         for (unsigned r = 0; r < views; ++r) rect(tx + (int)r * 5, 8, 3, 3, r == row ? C_FG : C_LINE);
     }
@@ -614,10 +776,19 @@ static void draw_knobs(void)
         slot_text(s, name, val, &bar);
         if (!name[0]) continue;
         unsigned t = track, code = 255;
-        int mod = -1;
+        int mod = -1, depth = 0;
+        unsigned mt = track;   /* the modulating track */
         if (s.kind == S_T || s.kind == S_TT || s.kind == S_G) {
             code = slot_code(s, &t);
-            if (code != 255) for (unsigned m = 0; m < VSC_MODS && mod < 0; ++m) if (vsc_route_get(t, m, code)) mod = (int)m;
+            /* the route on this knob: the held LFO's modulator first, else the first one */
+            if (code != 255) {
+                unsigned want = vsc_src_code(t, track, mod_sel);
+                for (unsigned r = 0; r < VSC_MOD_ROUTES; ++r) {
+                    const struct vsc_route *ro = &vsc.route[t][r];
+                    if (ro->param != code || !ro->depth) continue;
+                    if (mod < 0 || (mapping && ro->src == want)) { mod = (int)(ro->src & 3u); mt = vsc_src_track(t, ro->src); depth = ro->depth; }
+                }
+            }
         }
         int locked = s.kind == S_T && vsc_lock[track][s.id] != 255;
         int touched = touch_at[i] && (int32_t)(now_ms - touch_at[i]) < 900;
@@ -639,7 +810,7 @@ static void draw_knobs(void)
             } else rect(bx, by, at, 5, fill);
             /* a modulated parameter shows where its modulator has it now */
             if (mod >= 0 && code < VSC_NP) {
-                float v = bar + (float)vsc_route_get(t, (unsigned)mod, code) / 127.f * vsc_meter.mod_value[t][mod];
+                float v = bar + (float)depth / 127.f * vsc_meter.mod_value[mt][mod];
                 v = v < 0.f ? 0.f : v > 1.f ? 1.f : v;
                 rect(bx + (int)((float)(bw - 2) * v), by - 1, 2, 7, C_MOD[mod]);
             }
@@ -656,8 +827,8 @@ static void draw_knobs(void)
     case PG_GRAIN: hint = "REC: LOCK BUFFER  SELECT: PAGE"; break;
     case PG_FILTER: hint = "PRESETS: DEVICE  SELECT: PAGE"; break;
     case PG_SPACE: hint = "REC: FREEZE  HOLD REC: CLEAR"; break;
-    case PG_MODS: hint = row >= MATRIX_VIEW ? "PRESETS: ROUTE  SELECT: PAGE"
-                       : (vsc.t[track][P_MOD(row / 3, 0)] & 3) == MT_ADSR ? "PRESETS: TYPE  REC: TRIG  LFO+KNOB: MAP"
+    case PG_MODS: hint = row == MATRIX_VIEW ? "PRESETS: ROW  REC: BI/UNI  LFO: MODS"
+                       : (vsc.t[track][P_MOD(VMOD(row), 0)] & 3) == MT_ADSR ? "PRESETS: TYPE  REC: TRIG  LFO+KNOB: MAP"
                        : "PRESETS: TYPE  HOLD LFO+KNOB: MAP"; break;
     case PG_SCENE: hint = "ARP+PAD: SCENE  ARP+KNOB: MAP MACRO"; break;
     case PG_STEPS: hint = vsc.t[track][P_SEQM] == SEQ_CAROM ? "PRESETS: STEPS  REC: ADD  HOLD: CLEAR" : "PRESETS: CAROM  OCT: PAGE  REC: REC"; break;
@@ -667,6 +838,13 @@ static void draw_knobs(void)
                                   : row == SET_INPUT ? "PRESETS: TRACK  REC: OPEN TRACK"
                                   : row == SET_PANEL ? "KEPT THROUGH POWER-OFF" : "SELECT: PAGE"; break;
     default: hint = "SELECT: PAGE  ALGORITHM: TRACK"; break;
+    }
+    static char held[40];
+    if (mapping && page != PG_MODS) {
+        /* LFO held: say what a knob turn does, in the modulator's colour (the header shows it too) */
+        char b[8]; source_name(track, mod_sel, b);
+        copy_n(held, "TURN A KNOB: MOD BY ", 21); copy_n(held + 20, b, 8);
+        hint = held;
     }
     int live = notice && (int32_t)(notice_until - now_ms) > 0;
     if (live) hint = notice;
@@ -819,31 +997,45 @@ static void draw_vis(void)
         break;
     }
     case PG_MODS:
-        if (row >= MATRIX_VIEW) {
-            /* the matrix: every route on this track, the selected one highlighted */
-            unsigned first = route_sel > 8 ? route_sel - 8 : 0;
-            for (unsigned r = first; r < first + 9 && r < VSC_MOD_ROUTES; ++r) {
-                const struct vsc_route *ro = &vsc.route[track][r];
-                int y = VIS_Y + 3 + (int)(r - first) * 15;
-                if (r == route_sel) rect(0, y - 3, VSC_SCREEN_W, 13, C_PANEL);
-                char b[12]; num(b, (int)r + 1);
-                text(4, y, b, r == route_sel ? C_INK : C_DIM, 1);
-                if (ro->param == 255) { text(28, y, "--", C_LINE, 1); continue; }
-                char src[3] = {(char)('1' + (ro->src & 3)), 0, 0};
-                text(28, y, src, C_MID, 1);
-                text(40, y, mtype_name[vsc.t[track][P_MOD(ro->src & 3, 0)] & 3], C_MID, 1);
-                char dn[10]; vsc_mod_dest_name(ro->param, dn);
-                text_n(92, y, dn, C_FG, 9);
-                int w = ro->depth * 30 / 127, cx = 196;
-                hline(cx - 30, y + 3, 61, C_LINE);
-                if (w > 0) rect(cx, y + 1, w, 5, C_FG); else rect(cx + w, y + 1, -w, 5, C_FG);
-                if (ro->flags & 1) px(cx, y - 1, C_INK);
+        if (row == MATRIX_VIEW) {
+            /* the matrix: every route on every track, each a modulator (its colour) moving a
+             * parameter; the bar is the AMOUNT, the bright tick where it has the parameter now */
+            unsigned count = matrix_count(), first = route_sel > 7 ? route_sel - 7 : 0;
+            for (unsigned i = first; i <= count && i < first + 9; ++i) {
+                int y = VIS_Y + 4 + (int)(i - first) * 15;
+                int sel = i == route_sel;
+                if (sel) rect(0, y - 3, VSC_SCREEN_W, 13, C_PANEL);
+                unsigned tt; const struct vsc_route *ro = matrix_at(i, &tt);
+                if (!ro) { text(4, y, "+ NEW ROUTE", sel ? C_INK : C_LINE, 1); continue; }
+                unsigned st = vsc_src_track(tt, ro->src), m = ro->src & 3u;
+                char b[16];
+                rect(4, y, 3, 7, C_MOD[m]);
+                source_name(tt, ro->src, b);
+                text(10, y, b, sel ? C_INK : C_MID, 1);
+                text(54, y, ">", C_LINE, 1);
+                if (ro->param >= VSC_GDEST) { dev_name(dev_of(tt, ro->param), b); b[2] = 0; text(62, y, b[0] == 'P' ? "PF" : b[0] == 'M' ? "MS" : "SP", C_DIM, 1); }
+                else { b[0] = 'T'; b[1] = (char)('1' + tt); b[2] = 0; text(62, y, b, C_DIM, 1); }
+                dest_name(tt, ro->param, b);
+                text_n(78, y, b, sel ? C_INK : C_FG, 10);
+                /* amount, centred, and the live position */
+                int cx = 196, half = 38, w = ro->depth * half / 127;
+                hline(cx - half, y + 3, half * 2 + 1, C_LINE);
+                vline(cx, y, 7, C_LINE);
+                if (w > 0) rect(cx, y + 2, w, 3, C_MID); else if (w < 0) rect(cx + w, y + 2, -w, 3, C_MID);
+                float mv = vsc_meter.mod_value[st][m];
+                if (ro->flags & 1) mv = mv * 2.f - 1.f;
+                int lx = cx + (int)((float)w * mv);
+                rect(lx - 1, y, 2, 7, C_MOD[m]);
+            }
+            if (!count) {
+                text(4, VIS_Y + 40, "NO ROUTES: TURN A KNOB HERE,", C_DIM, 1);
+                text(4, VIS_Y + 52, "OR HOLD LFO + TURN ANY KNOB.", C_DIM, 1);
             }
             break;
         }
         {
             /* the modulator's shape, filled up to where it is now, as on the S-4 */
-            unsigned m = row / 3, ty = vsc.t[track][P_MOD(m, 0)] & 3;
+            unsigned m = VMOD(row), ty = vsc.t[track][P_MOD(m, 0)] & 3;
             int base = VIS_Y + 140, h = 118;
             float ph = vsc_meter.mod_phase[track][m];
             int phx = ty == MT_WAVE || ty == MT_RANDOM ? (int)(ph * 239.f) : 239;
@@ -1003,8 +1195,7 @@ static void draw_vis(void)
             text(6, VIS_Y + 100, "PLAYS SAMPLES, NOT THE INPUT.", C_DIM, 1);
             text(6, VIS_Y + 112, "SET LOOP OR THRU: EDIT + PRESETS.", C_DIM, 1);
         }
-        text(6, VIS_Y + 130, "SAMPLES: LOADED OVER USB WITH", C_LINE, 1);
-        text(6, VIS_Y + 142, "THE M-VAVE WORKBENCH.", C_LINE, 1);
+        text(6, VIS_Y + 136, "SAMPLES: THE INSTALL PAGE, USB", C_LINE, 1);
         break;
     } else if (row == SET_CLOCK) {
         text(6, VIS_Y + 4, "CLOCK", C_DIM, 1);
@@ -1021,9 +1212,7 @@ static void draw_vis(void)
         text(6, VIS_Y + 4, "VISCERA " VSC_VERSION, C_FG, 1);
         text(6, VIS_Y + 18, "THESE SETTINGS BELONG TO THE FM-1:", C_DIM, 1);
         text(6, VIS_Y + 30, "KEPT THROUGH POWER-OFF AND LOADS.", C_DIM, 1);
-        text(6, VIS_Y + 50, "BACKLIT: HOW THE UNLIT KEYS GLOW", C_DIM, 1);
-        text(6, VIS_Y + 62, "KNOB CC: CC 110-113 TURN KNOB 1-4", C_DIM, 1);
-        text(6, VIS_Y + 74, "METRO: A CLICK ON EVERY BEAT", C_DIM, 1);
+        text(6, VIS_Y + 50, "KNOB CC: CC 110-113 TURN KNOB 1-4", C_DIM, 1);
         if (vsc_host.cpu == 255) { text(6, VIS_Y + 100, "CPU: SHOWN ON THE FM-1", C_DIM, 1); break; }   /* the emulator */
         char b[16] = "CPU "; num(b + 4, vsc_host.cpu); unsigned l = (unsigned)vsc_strlen(b); b[l] = '%'; b[l + 1] = 0;
         text(6, VIS_Y + 100, b, vsc_host.cpu > 85 ? C_WARN : C_FG, 1);
@@ -1188,7 +1377,7 @@ static void compute_curve(void)
 /* the selected modulator's shape, for its picture */
 static void compute_mod_curve(void)
 {
-    unsigned m = row / 3, ty = vsc.t[track][P_MOD(m, 0)] & 3;
+    unsigned m = VMOD(row), ty = vsc.t[track][P_MOD(m, 0)] & 3;
     const uint8_t *b = &vsc.t[track][P_MOD(m, 0)];
     if (ty == MT_WAVE) {
         float amount = b[2] / 127.f, off = b[4] / 127.f * 2.f - 1.f, sk = b[5] / 127.f, fold = b[6] / 127.f, cv = b[7] / 127.f * 2.f - 1.f;
@@ -1246,7 +1435,7 @@ void vsc_ui_frame(uint32_t now)
     hist_w = (hist_w + 1) % 96;
     compute_wave();
     compute_curve();
-    if (page == PG_MODS && row < MATRIX_VIEW) compute_mod_curve();
+    if (page == PG_MODS && row != MATRIX_VIEW) compute_mod_curve();
 }
 void vsc_ui_paint_band(unsigned y0, uint16_t *pixels)
 {

@@ -301,7 +301,7 @@ static VSC_HOT void compute_globals(void)
             const struct vsc_route *ro = &vsc.route[t][r];
             if (ro->param < VSC_GDEST || ro->param >= VSC_GDEST + VSC_NG || !ro->depth) continue;
             unsigned g = ro->param - VSC_GDEST;
-            float mv = vsc_meter.mod_value[t][ro->src & 3];
+            float mv = vsc_meter.mod_value[vsc_src_track(t, ro->src)][ro->src & 3];
             if (ro->flags & 1) mv = mv * 2.f - 1.f;
             gv[g] += (float)ro->depth * mv;
         }
@@ -330,7 +330,7 @@ static VSC_HOT void compute_params(unsigned t)
     for (unsigned r = 0; r < VSC_MOD_ROUTES; ++r) {
         const struct vsc_route *ro = &vsc.route[t][r];
         if (ro->param >= VSC_NP || !ro->depth) continue;   /* globals: compute_globals */
-        float mv = mods[ro->src & 3];
+        float mv = (ro->src & VSC_SRC_OTHER) ? vsc_meter.mod_value[vsc_src_track(t, ro->src)][ro->src & 3] : mods[ro->src & 3];
         if (ro->flags & 1) mv = mv * 2.f - 1.f;
         k->e[ro->param] += (float)ro->depth * (1.f / 127.f) * mv;
     }

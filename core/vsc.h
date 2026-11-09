@@ -87,6 +87,14 @@ struct vsc_step { uint8_t on, note, vel, lp[2], lv[2], pad; };
 /* A modulation route: param < VSC_NP is a track parameter, VSC_GDEST + g a global one,
  * 255 an empty route. */
 struct vsc_route { uint8_t src, param; int8_t depth; uint8_t flags; };   /* flags bit 0: bipolar */
+/* A route lives with the track it moves (route[t]; globals in any). Its source is a
+ * modulator: bits 0-1 which; bit 4 set when it is another track's, bits 2-3 that track.
+ * Without bit 4 it is the route's own track's, so a sound keeps its routes when it
+ * loads onto another track. */
+#define VSC_SRC_OTHER 16u
+static inline unsigned vsc_src_track(unsigned t, unsigned src) { return (src & VSC_SRC_OTHER) ? (src >> 2) & 3u : t; }
+static inline unsigned vsc_src_code(unsigned t, unsigned from_track, unsigned mod)
+{ return from_track == t ? (mod & 3u) : (VSC_SRC_OTHER | (from_track & 3u) << 2 | (mod & 3u)); }
 /* MIDI learn: a CC on a channel drives a parameter (code as for routes). */
 struct vsc_learn { uint8_t ch, cc, track, param; };
 #define VSC_LEARN 16
@@ -206,6 +214,7 @@ uint32_t vsc_crc32(const void *data, size_t bytes);
 int vsc_project_valid(const struct vsc_project *p);
 /* Sets or clears a modulation route; depth -127..127, 0 removes it. param is a
  * track parameter, or VSC_GDEST + a global one. */
+int vsc_mod_dest_valid(unsigned code);   /* can a route move it? */
 void vsc_route_set(unsigned track, unsigned src, unsigned param, int depth);
 int vsc_route_get(unsigned track, unsigned src, unsigned param);
 void vsc_macro_set(unsigned macro, unsigned track, unsigned param, int depth);

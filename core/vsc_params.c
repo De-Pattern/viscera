@@ -236,7 +236,7 @@ void vsc_scene_recall(unsigned s)
 
 void vsc_route_set(unsigned t, unsigned src, unsigned param, int depth)
 {
-    if (t >= VSC_TRACKS || src >= VSC_MODS) return;
+    if (t >= VSC_TRACKS || (src & ~(VSC_SRC_OTHER | 15u))) return;
     if (param >= VSC_NP && (param < VSC_GDEST || param >= VSC_GDEST + VSC_NG)) return;
     if (depth > 127) depth = 127;
     if (depth < -127) depth = -127;
@@ -309,6 +309,7 @@ static int dest_ok(unsigned code)
     if (code >= VSC_GDEST && code < VSC_GDEST + VSC_NG) return !(ginfo[code - VSC_GDEST].flags & VSC_PF_ENUM);
     return 0;
 }
+int vsc_mod_dest_valid(unsigned code) { return dest_ok(code); }
 unsigned vsc_mod_dest_count(void)
 {
     unsigned n = 0;

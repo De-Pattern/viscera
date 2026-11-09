@@ -11,6 +11,9 @@
 - **Changed:** BACKLIT, KNOB CC, METRO, the MIDI learn mappings and the sounds belong to the FM-1. They are kept through power-off and loading a project, in their own flash sector (in the emulator, in the browser).
 - **Changed:** SETTINGS moved to GLO (press GLO on SPACE). SAVE is where things are kept: PROJECT, then SOUNDS.
 - **New:** SETTINGS → AUDIO IN (the second view under GLO): every way sound gets in, in one place. Bluetooth audio on/off and its state, USB audio, level meters for both, and the selected track's INPUT, level and monitoring. PRESETS picks the track; REC opens its MATERIAL page. The FM-1 has no analogue input; samples are loaded over USB with M-VAVE's workbench.
+- **Changed:** LFO opens the MATRIX first, then MOD 1–4. The matrix lists every route on every track, with live bars, and its knobs are SOURCE, DEVICE, PARAM and AMOUNT (REC: bipolar or unipolar). DEVICE walks Viscera's pages (each track's MATERIAL to MODS, then SPACE, PERFORM and MASTER) and PARAM follows the page's knob order. A NEW row makes a route with any knob.
+- **New:** a modulator on one track can move another track's parameters, from the matrix or with LFO + a knob on MIX.
+- **New:** while LFO is held, the bottom line says which modulator a knob turn maps.
 - **New:** a sample manager on the install page (Samples). Over USB it reads the FM-1's eight sample slots, swaps in your audio (WAV, AIFF, FLAC or MP3, converted to the FM-1's format in the browser), renames, clears and plays them, saves and opens backups, and writes the bank back, read back and checked byte for byte. It uses M-VAVE's own sample protocol and format, and keeps banks inside Viscera's limit (about 16.5 s).
 - **New:** SOUNDS: 16 sound slots kept on the FM-1. A sound is a track's devices and modulators, without its mix or sequence; REC loads one onto the selected track, or saves into an empty slot, and SAVE + PLAY saves over.
 - **Fixed:** SAVE + PLAY also started playback.

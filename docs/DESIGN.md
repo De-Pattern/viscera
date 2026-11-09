@@ -44,7 +44,15 @@ Each track runs the same chain as the S-4's: MATERIAL, then GRAIN, FILTER and CO
 
 Four modulator slots per track, each **WAVE**, **RANDOM**, **FOLLOW** or **ADSR** (PRESETS changes a slot's type), with the S-4's parameters: WAVE has RATE, AMOUNT, PHASE, OFFSET, SKEW, FOLD, CURVE, SHAPE and SYNC (free, straight, triplet, dotted); RANDOM has RATE, AMOUNT, PHASE, OFFSET, LENGTH, VARIATION, SMOOTH and SYNC; FOLLOW has DELAY, AMOUNT, RISE, FALL, INPUT (this track, its material, any track, the main mix or the live input), FILTER, HOLD and GAIN; ADSR has ATTACK, DECAY, SUSTAIN, RELEASE, their three curves and AMOUNT, and plays from notes or REC.
 
-Hold **LFO** and turn any knob on any page to map the modulator you last looked at to that parameter; the direction you turn sets the direction. Every continuous parameter can be a destination, track or global (the space, the mix, the macros), plus each modulator's RATE and AMOUNT. The **MATRIX** (after the four modulators) lists every route on the track with its source, destination, depth and polarity (unipolar or bipolar). Modulators restart with PLAY.
+**LFO** opens the **MATRIX** first, then each press goes to the next modulator (MOD 1–4, three pages each), then back to the matrix. SELECT pages through them all.
+
+The MATRIX lists every route on every track: the source in its modulator's colour, the track and parameter it moves, and a bar for its AMOUNT with a tick where the modulator has it now. PRESETS picks a row; the last row is NEW, where turning any knob makes a route. The four knobs:
+
+| KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 | REC |
+| --- | --- | --- | --- | --- |
+| SOURCE: any of the sixteen modulators, T1 WAV1 to T4 ENV4 (a modulator on one track can move another track) | DEVICE: T1 MATERIAL, GRAIN, FILTER, COLOR, MIX, MODS, then T2 … T4, then SPACE, PERFORM and MASTER | PARAM: that device's parameters in the order of its page's knobs (for the track's current mode and filter); turned back past the first, the route goes | AMOUNT, either way | BIPOLAR or UNIPOLAR |
+
+**Hold LFO and turn any knob** on any page to map: the current track's modulator (the last one you looked at; PRESETS changes it while LFO is held) moves that knob's parameter, and the direction you turn sets the amount. While LFO is held the header and the knob cells take the modulator's colour and the bottom line says which modulator a turn maps. On MIX, where the knobs are the four tracks, a track's modulator can move another track's level, pan or send. Every continuous parameter can be a destination, plus each modulator's RATE and AMOUNT. Modulators restart with PLAY.
 
 ### Perform, temp and scenes
 
@@ -75,11 +83,11 @@ The FM-1's left-hand encoders are the same kind of control on every page, but th
 | KNOB 1–4 | The four parameters on screen |
 | SELECT | The next four parameters of this device or page |
 | ALGORITHM | Track 1–4 |
-| PRESETS | The page's list: the device in this slot (MATERIAL, FILTER), the sequencer (STEPS or CAROM), a modulator's type, a route in the matrix, a project slot, a Bluetooth device, a learned mapping |
+| PRESETS | The page's list: the device in this slot (MATERIAL, FILTER), the sequencer (STEPS or CAROM), a modulator's type, a row in the matrix, a project slot, a Bluetooth device, a learned mapping |
 | MASTER | Output level |
 | EDIT / FX / SEL / ENV | MATERIAL / GRAIN / FILTER / COLOR (press again for the next page) |
 | GLO | SPACE, then SETTINGS: Bluetooth, AUDIO IN, clock, PANEL, MIDI learn (SELECT pages) |
-| LFO | The four modulators, then the MATRIX; hold + turn a knob = map |
+| LFO | The MATRIX, then the four modulators; hold + turn a knob = map |
 | HOME | MIX: level, pan, send, filter and mute, each across the four tracks; hold HOME + a top pad = track |
 | ARP | PERFORM: macros and scenes; hold + turn = map a macro; hold + pad = scene |
 | SEQ | STEPS or CAROM |

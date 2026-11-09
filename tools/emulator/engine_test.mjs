@@ -105,10 +105,40 @@ for (const pg of pages) {
 // PRESETS cycles devices on MATERIAL and FILTER and modulator types
 press(B.EDIT); for (let i = 0; i < 6; i++) { ctl(0, 0, [0, 0, 0, 0, 0, 0, 1]); paintCheck('material device ' + i); run(5); }
 press(B.SCL); for (let i = 0; i < 6; i++) { ctl(0, 0, [0, 0, 0, 0, 0, 0, -1]); paintCheck('filter device ' + i); run(5); }
-press(B.LFO); for (let i = 0; i < 4; i++) { ctl(0, 0, [0, 0, 0, 0, 0, 0, 1]); paintCheck('mod type ' + i); run(5); }
-// the matrix: set a route with the knobs
-press(B.LFO); for (let i = 0; i < 6; i++) press(B.LFO);
-ctl(0, 0, [0, 0, 0, 5, 0, 0, 0]); ctl(0, 0, [0, 0, 0, 0, 10, 0, 0]); paintCheck('matrix');
+press(B.LFO); press(B.LFO); for (let i = 0; i < 4; i++) { ctl(0, 0, [0, 0, 0, 0, 0, 0, 1]); paintCheck('mod type ' + i); run(5); }
+// the matrix: LFO opens it first; it lists every route on every track, then NEW
+{ const NP = x.np(), ROUTES = 32 + 4 * NP + 24 + 4;
+  const routes = () => { const b = new Uint8Array(mem(), x.project() + ROUTES, 4 * 16 * 4), out = [];
+    for (let t = 0; t < 4; t++) for (let r = 0; r < 16; r++) { const o = (t * 16 + r) * 4; if (b[o + 1] !== 255) out.push({t, src: b[o], param: b[o + 1], depth: (b[o + 2] << 24) >> 24, flags: b[o + 3]}); }
+    return out; };
+  for (let t = 0; t < 4; t++) for (let r = 0; r < 16; r++) x.set_route(t, r, 0, 255, 0, 0);
+  ctl(0, 0, [0, -8, 0, 0, 0, 0, 0]);                       // track 1
+  press(B.HOME); press(B.LFO); paintCheck('matrix, empty');
+  ctl(0, 0, [0, 0, 0, 0, 0, 0, -40]);                      // PRESETS: the NEW row
+  ctl(0, 0, [0, 0, 1, 0, 0, 0, 0]);                        // a knob on NEW makes a route
+  let rs = routes();
+  ok(rs.length === 1 && rs[0].t === 0 && rs[0].param === P.P_FCUT && rs[0].src === 0, 'a knob on NEW makes T1 WAV1 > T1 CUTOFF: ' + JSON.stringify(rs));
+  ctl(0, 0, [0, 0, 5, 0, 0, 0, 0]);                        // SOURCE: five on, T2's modulator 2
+  rs = routes(); ok(rs[0].src === (16 | 1 << 2 | 1), 'SOURCE reaches another track\'s modulator: ' + rs[0].src);
+  ctl(0, 0, [0, 0, 0, 1, 0, 0, 0]);                        // DEVICE: T1 FILTER -> T1 COLOR
+  rs = routes(); ok(rs[0].t === 0 && rs[0].param === P.P_DRIVE, 'DEVICE moves to the next device, its first knob: ' + rs[0].param);
+  ctl(0, 0, [0, 0, 0, 3, 0, 0, 0]);                        // COLOR, MIX, MODS -> T2 MATERIAL
+  rs = routes(); ok(rs.length === 1 && rs[0].t === 1 && rs[0].src === 1, 'DEVICE onto another track moves the route there (its own modulator now): ' + JSON.stringify(rs[0]));
+  ctl(0, 0, [0, 0, 0, 30, 0, 0, 0]);                       // past the tracks: SPACE, PERFORM, MASTER
+  rs = routes(); ok(rs[0].param >= 128, 'DEVICE reaches the globals: ' + rs[0].param);
+  ctl(0, 0, [0, 0, 0, 0, 0, 10, 0]);                       // AMOUNT
+  rs = routes(); ok(rs[0].depth === 52, 'AMOUNT: ' + rs[0].depth);
+  press(B.REC); rs = routes(); ok(rs[0].flags === 1, 'REC: bipolar');
+  paintCheck('matrix, one route');
+  r = run(40); ok(!r.nan, 'cross-track and global routes run');
+  ctl(0, 0, [0, 0, 0, 0, -60, 0, 0]);                      // PARAM before the first removes it
+  ok(routes().length === 0, 'PARAM turned past the first removes the route');
+  // LFO + knob on a page: T1's modulator onto T3's level (MIX lays tracks across)
+  press(B.HOME); ctl(0, 0, [-9, 0, 0, 0, 0, 0, 0]);
+  ctl(0, 1 << B.LFO); ctl(0, 1 << B.LFO, [0, 0, 0, 0, 4, 0, 0]); ctl(0, 0);
+  rs = routes(); ok(rs.length === 1 && rs[0].t === 2 && rs[0].param === P.P_LEVEL && rs[0].src === (16 | 0 << 2 | (rs[0].src & 3)), 'LFO + knob maps across tracks: ' + JSON.stringify(rs));
+  for (let t = 0; t < 4; t++) for (let r2 = 0; r2 < 16; r2++) x.set_route(t, r2, 0, 255, 0, 0);
+}
 // LFO + knob maps a modulator on a device page
 press(B.SCL); x.set_param(0, P.P_FTYPE, 4);
 ctl(0, 1 << B.LFO); ctl(0, 1 << B.LFO, [0, 0, 5, 0, 0, 0, 0]); ctl(0, 0);

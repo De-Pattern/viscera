@@ -6,6 +6,7 @@
 #include "fm1_audio_io.h"
 #include "fm1_device.h"
 #include "fm1_sea.h"
+#include "fm1_audio.h"
 #include "instrument.h"
 #include "viscera/vsc.h"
 #include "viscera_fm1.h"
@@ -19,7 +20,13 @@ volatile uint8_t vsc_fm1_overload;   /* set while the CPU guard has silenced the
 static float in_bt[VSC_BLOCK * 2], in_usb[VSC_BLOCK * 2], mix[VSC_BLOCK * 2];
 static int32_t usb_raw[VSC_BLOCK * 2];
 static int16_t bt_raw[VSC_BLOCK * 2];
-static uint32_t render_peak_ticks, render_ticks;
+static uint32_t render_peak_ticks, render_ticks, block_period, block_prev;
+/* the audio timer, read directly (fm1_device_ticks lives in flash; nothing the audio
+ * interrupt calls may) */
+static inline __attribute__((always_inline)) uint32_t ticks_between(uint32_t start, uint32_t end)
+{
+    return end >= start ? end - start : end + FM1_AUDIO_TIMER_PERIOD + 1u - start;
+}
 
 void vsc_fm1_start(void)
 {
@@ -38,7 +45,9 @@ FM1_AUDIO_CODE int vsc_fm1_render(int32_t *out)
         for (unsigned i = 0; i < VSC_BLOCK * 2; ++i) out[i] = 0;
         return 0;
     }
-    uint32_t t0 = fm1_device_ticks();
+    uint32_t t0 = FM1_AUDIO_TIMER_COUNT;
+    if (block_prev) block_period = ticks_between(block_prev, t0);   /* one block, in the timer's ticks */
+    block_prev = t0 | 1u;
     struct vsc_inputs in = {0, 0};
     uint16_t gains[2];
     if (fm1_usb_audio_read(usb_raw, VSC_BLOCK, gains) == VSC_BLOCK) {
@@ -57,22 +66,25 @@ FM1_AUDIO_CODE int vsc_fm1_render(int32_t *out)
         if (v > 1.f) v = 1.f; else if (v < -1.f) v = -1.f;
         out[i] = (int32_t)(v * 8388607.f);
     }
-    uint32_t used = fm1_device_ticks() - t0;
+    uint32_t used = ticks_between(t0, FM1_AUDIO_TIMER_COUNT);
     render_ticks = used;
     if (used > render_peak_ticks) render_peak_ticks = used;
     /* CPU guard: if rendering eats more than 90% of a block three times in a
      * row, rest for about a second. The audio interrupt must never starve the
-     * USB and control tasks: they carry the update protocol. */
-    if (used > 69660u * 9u / 10u) { if (++over_count >= 3) { over_count = 0; rest_blocks = 350; vsc_fm1_overload = 1; } }
-    else over_count = 0;
+     * USB and control tasks: they carry the update protocol. (No division here:
+     * the compiler's divide helpers live in flash.) */
+    if (block_period && used < 0x10000000u && used * 10u > block_period * 9u) {   /* 32-bit: a block is far below 2^28 ticks */
+        if (++over_count >= 3) { over_count = 0; rest_blocks = 350; vsc_fm1_overload = 1; }
+    } else over_count = 0;
     return 0;
 }
 /* Render time as a share of one block (0..100+), and its peak since the last read. */
 unsigned vsc_fm1_cpu(unsigned *peak)
 {
-    /* TIMER4 runs at 24 MHz; one block is 128 / 44100 s = 69,660 ticks */
-    unsigned now = render_ticks * 100u / 69660u;
-    if (peak) { *peak = render_peak_ticks * 100u / 69660u; render_peak_ticks = 0; }
+    /* (control task) as a share of the measured block period */
+    uint32_t period = block_period ? block_period : 1u;
+    unsigned now = (unsigned)((uint64_t)render_ticks * 100u / period);
+    if (peak) { *peak = (unsigned)((uint64_t)render_peak_ticks * 100u / period); render_peak_ticks = 0; }
     return now;
 }
 
@@ -99,7 +111,7 @@ void vsc_fm1_bank_entry(unsigned slot, const uint8_t *data, uint32_t frames, con
     for (unsigned t = 0; t < VSC_TRACKS; ++t) vsc_meter.overview_slot[t] = 255;
     bank_ok = 1;
 }
-unsigned vsc_bank_frames(unsigned slot) { return slot < VSC_BANK_SLOTS && bank_ok ? bank[slot].frames : 0; }
+FM1_AUDIO_CODE unsigned vsc_bank_frames(unsigned slot) { return slot < VSC_BANK_SLOTS && bank_ok ? bank[slot].frames : 0; }
 const char *vsc_bank_name(unsigned slot) { return slot < VSC_BANK_SLOTS ? bank[slot].name : ""; }
 FM1_AUDIO_CODE const int16_t *vsc_bank_chunk(unsigned slot, unsigned chunk)
 {

@@ -92,7 +92,7 @@ struct vsc_route { uint8_t src, param; int8_t depth; uint8_t flags; };   /* flag
  * Without bit 4 it is the route's own track's, so a sound keeps its routes when it
  * loads onto another track. */
 #define VSC_SRC_OTHER 16u
-static inline unsigned vsc_src_track(unsigned t, unsigned src) { return (src & VSC_SRC_OTHER) ? (src >> 2) & 3u : t; }
+static inline __attribute__((always_inline)) unsigned vsc_src_track(unsigned t, unsigned src) { return (src & VSC_SRC_OTHER) ? (src >> 2) & 3u : t; }
 static inline unsigned vsc_src_code(unsigned t, unsigned from_track, unsigned mod)
 { return from_track == t ? (mod & 3u) : (VSC_SRC_OTHER | (from_track & 3u) << 2 | (mod & 3u)); }
 /* MIDI learn: a CC on a channel drives a parameter (code as for routes). */

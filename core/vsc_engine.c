@@ -239,7 +239,7 @@ static VSC_HOT void note_on(unsigned t, unsigned note, unsigned vel)
         if (k->loop_state < 2 || !len) return;
         window(t, len, &a, &b);
         unsigned slice = (note + 128u - 53u) & 15u;
-        k->ipos = a + (uint32_t)((uint64_t)(b - a) * slice / 16u);
+        k->ipos = a + (((b - a) * slice) >> 4);   /* 32-bit: (b - a) * 15 stays far below 2^32 */
         k->fpos = 0.f; k->declick = 0.f; k->running = 1;
     } else if (mode == MODE_KEYS) {
         if (!len) return;
@@ -305,7 +305,7 @@ static VSC_HOT void compute_globals(void)
             if (ro->flags & 1) mv = mv * 2.f - 1.f;
             gv[g] += (float)ro->depth * mv;
         }
-    for (unsigned g = 0; g < VSC_NG; ++g) gv[g] = clampf(gv[g], 0.f, (float)vsc_gparam_info(g)->max);
+    for (unsigned g = 0; g < VSC_NG; ++g) gv[g] = clampf(gv[g], 0.f, (float)vsc_gparam_max[g]);   /* the RAM copy */
 }
 static VSC_HOT void compute_params(unsigned t)
 {
@@ -365,7 +365,7 @@ VSC_INL float curve_to(float x, float c)   /* c -1..1: log .. linear .. exp */
     if (c > 0.f) return x + (x * x * x - x) * c;
     return x + ((1.f - (1.f - x) * (1.f - x) * (1.f - x)) - x) * -c;
 }
-static void mods_restart(void)
+static VSC_HOT void mods_restart(void)
 {
     for (unsigned t = 0; t < VSC_TRACKS; ++t)
         for (unsigned m = 0; m < VSC_MODS; ++m) { tr[t].ms[m].ph = 0.f; tr[t].ms[m].idx = 0; }
@@ -494,18 +494,21 @@ VSC_INL int advance(uint32_t *ipos, float *fpos, int8_t *dir, float inc, uint32_
     float f = *fpos + step;
     int whole = floori(f);
     *fpos = f - (float)whole;
-    int64_t np = (int64_t)*ipos + whole;
-    if (np >= (int64_t)b || np < (int64_t)a) {
+    /* 32-bit and no division: positions are far below 2^31 and a step moves only a
+     * few frames, so wrapping by subtraction ends at once (64-bit maths and the
+     * compiler's divide helpers live in flash, which the audio path must not touch) */
+    int32_t np = (int32_t)*ipos + whole;
+    if (np >= (int32_t)b || np < (int32_t)a) {
         if (loopm == 0) return 0;
-        uint32_t span = b - a;
-        if (!span) return 0;
+        int32_t span = (int32_t)(b - a);
+        if (span <= 0) return 0;
         if (loopm == 1) {
-            int64_t off = (np - (int64_t)a) % (int64_t)span;
-            if (off < 0) off += span;
-            np = (int64_t)a + off;
+            for (unsigned guard = 0; np >= (int32_t)b && guard < 64; ++guard) np -= span;
+            for (unsigned guard = 0; np < (int32_t)a && guard < 64; ++guard) np += span;
+            if (np < (int32_t)a || np >= (int32_t)b) np = (int32_t)a;
         } else {
             *dir = (int8_t)-*dir;
-            np = np >= (int64_t)b ? (int64_t)b - 1 : (int64_t)a;
+            np = np >= (int32_t)b ? (int32_t)b - 1 : (int32_t)a;
         }
     }
     *ipos = (uint32_t)np;
@@ -1262,7 +1265,7 @@ static VSC_HOTDATA const uint8_t cc_global[128] = {
 /* pickup state for learned controls; released when the sound changes underneath them */
 static uint8_t learn_held[VSC_LEARN];
 static int16_t learn_last[VSC_LEARN];
-void vsc_learn_release(void) { for (unsigned l = 0; l < VSC_LEARN; ++l) { learn_held[l] = 0; learn_last[l] = -1; } }
+VSC_HOT void vsc_learn_release(void) { for (unsigned l = 0; l < VSC_LEARN; ++l) { learn_held[l] = 0; learn_last[l] = -1; } }
 /* the parameter's value on the CC's 0..127 scale, -1 if it has none */
 static VSC_HOT int cc_value_now(unsigned track, unsigned code)
 {
@@ -1486,7 +1489,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
         }
     }
     {
-        float l[VSC_BLOCK], r[VSC_BLOCK];
+        static float l[VSC_BLOCK], r[VSC_BLOCK];   /* static (RAM): 1 KB is too much for the interrupt's stack */
         for (unsigned i = 0; i < VSC_BLOCK; ++i) { l[i] = 0.f; r[i] = 0.f; }
         space(l, r, VSC_BLOCK);
         for (unsigned i = 0; i < VSC_BLOCK; ++i) { out[2 * i] += l[i]; out[2 * i + 1] += r[i]; }
@@ -1526,7 +1529,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
         if ((mode == MODE_PLAY || mode == MODE_KEYS) && slot < VSC_BANK_SLOTS && vsc_bank_frames(slot)) {
             if (vsc_meter.overview_slot[t] != slot) { vsc_meter.overview_slot[t] = (uint8_t)slot; ov_col = 0; }
             uint32_t frames = vsc_bank_frames(slot);
-            uint32_t chunk = (uint32_t)((uint64_t)frames * ov_col / 240u) / VSC_CHUNK;
+            uint32_t chunk = frames * ov_col / 240u / VSC_CHUNK;   /* 32-bit, constant divisors only */
             const int16_t *c = vsc_bank_chunk(slot, chunk);
             int pk = 0;
             if (c) {

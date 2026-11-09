@@ -6,6 +6,9 @@
 - **Fixed:** safe mode (OCT- and OCT+ held at power-on) could never trigger, because the buttons were read before the scanner was running. They're read after it now.
 - **New:** a start guard. Two starts in a row that never ran well (8 seconds) make the next power-on start in safe mode, where the install page can reinstall. Its count and Viscera's settings are read and written on the first control pass, not at start-up (the SDK allows flash only from the control task).
 - **New:** the build refuses a firmware that doesn't contain the board start-up.
+- **Fixed:** the audio interrupt called code that lives in flash, which the SDK forbids: the timer read (`fm1_device_ticks`), the parameter table, sample-bank lookups, scene recall and memory clearing, and the compiler's 64-bit division helpers. All of it now runs from RAM or is gone (the timer is read directly, positions wrap without division). Its 1 KB of stack arrays are static.
+- **New:** the build runs M-VAVE's own firmware checks (ported from the SDK's Build.ps1), and checks that everything the audio interrupt can reach is in internal RAM (`tools/check_audio_ram.py`).
+- **Fixed:** the blank factory voice put a letter of its name over the transpose byte.
 - **Changed:** the stock-engine removal from 0.2.2 is narrowed to the engines' seven render functions. The library calls them only from its own render(), which Viscera never runs; the build checks that before changing anything and refuses otherwise. Everything else of the engines (init, notes, MIDI, parameters) keeps its code.
 
 ## 0.2.2

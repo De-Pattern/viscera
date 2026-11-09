@@ -170,6 +170,13 @@ def main():
     if missing:
         raise SystemExit('board start-up missing from the firmware (nothing calls it): ' + ', '.join(missing))
 
+    # M-VAVE's own firmware checks (Build.ps1, Test-Firmware)
+    print(run([sys.executable, os.path.join(here, 'check_firmware.py'), elf, os.path.join(out, 'sdk.map'),
+               os.path.join(sdk, 'synth.json'), '--toolchain', bin_]).strip())
+    # nothing the audio interrupt reaches may be in flash (the SDK's rule)
+    print(run([sys.executable, os.path.join(here, 'check_audio_ram.py'), tree, elf, '--toolchain', bin_,
+               '--flags', json.dumps([f for f in flags if f != '-flto'] + ['-fwrapv', '-fno-fast-math', '-ffp-contract=off'])]).strip())
+
     # package
     gen = os.path.join(out, 'generated')
     image = b''

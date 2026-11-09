@@ -151,7 +151,7 @@ void vsc_param_label(const struct vsc_pinfo *info, unsigned p, unsigned v, char 
     put_int(out, (int)v);
 }
 
-void vsc_memset(void *d, int v, size_t n) { uint8_t *p = d; while (n--) *p++ = (uint8_t)v; }
+VSC_HOT void vsc_memset(void *d, int v, size_t n) { uint8_t *p = d; while (n--) *p++ = (uint8_t)v; }
 void vsc_memcpy(void *d, const void *s, size_t n)
 {
     uint8_t *a = d; const uint8_t *b = s;
@@ -221,7 +221,7 @@ void vsc_scene_store(unsigned s)
     for (unsigned m = 0; m < VSC_MACROS; ++m) sc->macro[m] = vsc.g[G_M0 + m];
     sc->used = 1;
 }
-void vsc_scene_recall(unsigned s)
+VSC_HOT void vsc_scene_recall(unsigned s)
 {
     if (s >= VSC_SCENES || !vsc.scene[s].used) return;
     const struct vsc_scene *sc = &vsc.scene[s];

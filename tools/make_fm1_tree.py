@@ -74,7 +74,7 @@ def main():
 #include "fm_patch.h"
 static const uint8_t blank_voice[128] = {
     [102] = 99, [103] = 99, [104] = 99, [105] = 99, [106] = 50, [107] = 50, [108] = 50, [109] = 50,
-    [117] = 'V', [118] = 'I', [119] = 'S', [120] = 'C', [121] = 'E', [122] = 'R', [123] = 'A', [124] = ' ', [125] = ' ', [126] = ' '};
+    [118] = 'V', [119] = 'I', [120] = 'S', [121] = 'C', [122] = 'E', [123] = 'R', [124] = 'A', [125] = ' ', [126] = ' ', [127] = ' '};   /* name: bytes 118..127 */
 FM1_DSP_CODE const uint8_t *groove_fm_factory_raw(unsigned program) { (void)program; return blank_voice; }
 FM1_DSP_CODE void groove_fm_factory(uint8_t p[156], unsigned program) { groove_fm_unpack(p, groove_fm_factory_raw(program)); }
 """)

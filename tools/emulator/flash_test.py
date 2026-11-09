@@ -69,7 +69,7 @@ async def run_case(browser, url, start, cfg_js, limit, meta):
     try:
         await page.wait_for_function(
             "/^Done|install stopped/i.test(document.getElementById('status').textContent) || document.getElementById('error').textContent",
-            timeout=180000)
+            timeout=420000)
     except Exception:
         pass
     status = await page.text_content('#status')
@@ -102,7 +102,7 @@ async def main():
     ap.add_argument('--meta', default=os.path.join(root, 'build', 'latest.json'))
     ap.add_argument('--deadline', type=int, default=250, help='ms the simulated loader waits per block')
     ap.add_argument('--limit', type=float, default=60, help='slowest acceptable reply, ms')
-    ap.add_argument('--cases', default='ravel,stock,open')
+    ap.add_argument('--cases', default='ravel,stock,open,loader,ravel-slow')
     ap.add_argument('--stock', default=os.path.join(root, 'site', 'firmware', 'stock', 'FM-1_015.fwsc'))
     a = ap.parse_args()
     from playwright.async_api import async_playwright
@@ -115,7 +115,7 @@ async def main():
     open(os.path.join(tmp, 'site', meta['url']), 'wb').write(fwsc)
     json.dump(meta, open(os.path.join(tmp, 'site', 'firmware', 'latest.json'), 'w'))
     httpd = serve(os.path.join(tmp, 'site'))
-    url = f'http://127.0.0.1:{httpd.server_address[1]}/'
+    url = f'http://127.0.0.1:{httpd.server_address[1]}/?installer-test'
     b64 = lambda b: "Uint8Array.from(atob('%s'),c=>c.charCodeAt(0))" % base64.b64encode(b).decode()
     vis_img = package_image(fwsc)
     stock_img = package_image(open(a.stock, 'rb').read())
@@ -123,7 +123,10 @@ async def main():
         json.dumps(meta['product']), json.dumps(meta['build_id']), b64(vis_img), b64(boot_head(vis_img)),
         b64(stock_img), b64(boot_head(stock_img)))
     # a Felucca-based or stock FM-1 still carries stock V15's boot head; an Open one carries Viscera's
-    cfg_js = ("window.__FM1_SIM={start:'__START__',deadline:%d,packages:%s,head:('__START__'==='open'?%s:%s)};"
+    # 'ravel-slow': the loader takes 70 s to show up on USB; 'loader': the FM-1 is already in
+    # M-VAVE's update mode (dark screen) when the page opens, after an install that stopped
+    cfg_js = ("window.__FM1_SIM={start:('__START__'==='ravel-slow'?'ravel':'__START__'),loaderDelay:('__START__'==='ravel-slow'?70000:900),"
+              "deadline:%d,packages:%s,head:('__START__'==='open'?%s:%s)};"
               % (a.deadline, packages, b64(boot_head(vis_img)), b64(boot_head(stock_img))))
     chrome = shutil.which('google-chrome') or shutil.which('chromium')
     all_ok = True

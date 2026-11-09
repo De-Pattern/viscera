@@ -11,6 +11,9 @@
  *   packages: [{image, head, product, buildId, stock}] the packages the page may send;
  *             head is the package's 16 KB boot head
  *   head:     the boot head already on the device (stock V15's for Felucca-based firmware)
+ *   loaderDelay: ms from accepting a package to the loader showing up on USB (default 900)
+ *   start 'loader': the FM-1 is already in M-VAVE's update mode (dark screen), as after an
+ *             install that stopped once the loader took over
  * Results: window.__FM1_SIM_REPORT (latencies, outcome, bytes written). */
 (() => {
   const cfg = Object.assign({start: 'ravel', deadline: 250, chunk: 512}, window.__FM1_SIM || {});
@@ -40,7 +43,7 @@
       Object.assign(report, m.report);
     }
   };
-  worker.postMessage({type: 'config', cfg: {start: cfg.start, deadline: cfg.deadline, chunk: cfg.chunk,
+  worker.postMessage({type: 'config', cfg: {start: cfg.start, deadline: cfg.deadline, chunk: cfg.chunk, loaderDelay: cfg.loaderDelay || 900,
     packages: (cfg.packages || []).map(p => ({product: p.product, buildId: p.buildId, stock: !!p.stock,
       image: Array.from(p.image), head: Array.from(p.head)})),
     head: Array.from(cfg.head || [])}});
@@ -90,11 +93,13 @@
     };
     const startTransfer = (which) => {
       phase = which; queue = [];
-      if (which === 'write') image = staged;
-      const n = which === 'prepare' ? 32768 : image.length;
-      for (let a = 0; a < n; a += cfg.chunk) queue.push({addr: a, bytes: Math.min(cfg.chunk, n - a)});
-      queue.push({addr: which === 'prepare' ? 0xe0000000 : 0xf0000000, bytes: 8});
-      if (which === 'write') flash = new Array(image.length).fill(-1);
+      /* the loader writes the image the host serves: it reads the header first and sizes
+       * the rest from it (modelled by matching the header to a known package) */
+      if (which === 'write') { image = null; queue.push({addr: 0, bytes: cfg.chunk}); }
+      else {
+        for (let a = 0; a < 32768; a += cfg.chunk) queue.push({addr: a, bytes: Math.min(cfg.chunk, 32768 - a)});
+        queue.push({addr: 0xe0000000, bytes: 8});
+      }
       log('requesting data: ' + which);
       setTimeout(nextRequest, 5);
     };
@@ -102,8 +107,13 @@
       const m = ev.data;
       if (m.type === 'config') {
         cfg = m.cfg; head = cfg.head;
-        family = cfg.start === 'ravel' ? 'felucca' : cfg.start;          /* felucca, stock or open */
-        identity = cfg.start === 'stock' ? 'FM-1_015' : cfg.start === 'open' ? 'FM-1_8600099' : 'FM-1_82000401';
+        family = cfg.start === 'ravel' || cfg.start === 'loader' ? 'felucca' : cfg.start;   /* felucca, stock or open */
+        identity = cfg.start === 'stock' ? 'FM-1_015' : cfg.start === 'open' ? 'FM-1_8600099' : 'FM-1_82012700';
+        if (cfg.start === 'loader') {
+          /* a V15 package was staged from Ravel, then the page lost the loader */
+          mode = 'loader'; identity = 'ota-FM-1_015'; current = cfg.packages.find(p => p.stock);
+          log('booted loader as ' + identity); return;
+        }
         capBuild = cfg.start === 'open' ? '00'.repeat(32) : null;
         log('booted app as ' + identity);
         return;
@@ -148,11 +158,13 @@
               log(outcome); mode = 'error'; return;
             }
             staged = pkg.image; current = pkg;
-            identity = 'ota-FM-1_015'; log('accepted ' + pkg.product + '; rebooting into the loader'); reboot('loader');
+            identity = 'ota-FM-1_015'; log('accepted ' + pkg.product + '; rebooting into the loader'); reboot('loader', cfg.loaderDelay);
           }
           else {
-            const missing = flash.indexOf(-1), wrong = flash.findIndex((x, i) => x !== image[i]);
-            if (missing >= 0 || wrong >= 0) { outcome = 'failed: flash mismatch at ' + Math.max(missing, wrong); log(outcome); mode = 'error'; return; }
+            /* which package did the host serve? every byte must match one, and none may be missing */
+            const got = cfg.packages.find(p => p.image === image && p.image.every((x, i) => flash[i] === x));
+            if (!got) { outcome = 'failed: flash does not match any package'; log(outcome); mode = 'error'; return; }
+            current = got;
             identity = current.product; capBuild = current.stock ? null : current.buildId; head = current.head;
             family = current.stock ? 'stock' : 'open'; armed = false;
             outcome = 'installed ' + current.product; log('written and verified; rebooting');
@@ -160,7 +172,16 @@
           }
           return;
         }
-        if (phase === 'write') body.forEach((x, i) => flash[pending.addr + i] = x);
+        if (phase === 'write') {
+          if (!image) {
+            const p = cfg.packages.find(q => body.every((x, i) => q.image[i] === x));
+            if (!p) { outcome = 'failed: unknown package header'; log(outcome); mode = 'error'; pending = null; return; }
+            image = p.image; flash = new Array(image.length).fill(-1);
+            for (let a = cfg.chunk; a < image.length; a += cfg.chunk) queue.push({addr: a, bytes: Math.min(cfg.chunk, image.length - a)});
+            queue.push({addr: 0xf0000000, bytes: 8});
+          }
+          body.forEach((x, i) => flash[pending.addr + i] = x);
+        }
         else {
           /* staging: keep what arrives, to tell which package this is */
           if (pending.addr === 0) staged = null;

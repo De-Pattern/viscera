@@ -72,6 +72,7 @@ jobs:
           name: firmware
           path: build
       - name: Release this version if it's new
+        if: false   # paused until an install is confirmed on hardware
         run: |
           if gh release view "v$V" >/dev/null 2>&1; then
             echo "v$V is already released; bump VERSION to publish a new release."
@@ -100,8 +101,8 @@ jobs:
       - name: Put the build behind the installer
         run: |
           mkdir -p site/firmware
-          cp build/viscera.fwsc "site/firmware/viscera-$V.fwsc"
-          cp build/latest.json site/firmware/latest.json
+          # paused: no firmware on the site until an install is confirmed on hardware
+          rm -f site/firmware/latest.json
           cp build/viscera.wasm site/emulator/viscera.wasm
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

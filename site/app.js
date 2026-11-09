@@ -27,7 +27,15 @@
       fx.sediment && fx.sediment.kick();
     }
   }
-  const stepStatus = (step, steps) => (text, progress) => status((steps > 1 ? `Step ${step} of ${steps}: ` : '') + en(text), progress);
+  /* M-VAVE's update loader runs with the FM-1's screen dark: say so, so nobody unplugs a working update */
+  const DARK = ' The FM-1’s screen goes dark now: that is M-VAVE’s update loader starting. It can take a minute. Leave it plugged in.';
+  const stepStatus = (step, steps) => (text, progress) => {
+    const t = en(text);
+    status((steps > 1 ? `Step ${step} of ${steps}: ` : '') + t + (/waiting for the update device/i.test(t) ? DARK : ''), progress);
+  };
+  /* how long the page waits for the loader (and for the FM-1 to come back): generous, the
+   * loader's USB can take a while to appear, and giving up early leaves people guessing */
+  const TIMING = {reconnect: 180000};
   function error(e) { $('error').textContent = en(e && e.message ? e.message : String(e)); }
   function clearError() { $('error').textContent = ''; }
   function stage(n) { $('s2').classList.toggle('off', n < 2); $('s3').classList.toggle('off', n < 3); }
@@ -110,7 +118,7 @@
         (now ? '<br>installed build ' + now : '') +
         (device.same ? '<br>Matches this package: already installed.' : '');
       $('route').textContent = {
-        resume: 'The FM-1 is waiting in update mode: installing finishes the update.',
+        resume: 'The FM-1 is waiting in M-VAVE’s update mode (its screen is dark). Install Viscera finishes the update; nothing else is needed.',
         direct: 'Viscera installs directly.',
         'direct-force': 'Viscera installs directly, replacing this Open-family firmware.',
         stock: 'Installs through M-VAVE’s V15 updater.',
@@ -124,7 +132,7 @@
 
   /* One install of one package, connecting first. force covers non-Open firmware. */
   async function installOne(pkg, force, report) {
-    const u = new FM1Web.Updater(await midi(), pkg, report);
+    const u = new FM1Web.Updater(await midi(), pkg, report, TIMING);
     const device = await u.connect({force});
     if (device.migration && !force) { await u.disconnect().catch(() => {}); return installOne(pkg, true, report); }
     await u.install({force});
@@ -144,8 +152,9 @@
     try { await job(); return true; }
     catch (e) {
       error(e);
-      status('The install stopped. If the FM-1 shows an update error, switch it off and on: it starts its previous firmware, ' +
-             'or comes back in update mode. Either way, connect and install again from this page.');
+      status('The install stopped. Nothing is lost: if the FM-1’s screen is dark, it is waiting in M-VAVE’s update mode. ' +
+             'Leave it plugged in (or unplug and replug it), press Connect, then Install Viscera: it finishes from there. ' +
+             'If it shows an update error, switch it off and on first.');
       $('inst-meta').textContent = 'Stopped.';
       return false;
     } finally {
@@ -196,5 +205,14 @@
     if (ok) { status('Done. The FM-1 runs M-VAVE’s V15 again.', 100); $('inst-meta').textContent = 'V15 installed.'; route = 'stock'; }
   });
 
-  findLatest();
+  /* Installing is paused until an install from Ravel and other firmwares has been confirmed
+   * on a real FM-1. The tests still run the installer with ?installer-test. */
+  const PAUSED = !/[?&]installer-test\b/.test(location.search);
+  if (PAUSED) {
+    $('release-text').textContent = 'Installing is paused while we fix an install problem on real hardware. ' +
+      'Nothing is offered for download until it is confirmed working. Try Viscera in the emulator meanwhile.';
+    ['use-latest', 'connect', 'install-btn', 'stock-btn', 'pkg-file'].forEach(id => { const el = $(id); if (el) el.disabled = true; });
+    $('pkg-meta').innerHTML = 'Paused. <a href="emulator/">Open the emulator</a>.';
+    status('Installing is paused.');
+  } else findLatest();
 })();

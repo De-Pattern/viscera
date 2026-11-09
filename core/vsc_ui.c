@@ -7,7 +7,7 @@ struct vsc_host_status vsc_host;
 
 /* ---------------------------------------------------------------- colour */
 #define RGB(r, g, b) (uint16_t)((((r) & 0xf8) << 8) | (((g) & 0xfc) << 3) | ((b) >> 3))
-static const uint16_t C_BG = RGB(18, 17, 16), C_PANEL = RGB(30, 29, 27), C_LINE = RGB(52, 50, 46),
+static const uint16_t C_BG = RGB(0, 0, 0), C_PANEL = RGB(30, 29, 27), C_LINE = RGB(52, 50, 46),
     C_DIM = RGB(111, 107, 100), C_MID = RGB(169, 163, 151), C_FG = RGB(230, 223, 209),
     C_INK = RGB(243, 239, 231), C_WARN = RGB(196, 120, 96);
 /* the modulator colours, as on the S-4's action buttons: blue, yellow, green, red */
@@ -1139,9 +1139,13 @@ void vsc_ui_frame(uint32_t now)
 void vsc_ui_paint_band(unsigned y0, uint16_t *pixels)
 {
     band = pixels; by0 = (int)y0;
-    /* a dark violet-grey gradient, lighter at the top, as on the S-4's screen */
+    /* Background: black. VSC_SCREEN_GRADIENT 1 brings back the alternative, a dark
+     * violet-grey gradient lighter at the top (#2C2A32 to #100F12), kept for later. */
+#ifndef VSC_SCREEN_GRADIENT
+#define VSC_SCREEN_GRADIENT 0
+#endif
     for (unsigned r = 0; r < VSC_BAND; ++r) {
-        uint16_t c = mix565(RGB(44, 42, 50), RGB(16, 15, 18), (int)((y0 + r) * 256 / VSC_SCREEN_H));
+        uint16_t c = VSC_SCREEN_GRADIENT ? mix565(RGB(44, 42, 50), RGB(16, 15, 18), (int)((y0 + r) * 256 / VSC_SCREEN_H)) : RGB(0, 0, 0);
         for (unsigned i = 0; i < VSC_SCREEN_W; ++i) pixels[r * VSC_SCREEN_W + i] = c;
     }
     draw_header();

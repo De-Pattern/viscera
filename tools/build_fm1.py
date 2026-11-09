@@ -120,6 +120,10 @@ def main():
     linker = linker.replace('@SBC_DECODER@', 'sbc_decoder\n').replace('@ACL_TX_EXTRA@', ' + 1024').replace('@ACL_RX_EXTRA@', ' + 4096')
     open(os.path.join(out, 'generated', 'linker'), 'w').write(linker)
     elf = os.path.join(out, 'sdk.elf')
+    # the stock sound engines stay out (tools/strip_engines.py): Viscera never plays them
+    engine_lib = os.path.join(out, 'libfm1_engine_viscera.a')
+    run([sys.executable, os.path.join(here, 'strip_engines.py'), os.path.join(sdk, 'lib', 'libfm1_engine.a'), engine_lib,
+         '--toolchain', bin_, '--report', os.path.join(out, 'engines.json')])
     link = ['--plugin', os.path.join(bin_, 'LLVMgold.so'), '-o', elf] + objects + [
         '-flto', '--plugin-opt=-pi32v2-always-use-itblock=false', '--plugin-opt=-enable-ipra=true',
         '--plugin-opt=-pi32v2-merge-max-offset=4096', '--plugin-opt=-pi32v2-enable-simd=true', '--plugin-opt=mcpu=r3',
@@ -127,7 +131,7 @@ def main():
         '--plugin-opt=-inline-normal-into-special-section=true', '--plugin-opt=-dont-used-symbol-list=malloc,free,sprintf,printf,puts,putchar',
         '--plugin-opt=-pi32v2-enable-rep-memop', '--plugin-opt=-emulated-tls', '--sort-common',
         '--plugin-opt=-pi32v2-large-program=true', '--plugin-opt=-pi32v2-csync-before-rti=true', '--start-group',
-        '--whole-archive', os.path.join(sdk, 'lib', 'libfm1_engine.a'), '--no-whole-archive',
+        '--whole-archive', engine_lib, '--no-whole-archive',
         os.path.join(sdk, 'lib', 'libc.a'), os.path.join(sdk, 'lib', 'libcompiler_rt.a'),
         '--end-group', '--gc-sections', '-T' + os.path.join(out, 'generated', 'linker'), '-M=' + os.path.join(out, 'sdk.map'),
         '--undefined=connectivity_wl82_bluetooth_start', '--undefined=audio_app_bluetooth_open',

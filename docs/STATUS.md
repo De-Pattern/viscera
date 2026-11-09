@@ -6,6 +6,7 @@ The firmware builds and packages on Linux, and the package passes M-VAVE's own u
 
 - `core/`: the engine (`vsc_engine.c`), parameters and scenes (`vsc_params.c`) and the screen and controls (`vsc_ui.c`). Portable C99, single-precision float, no C library in the audio path.
 - `fm1/app/`: the SDK glue. `screen.c` replaces the stock screen and runs the UI; `viscera_fm1.c` renders in the audio interrupt, reads Bluetooth and USB audio in, decodes the flash sample bank (SEA5) into a small cache, takes MIDI and stores projects; `audio_output.c` applies MASTER.
+- `tools/strip_engines.py`: leaves M-VAVE's stock sound engines (DX7, 303, PSG, 808, pluck, sampler) out of the firmware. They live in the SDK's frozen library, whose own audio code still calls them, so the build rewrites a copy of the library so their functions point at a two-instruction `return 0`; the linker then drops their code, tables and state. Viscera never runs the stock render path, so the stub is never reached in practice. Functions that return a pointer keep their own code. This frees about 36 KB of flash and 35 KB of RAM.
 - `tools/make_fm1_tree.py` overlays all of that on M-VAVE's FM1 Open V14 kit (pinned commit), with small checked patches to `board/audio.c`, `samples.c`, `midi_router.c` and `version.h`.
 - `tools/build_fm1.py` is a Linux port of the firmware path of M-VAVE's `Build.ps1`, using JieLi's Linux toolchain (the same PI32v2 clang 4.0.1); `tools/fm1_package.py` ports `Package.cs`. `tools/verify_package.mjs` runs the result through `WebUpdate.js`'s `inspectPackage` and `prepare`.
 

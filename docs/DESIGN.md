@@ -78,7 +78,7 @@ The FM-1's left-hand encoders are the same kind of control on every page, but th
 | PRESETS | The page's list: the device in this slot (MATERIAL, FILTER), the sequencer (STEPS or CAROM), a modulator's type, a route in the matrix, a project slot, a Bluetooth device, a learned mapping |
 | MASTER | Output level |
 | EDIT / FX / SEL / ENV | MATERIAL / GRAIN / FILTER / COLOR (press again for the next page) |
-| GLO | SPACE, then SETTINGS (Bluetooth, clock, PANEL, MIDI learn) |
+| GLO | SPACE, then SETTINGS: Bluetooth, AUDIO IN, clock, PANEL, MIDI learn (SELECT pages) |
 | LFO | The four modulators, then the MATRIX; hold + turn a knob = map |
 | HOME | MIX: level, pan, send, filter and mute, each across the four tracks; hold HOME + a top pad = track |
 | ARP | PERFORM: macros and scenes; hold + turn = map a macro; hold + pad = scene |
@@ -115,6 +115,8 @@ GPL-3.0 with M-VAVE's SDK linking exception, as required by the SDK's app source
 ### The panel and the FM-1's own settings
 
 The page buttons light for the open page, PLAY while playing, REC blinks while recording, OCT shows the octave. The pads show steps and the playhead on SEQ, scenes on ARP and tracks on HOME. Unlit keys glow at the BACKLIT level (OFF/LOW/MID/HIGH, by PWM from the control loop, and only while that loop runs fast enough to keep the glow steady).
+
+**Audio in**: SETTINGS → AUDIO IN gathers Bluetooth audio (KNOB 1 switches it), USB audio status, a level meter for each, and the selected track's INPUT, LEVEL and the input monitor. PRESETS picks the track and REC opens its MATERIAL page (at the INPUT view for LOOP). The FM-1 has no analogue input: sound gets in over Bluetooth or USB, and samples are written to the flash bank over USB with M-VAVE's workbench.
 
 **Sounds**: 16 slots that belong to the FM-1, not to a project. A sound is one track's MATERIAL, GRAIN, FILTER and COLOR settings and its four modulators with their routes; level, pan, send and the sequence stay with the track. REC on SOUNDS loads one onto the selected track.
 

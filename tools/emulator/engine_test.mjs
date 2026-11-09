@@ -156,7 +156,7 @@ x.midi(0xb0, 110, 63); run(1); ctl(); x.midi(0xb0, 110, 90); run(1); ctl();
 ok(Math.abs(x.get_param(0, P.P_FCUT) - 90) <= 1, 'knob CC picks up and follows: ' + x.get_param(0, P.P_FCUT));
 { const g0 = x.device_changed();
   press(B.GLO); press(B.GLO);                  // SPACE, then SETTINGS
-  ctl(0, 0, [2, 0, 0, 0, 0, 0, 0]);            // PANEL view
+  ctl(0, 0, [3, 0, 0, 0, 0, 0, 0]);            // PANEL view
   ctl(0, 0, [0, 0, 0, 0, 1, 0, 0]);            // METRO on (KNOB 3)
   ok(x.device_changed() !== g0, 'changing a panel setting marks the FM-1 settings to keep');
   paintCheck('settings panel'); }
@@ -165,6 +165,17 @@ ok(Math.abs(x.get_param(0, P.P_FCUT) - 90) <= 1, 'knob CC picks up and follows: 
   x.set_global(10, 1); if (!x.playing()) press(12);
   let r2 = run(400, false); ok(r2.peak > 0.1, 'metronome clicks: ' + r2.peak.toFixed(2));
   press(12); for (let t = 0; t < 4; t++) x.set_param(t, P.P_LEVEL, 100); x.set_global(10, 0); }
+
+// 6b2. SETTINGS -> AUDIO IN: input meters move, INPUT is the track's, REC opens its MATERIAL
+{ ctl(0, 0, [-9, 0, 0, 0, 0, 0, 0]); ctl(0, 0, [1, 0, 0, 0, 0, 0, 0]);   // view 1
+  paintCheck('settings audio in');
+  ctl(0, 0, [0, 0, 0, 0, 0, 0, -8]);             // PRESETS: track 1
+  const before = x.get_param(0, P.P_INPUT);
+  ctl(0, 0, [0, 0, 0, 1, 0, 0, 0]);              // KNOB 2: INPUT
+  ok(x.get_param(0, P.P_INPUT) === before + 1, 'INPUT on the audio-in view is the track\'s');
+  ctl(0, 0, [0, 0, 0, -1, 0, 0, 0]);
+  press(B.REC); press(B.SCL);                   // REC opens MATERIAL; then leave it
+}
 
 // 6c. SOUNDS under SAVE: store a track's sound, change it, load it back; mix and sequence stay
 { run(2); if (x.playing()) { press(B.PLAY); run(2); }

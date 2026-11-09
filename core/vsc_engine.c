@@ -1445,6 +1445,15 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
     if (ext_last > VSC_SR) vsc_meter.ext_clock = 0;
     vsc_meter.bt_in = in->bt != 0;
     vsc_meter.usb_in = in->usb != 0;
+    for (unsigned s = 0; s < 2; ++s) {
+        const float *src = s ? in->usb : in->bt;
+        for (unsigned c = 0; c < 2; ++c) {
+            float pk = 0.f;
+            if (src) for (unsigned i = 0; i < VSC_BLOCK; ++i) { float a = src[2 * i + c]; if (a < 0.f) a = -a; if (a > pk) pk = a; }
+            float *m = &vsc_meter.in_peak[s][c];
+            *m = pk > *m ? pk : *m * 0.97f;
+        }
+    }
     for (unsigned t = 0; t < VSC_TRACKS; ++t) input_for(t, in);
     for (unsigned i = 0; i < VSC_BLOCK; ++i) { space_l[i] = space_r[i] = 0.f; out[2 * i] = out[2 * i + 1] = 0.f; }
 

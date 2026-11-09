@@ -179,6 +179,7 @@ struct vsc_meter {
     uint8_t ball_x[VSC_TRACKS][VSC_BALLS], ball_y[VSC_TRACKS][VSC_BALLS], ball_hit[VSC_TRACKS][VSC_BALLS];
     uint8_t ball_on[VSC_TRACKS][VSC_BALLS];
     uint8_t playing, ext_clock, bt_in, usb_in, space_frozen, reverse[VSC_TRACKS];
+    float in_peak[2][2];             /* Bluetooth and USB audio in, left/right, with a short fall */
     uint8_t overview[VSC_TRACKS][240];   /* PLAY/KEYS: the sample's shape, 0..60 per column, filled by the audio side */
     uint8_t overview_slot[VSC_TRACKS];   /* which slot it shows (255: none yet) */
     float tempo;                     /* the tempo in use: internal, or measured from MIDI clock */

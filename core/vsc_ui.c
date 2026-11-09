@@ -136,11 +136,15 @@ static const struct slot v_steps[2][4] = {{{S_STEP, 0, 0}, {S_STEP, 1, 0}, {S_ST
 static const struct slot v_carom[3][4] = {{T(P_SEQM), T(P_RSPEED), T(P_RGRAV), T(P_RLOSS)},
                                           {T(P_RSPREAD), T(P_RQUANT), T(P_RCOUNT), T(P_RWALLS)},
                                           {T(P_RJITTER), T(P_RGATE), N, N}};
-static const struct slot v_settings[4][4] = {{{S_SET, 0, 0}, {S_SET, 1, 0}, {S_SET, 2, 0}, {S_SET, 3, 0}},
+static const struct slot v_settings[5][4] = {{{S_SET, 0, 0}, {S_SET, 1, 0}, {S_SET, 2, 0}, {S_SET, 3, 0}},
+                                             {{S_SET, 0, 0}, T(P_INPUT), T(P_GAIN), G(G_INMON)},
                                              {G(G_CLOCK), {S_TEMPO, 0, 0}, G(G_SWING), G(G_INMON)},
                                              {{S_SET, 4, 0}, {S_SET, 5, 0}, {S_SET, 6, 0}, N},
                                              {N, N, N, N}};
-#define SET_LEARN 3   /* SETTINGS views: 0 Bluetooth, 1 clock, 2 panel, 3 MIDI learn */
+#define SET_INPUT 1   /* SETTINGS views: 0 Bluetooth, 1 audio in, 2 clock, 3 panel, 4 MIDI learn */
+#define SET_CLOCK 2
+#define SET_PANEL 3
+#define SET_LEARN 4
 #define MATRIX_VIEW 12   /* MODS: views 0..11 are four modulators x three pages, then the matrix */
 static const char *const mtype_name[4] = {"WAVE", "RANDOM", "FOLLOW", "ADSR"};
 
@@ -164,7 +168,7 @@ static unsigned row_count(void)
     case PG_MIX: return 6;
     case PG_MAT: { unsigned m = vsc.t[track][P_MODE]; return m == MODE_PLAY ? 2 : m == MODE_LOOP ? 3 : m == MODE_KEYS ? 4 : 1; }
     case PG_GRAIN: case PG_COLOR: case PG_SCENE: return 3;
-    case PG_SETTINGS: return 4;
+    case PG_SETTINGS: return 5;
     case PG_FILTER: { unsigned f = vsc.t[track][P_FTYPE]; return f == FT_RING ? 4 : f == FT_PEAKS ? 2 : 1; }
     case PG_MODS: return MATRIX_VIEW + 1;
     case PG_SPACE: return 2;
@@ -431,6 +435,10 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
             } else req = store_sound();
         }
         else if (page == PG_SETTINGS && row == 0) { if (vsc_host.ble_count) { *arg = set_dev; req = HOST_BLE_CONNECT; } else req = HOST_BLE_SCAN; }
+        else if (page == PG_SETTINGS && row == SET_INPUT) {
+            unsigned m = vsc.t[track][P_MODE];
+            page = PG_MAT; row = m == MODE_LOOP ? 1 : 0;
+        }
         else if (page == PG_SETTINGS && row == SET_LEARN) { vsc_dev.learn[learn_sel % VSC_LEARN].param = 255; ++vsc_dev_changed; vsc_ui_notice("MAPPING CLEARED", 800); }
         else if (page == PG_GRAIN) { vsc.t[track][P_GFREEZE] ^= 1; vsc_ui_notice(vsc.t[track][P_GFREEZE] ? "GRAINS LOCKED" : "GRAINS LISTENING", 900); }
         else if (page == PG_SPACE) { vsc_event(EV_ACTION, 0, ACT_SPACE_FREEZE, 0); vsc_ui_notice(vsc_meter.space_frozen ? "SPACE FLOWING" : "SPACE FROZEN", 900); }
@@ -473,7 +481,8 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
         case PG_PROJECT: proj_slot = (unsigned)clampi((int)proj_slot + d, 0, VSC_PROJECTS - 1); break;
         case PG_SOUND: sound_slot = (unsigned)clampi((int)sound_slot + d, 0, VSC_SOUNDS - 1); break;
         case PG_SETTINGS:
-            if (row == SET_LEARN) learn_sel = (unsigned)clampi((int)learn_sel + d, 0, VSC_LEARN - 1);
+            if (row == SET_INPUT) track = (unsigned)clampi((int)track + d, 0, VSC_TRACKS - 1);
+            else if (row == SET_LEARN) learn_sel = (unsigned)clampi((int)learn_sel + d, 0, VSC_LEARN - 1);
             else set_dev = (unsigned)clampi((int)set_dev + d, 0, vsc_host.ble_count ? vsc_host.ble_count - 1 : 0);
             break;
         case PG_SCENE: vsc.g[G_TARGET] = (uint8_t)clampi((int)vsc.g[G_TARGET] + d, 0, VSC_SCENES - 1); break;
@@ -655,7 +664,8 @@ static void draw_knobs(void)
     case PG_PROJECT: hint = "PRESETS: SLOT REC: LOAD SAVE+PLAY: SAVE"; break;
     case PG_SOUND: hint = "PRESETS: SLOT REC: LOAD SAVE+PLAY: SAVE"; break;
     case PG_SETTINGS: hint = row == 0 ? "PRESETS: DEVICE  REC: SCAN/CONNECT" : row == SET_LEARN ? "SAVE+KNOB: LEARN  REC: CLEAR"
-                                  : row == 2 ? "KEPT THROUGH POWER-OFF" : "SELECT: PAGE"; break;
+                                  : row == SET_INPUT ? "PRESETS: TRACK  REC: OPEN TRACK"
+                                  : row == SET_PANEL ? "KEPT THROUGH POWER-OFF" : "SELECT: PAGE"; break;
     default: hint = "SELECT: PAGE  ALGORITHM: TRACK"; break;
     }
     int live = notice && (int32_t)(notice_until - now_ms) > 0;
@@ -963,7 +973,40 @@ static void draw_vis(void)
         text(6, VIS_Y + 140, t, C_DIM, 1);
         break;
     }
-    case PG_SETTINGS: if (row == 1) {
+    case PG_SETTINGS: if (row == SET_INPUT) {
+        /* AUDIO IN: every way sound gets in, in one place. The FM-1 has no analogue input. */
+        static const char *const mode_n[] = {"PLAY", "LOOP", "KEYS", "THRU"};
+        const char *bt = !vsc_host.bt_audio ? "OFF" : vsc_host.bt_audio_playing ? "PLAYING"
+                       : vsc_host.bt_audio_connected ? "CONNECTED" : "WAITING";
+        text(6, VIS_Y + 4, "BLUETOOTH", C_DIM, 1); text(80, VIS_Y + 4, bt, vsc_host.bt_audio ? C_FG : C_LINE, 1);
+        text(6, VIS_Y + 18, "USB", C_DIM, 1);
+        text(80, VIS_Y + 18, vsc_host.usb_connected ? "CONNECTED" : "NOT CONNECTED", vsc_host.usb_connected ? C_FG : C_LINE, 1);
+        /* level meters: left over right, for each input */
+        for (unsigned s = 0; s < 2; ++s) {
+            int y = VIS_Y + 40 + (int)s * 18;
+            text(6, y, s ? "USB" : "BT", C_DIM, 1);
+            for (unsigned c = 0; c < 2; ++c) {
+                float v = vsc_meter.in_peak[s][c]; if (v > 1.f) v = 1.f;
+                int w = (int)(v * 190.f), yy = y + (int)c * 5 - 1;
+                rect(40, yy, 190, 3, C_PANEL);
+                rect(40, yy, w, 3, v > 0.95f ? C_WARN : C_FG);
+            }
+        }
+        unsigned m = vsc.t[track][P_MODE] & 3;
+        char b[32] = "TRACK "; b[6] = (char)('1' + track); b[7] = ' '; b[8] = 0;
+        copy_n(b + 8, mode_n[m], 6);
+        text(6, VIS_Y + 86, b, C_FG, 1);
+        if (m == MODE_LOOP || m == MODE_THRU) {
+            text(6, VIS_Y + 100, m == MODE_LOOP ? "LISTENS TO INPUT. REC ON ITS" : "PLAYS INPUT THROUGH ITS DEVICES.", C_DIM, 1);
+            if (m == MODE_LOOP) text(6, VIS_Y + 112, "MATERIAL PAGE CATCHES A LOOP.", C_DIM, 1);
+        } else {
+            text(6, VIS_Y + 100, "PLAYS SAMPLES, NOT THE INPUT.", C_DIM, 1);
+            text(6, VIS_Y + 112, "SET LOOP OR THRU: EDIT + PRESETS.", C_DIM, 1);
+        }
+        text(6, VIS_Y + 130, "SAMPLES: LOADED OVER USB WITH", C_LINE, 1);
+        text(6, VIS_Y + 142, "THE M-VAVE WORKBENCH.", C_LINE, 1);
+        break;
+    } else if (row == SET_CLOCK) {
         text(6, VIS_Y + 4, "CLOCK", C_DIM, 1);
         text(80, VIS_Y + 4, vsc_meter.ext_clock ? "MIDI CLOCK ARRIVING" : "NO MIDI CLOCK", vsc_meter.ext_clock ? C_FG : C_LINE, 1);
         text(6, VIS_Y + 20, "FOLLOWING", C_DIM, 1);
@@ -973,7 +1016,7 @@ static void draw_vis(void)
         text(6, VIS_Y + 68, "CH 16: SPACE, MIX AND MACROS.", C_DIM, 1);
         text(6, VIS_Y + 80, "PROGRAM CHANGE: SCENES.", C_DIM, 1);
         break;
-    } else if (row == 2) {
+    } else if (row == SET_PANEL) {
         /* PANEL: the FM-1's own settings, the version and the load */
         text(6, VIS_Y + 4, "VISCERA " VSC_VERSION, C_FG, 1);
         text(6, VIS_Y + 18, "THESE SETTINGS BELONG TO THE FM-1:", C_DIM, 1);

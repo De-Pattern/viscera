@@ -10,6 +10,7 @@
 - **New:** SETTINGS → PANEL shows the version and the CPU load, with the peak.
 - **Changed:** BACKLIT, KNOB CC, METRO, the MIDI learn mappings and the sounds belong to the FM-1. They are kept through power-off and loading a project, in their own flash sector (in the emulator, in the browser).
 - **Changed:** SETTINGS moved to GLO (press GLO on SPACE). SAVE is where things are kept: PROJECT, then SOUNDS.
+- **New:** SETTINGS → AUDIO IN (the second view under GLO): every way sound gets in, in one place. Bluetooth audio on/off and its state, USB audio, level meters for both, and the selected track's INPUT, level and monitoring. PRESETS picks the track; REC opens its MATERIAL page. The FM-1 has no analogue input; samples are loaded over USB with M-VAVE's workbench.
 - **New:** SOUNDS: 16 sound slots kept on the FM-1. A sound is a track's devices and modulators, without its mix or sequence; REC loads one onto the selected track, or saves into an empty slot, and SAVE + PLAY saves over.
 - **Fixed:** SAVE + PLAY also started playback.
 - **Fixed:** a saved project would not load back (the format check compared against the wrong number).

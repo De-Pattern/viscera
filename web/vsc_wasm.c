@@ -69,6 +69,8 @@ W_EXPORT(render) void w_render(int has_input)
 {
     struct vsc_inputs in = {has_input ? in_bt : 0, 0};
     have_input = (uint8_t)has_input;
+    /* the page's file or microphone stands in for Bluetooth audio */
+    vsc_host.bt_audio = 1; vsc_host.bt_audio_connected = vsc_host.bt_audio_playing = (uint8_t)has_input;
     vsc_render(&in, out_buf);
     if (vsc.g[G_INMON] && has_input)
         for (unsigned i = 0; i < VSC_BLOCK * 2; ++i) out_buf[i] += in_bt[i];

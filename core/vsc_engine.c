@@ -140,8 +140,14 @@ struct track {
     float prev[VSC_BLOCK];      /* last block's, for resampling */
     float in[VSC_BLOCK];
     float pan_l, pan_r, send;
+    uint16_t awake;             /* sub-blocks left before a silent track sleeps (see vsc_render) */
 };
 static struct track tr[VSC_TRACKS];
+/* A track with nothing to play sleeps: only its material (and modulators) run, so a
+ * sample, a loop, the input or a note wakes it at once. Awake, it stays so until its
+ * output has been silent for about 1.5 s, so tails (RESON, grains, COLOR) finish. */
+#define VSC_WAKE_LEVEL 0.0001f      /* -80 dBFS */
+#define VSC_WAKE_HOLD  2048u        /* sub-blocks: 2048 x 32 frames = 1.49 s */
 /* globals after modulation, in parameter units (0..max), refreshed every sub-block */
 static float gv[VSC_NG];
 static float main_prev[VSC_BLOCK];
@@ -221,6 +227,7 @@ static VSC_HOT void window(unsigned t, uint32_t len, uint32_t *a, uint32_t *b)
 }
 static VSC_HOT void note_on(unsigned t, unsigned note, unsigned vel)
 {
+    if (t < VSC_TRACKS) tr[t].awake = VSC_WAKE_HOLD;
     struct track *k = &tr[t];
     unsigned mode = vsc.t[t][P_MODE];
     k->gates++;
@@ -1465,14 +1472,27 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
         sequencer(VSC_SUB);
         for (unsigned t = 0; t < VSC_TRACKS; ++t) {
             struct track *k = &tr[t];
-            compute_params(t);
+            /* asleep, the parameters only once a block (for the material) */
+            if (k->awake || off == 0) compute_params(t);
             material(t, off, VSC_SUB);
             { float pk = 0.f; for (unsigned i = 0; i < VSC_SUB; ++i) { float a = absf(k->out[off + i]); if (a > pk) pk = a; } k->mat_pk = pk; }
+            /* awake: the material sounds, frozen grains play on, or COLOR's noise (a source of its own) is up */
+            if (k->mat_pk > VSC_WAKE_LEVEL || vsc.t[t][P_GFREEZE] || vsc.t[t][P_NOISE]) k->awake = VSC_WAKE_HOLD;
+#ifdef VSC_NO_SLEEP
+            k->awake = VSC_WAKE_HOLD;             /* measuring: every track always awake */
+#endif
+            run_mods(t, off, VSC_SUB);
+            if (!k->awake) {                      /* asleep: silent, nothing more to do */
+                for (unsigned i = 0; i < VSC_SUB; ++i) { k->out[off + i] = 0.f; k->side[i] = 0.f; }
+                continue;
+            }
             grains(t, off, VSC_SUB);
             filter(t, off, VSC_SUB);
             color(t, off, VSC_SUB);
             djfilter(t, off, VSC_SUB);
-            run_mods(t, off, VSC_SUB);
+            { float pk = 0.f;
+              for (unsigned i = 0; i < VSC_SUB; ++i) { float a = absf(k->out[off + i]) + absf(k->side[i]); if (a > pk) pk = a; }
+              if (pk > VSC_WAKE_LEVEL) k->awake = VSC_WAKE_HOLD; else --k->awake; }
             float lev = k->e[P_LEVEL]; lev = lev * lev * 1.6f;
             if (vsc.t[t][P_MUTE]) lev = 0.f;
             float pan = k->e[P_PAN];
@@ -1490,9 +1510,25 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
     }
     {
         static float l[VSC_BLOCK], r[VSC_BLOCK];   /* static (RAM): 1 KB is too much for the interrupt's stack */
-        for (unsigned i = 0; i < VSC_BLOCK; ++i) { l[i] = 0.f; r[i] = 0.f; }
-        space(l, r, VSC_BLOCK);
-        for (unsigned i = 0; i < VSC_BLOCK; ++i) { out[2 * i] += l[i]; out[2 * i + 1] += r[i]; }
+        /* SPACE sleeps too: it runs while something is sent to it, frozen, or until its
+         * echoes and tail have died away (about 4 s below -80 dB) */
+        static uint16_t space_awake;
+        float in_pk = 0.f;
+        for (unsigned i = 0; i < VSC_BLOCK; ++i) { float a = absf(space_l[i]) + absf(space_r[i]); if (a > in_pk) in_pk = a; }
+        if (in_pk > VSC_WAKE_LEVEL || space_frozen) space_awake = 1400u;   /* blocks: ~4 s */
+#ifdef VSC_NO_SLEEP
+        space_awake = 1400u;
+#endif
+        if (space_awake) {
+            for (unsigned i = 0; i < VSC_BLOCK; ++i) { l[i] = 0.f; r[i] = 0.f; }
+            space(l, r, VSC_BLOCK);
+            float pk = 0.f;
+            for (unsigned i = 0; i < VSC_BLOCK; ++i) {
+                out[2 * i] += l[i]; out[2 * i + 1] += r[i];
+                float a = absf(l[i]) + absf(r[i]); if (a > pk) pk = a;
+            }
+            if (pk > VSC_WAKE_LEVEL) space_awake = 1400u; else --space_awake;
+        }
     }
     float target = gv[G_MAIN] * (1.f / 127.f);
     target *= target;

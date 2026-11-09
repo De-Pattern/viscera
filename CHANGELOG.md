@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.5
+
+- **Fixed: CPU OVERLOAD and no sound on an FM-1, even with one sample.** Every track ran its whole chain (GRAIN, FILTER/RESON, COLOR) and SPACE ran on every block, sound or not: about 58% of the CPU while silent, 61% with one sample playing, in fm1-emu at the FM-1's measured timing. A real FM-1 is slower than that, so the CPU guard kept muting the sound. Now a track with nothing to play sleeps (its material and modulators still run, so a sample, a loop, the input or a note wakes it at once) and stays awake until its output has been quiet for about 1.5 s, so tails finish. COLOR's noise (a source of its own) and frozen grains keep a track awake. SPACE sleeps the same way, after its echoes and tail die away (about 4 s). In fm1-emu: silent 12%, one sample 25% (peak 30%). With all four tracks and SPACE busy it's still about 59% there.
+
 ## 0.2.4
 
 - **Fixed: Viscera never started on an FM-1** (0.2.2 and 0.2.3: no screen, no lights, no USB). It left M-VAVE's library about 68 KB of heap, and the library's USB, Bluetooth and MIDI start-up needs more: it couldn't create its MIDI thread, gave up, and then started neither the audio nor the control task. Found by running the package in fm1-emu, where M-VAVE's own Open kit starts and 0.2.3 doesn't. The heap is now about 119 KB.

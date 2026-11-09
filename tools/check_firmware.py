@@ -119,8 +119,8 @@ def main():
     if not m:
         fail('cannot find runtime heap in link map')
     heap_bytes = int(m.group(1), 16)
-    if heap_bytes < 49152:
-        fail(f'FM1 runtime heap is {heap_bytes} bytes; need at least 49152')
+    if heap_bytes < 112640:            # (M-VAVE's script: 49152; see MIN_HEAP in build_fm1.py)
+        fail(f'FM1 runtime heap is {heap_bytes} bytes; need at least 112640 (USB, Bluetooth and MIDI start-up)')
     callbacks = ['fm1_r_e7d3da61dac2', 'fm1_r_1993f9b103e3', 'fm1_r_05431712fb7b', 'fm1_r_ffe3f82683f6', 'fm1_audio_irq',
                  'fm1_flash_worker_prepare', 'fm1_r_7e12ed19990d', 'fm1_r_74310ca1fed9', 'fm1_engine_render', 'fm1_engine_output_level',
                  'fm1_audio_copy', 'fm1_output_mix', 'fm1_usb_audio_read', 'fm1_bluetooth_audio_read', 'fm1_usb_audio_write',

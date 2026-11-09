@@ -31,6 +31,10 @@ jobs:
         run: test -e ~/.jieli/toolchain || sh tools/get_toolchain.sh ~/.jieli
       - name: Build the firmware
         run: JIELI_TOOLCHAIN=~/.jieli/toolchain python3 tools/build_fm1.py --version "${{ steps.v.outputs.version }}"
+      - name: Start it in an emulated FM-1 (fm1-emu runs the firmware as it is, M-VAVE's library included)
+        run: |
+          sudo apt-get install -y -q libasound2-dev >/dev/null
+          sh tools/emu_boot.sh build/viscera.fwsc
       - name: Build the browser emulator from the same core
         run: |
           sudo apt-get install -y -q lld >/dev/null

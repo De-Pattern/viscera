@@ -103,19 +103,15 @@ void groove_screen_init(void)
     fm1_screen_init();
     boot_at = fm1_millis();
 
-    /* safe mode: OCT- and OCT+ held. Give the scanner ~100 ms to see them. */
-    struct fm1_controls c;
+    /* Nothing here may wait: the library calls this from its start-up, where an RTOS sleep
+     * (fm1_device_delay) never comes back, and the FM-1 then never starts (no screen, no USB).
+     * Safe mode (OCT- and OCT+ held) is read on the first control passes instead, once the
+     * scanner has had time to see the buttons. */
     safe_mode = 0;
-    for (unsigned i = 0; i < 10 && !safe_mode; ++i) {
-        fm1_device_delay(10);
-        fm1_controls_read(&c);
-        safe_mode = (c.buttons & 3u) == 3u;       /* buttons 0 and 1: OCT- and OCT+ */
-    }
     /* the screen can draw from here; the engine starts on the first control pass,
      * after the start guard (flash is for the control task only) */
     vsc_project_defaults(&vsc);
     vsc_ui_init();
-    if (safe_mode) vsc_ui_notice("SAFE MODE: CONNECT TO REINSTALL", 0x7fffffffu);
     for (unsigned i = 0; i < VSC_SCREEN_H / VSC_BAND; ++i) band_hash[i] = 0;
     next_band = 0;
     started = 0;
@@ -126,6 +122,7 @@ void groove_screen_init(void)
 static void start(void)
 {
     started = 1;
+    if (safe_mode) vsc_ui_notice("SAFE MODE: CONNECT TO REINSTALL", 0x7fffffffu);
     vsc_fm1_device_load();                       /* the settings first: the guard may rewrite their sector */
     int tries = vsc_fm1_boot_begin();
     boot_pending = tries >= 0;
@@ -191,7 +188,11 @@ void groove_screen_control(void)
     struct fm1_controls c;
     fm1_controls_read(&c);
     uint32_t now = fm1_millis();
-    if (!started) start();
+    if (!started) {                           /* the first 150 ms: OCT- and OCT+ held is safe mode */
+        if ((c.buttons & 3u) == 3u) safe_mode = 1;   /* buttons 0 and 1: OCT- and OCT+ */
+        if (now - boot_at < 150u) { fm1_control_request(); return; }
+        start();
+    }
     if (safe_mode) {
         /* only the screen: the engine never starts, so nothing can stall */
         boot_check(now);

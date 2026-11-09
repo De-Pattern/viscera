@@ -104,9 +104,9 @@ The FM-1 has about 511 KB of RAM, and the platform library takes roughly 200 KB 
 
 | Buffer | Default | Notes |
 | --- | --- | --- |
-| Grain rings | 4 × 12 KB µ-law | 0.28 s each at 44.1 kHz |
-| Loop memory | 64 KB µ-law, shared | 1.5 s HI (44.1 kHz) or 3 s LO (22 kHz); a track claims 1–4 of 4 slices |
-| Delay | 24 KB int16 | 0.28 s, double in LONG mode at half rate |
+| Grain rings | 4 × 7.75 KB µ-law | 0.18 s each at 44.1 kHz |
+| Loop memory | 32 KB µ-law, shared | 0.75 s HI (44.1 kHz) or 1.5 s LO (22 kHz); a track claims 1–4 of 4 slices |
+| Delay | 16 KB int16 | 0.19 s, double in LONG mode at half rate |
 | Reverb | about 7 KB | |
 | Bank chunk cache | 8 × 640 B | decoded SEA chunks for PLAY, KEYS and grains |
 

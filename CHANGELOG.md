@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.4
+
+- **Fixed: Viscera never started on an FM-1** (0.2.2 and 0.2.3: no screen, no lights, no USB). It left M-VAVE's library about 68 KB of heap, and the library's USB, Bluetooth and MIDI start-up needs more: it couldn't create its MIDI thread, gave up, and then started neither the audio nor the control task. Found by running the package in fm1-emu, where M-VAVE's own Open kit starts and 0.2.3 doesn't. The heap is now about 119 KB.
+- **Changed, to make that room:** loop memory 64 → 32 KB (0.75 s HI, 1.5 s LO, shared by the tracks), grain rings 0.26 → 0.18 s per track, delay 0.28 → 0.19 s (0.37 s in LONG).
+- **Fixed:** start-up no longer waits 100 ms for the safe-mode buttons (an RTOS sleep inside the library's start-up); OCT− and OCT+ are read during the first 150 ms of control passes instead.
+- **New checks:** the build refuses a heap under 110 KB (M-VAVE's script asked for 48 KB). CI starts every build in fm1-emu (`tools/emu_boot.sh`), with its fast timing and the FM-1's measured timing, and fails it unless the screen and LEDs come up; 0.2.3 fails it, M-VAVE's unmodified Open kit passes.
+
 ## 0.2.3
 
 - **Fixed (the reason 0.2.2 never started on a real FM-1):** Viscera's screen.c replaces M-VAVE's, and it never brought up the board: it didn't start the panel scanner (`fm1_controls_init`) or set up and switch on the LCD (`fm1_screen_init`). The linker dropped both, so the shipped firmware didn't contain them, and it then sent frames to a display that was never set up. Viscera now does what M-VAVE's start-up does, in the same order: panel, LEDs off, display.

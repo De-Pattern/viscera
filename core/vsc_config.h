@@ -12,13 +12,14 @@
 #define VSC_BLOCK         128      /* frames per audio callback (SDK fixed) */
 #define VSC_SUB           32       /* control-rate sub-block */
 
-/* Buffers (bytes or frames). Grow these once the hardware link map shows
- * how much heap is left for Bluetooth. */
-#define VSC_GRAIN_FRAMES  11264    /* per track, 8-bit mu-law (0.26 s) */
+/* Buffers (bytes or frames). They come out of the heap M-VAVE's library starts USB,
+ * Bluetooth and MIDI from: with too little (0.2.2/0.2.3 had 68 KB) that start-up fails
+ * and the FM-1 never starts (no screen, no USB). tools/build_fm1.py checks the heap. */
+#define VSC_GRAIN_FRAMES  7936     /* per track, 8-bit mu-law (0.18 s) */
 #define VSC_GRAINS        8        /* grains per track */
-#define VSC_LOOP_SLICE    16384    /* bytes per loop slice, 8-bit mu-law */
+#define VSC_LOOP_SLICE    8192     /* bytes per loop slice, 8-bit mu-law (0.19 s HI, 0.37 s LO) */
 #define VSC_LOOP_SLICES   4
-#define VSC_DELAY_FRAMES  12288    /* int16 mono */
+#define VSC_DELAY_FRAMES  8192     /* int16 mono (0.19 s, 0.37 s in long mode) */
 #define VSC_KEYS_VOICES   4
 
 #define VSC_STEPS         64

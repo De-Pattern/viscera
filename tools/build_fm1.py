@@ -25,7 +25,11 @@ import fm1_package
 import make_fm1_tree
 
 USER_BYTES, FAMILY = 536576, 7
-MIN_HEAP = 49152
+# The heap M-VAVE's library starts USB, Bluetooth and MIDI from. M-VAVE's script asks for 48 KB (Bluetooth's
+# pools), but its IO start-up needs much more: with 68 KB (0.2.2, 0.2.3) it can't create its MIDI thread, and
+# the FM-1 never starts. In fm1-emu it starts from about 100 KB (and not at 85 KB); 110 KB leaves room for
+# what Bluetooth takes when something connects. tools/emu_boot.sh checks the start itself.
+MIN_HEAP = 112640
 
 def sha256(path):
     return hashlib.sha256(open(path, 'rb').read()).hexdigest()
@@ -157,7 +161,7 @@ def main():
     if 'HEAP_BEGIN' in syms and 'HEAP_END' in syms:
         heap = syms['HEAP_END'][0] - syms['HEAP_BEGIN'][0]
     if heap is not None and heap < MIN_HEAP:
-        raise SystemExit(f'runtime heap {heap} B is below the {MIN_HEAP} B Bluetooth needs: shrink buffers in core/vsc_config.h')
+        raise SystemExit(f'runtime heap {heap} B is below the {MIN_HEAP} B that USB, Bluetooth and MIDI start-up need: shrink buffers in core/vsc_config.h')
     # audio code must be in RAM: the render path's symbols should sit outside flash (0x02xxxxxx)
     flash_audio = [n for n in ('vsc_render', 'vsc_fm1_render', 'vsc_bank_chunk', 'fm1_output_mix')
                    if n in syms and (syms[n][0] >> 24) == 0x02]

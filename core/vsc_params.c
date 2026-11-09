@@ -346,12 +346,32 @@ void vsc_device_defaults(void)
 }
 void vsc_device_seal(void)
 {
-    vsc_dev.magic = VSC_DEV_MAGIC; vsc_dev.version = 1; vsc_dev.bytes = sizeof vsc_dev;
+    vsc_dev.magic = VSC_DEV_MAGIC; vsc_dev.version = 2; vsc_dev.bytes = sizeof vsc_dev;
     vsc_dev.crc = vsc_crc32(&vsc_dev.backlight, sizeof vsc_dev - offsetof(struct vsc_device, backlight));
+}
+static unsigned sound_param(unsigned i) { return i < P_LEVEL ? i : P_MOD0 + (i - P_LEVEL); }
+void vsc_sound_store(unsigned slot, unsigned track)
+{
+    if (slot >= VSC_SOUNDS || track >= VSC_TRACKS) return;
+    struct vsc_sound *s = &vsc_dev.sound[slot];
+    for (unsigned i = 0; i < VSC_SOUND_NP; ++i) s->p[i] = vsc.t[track][sound_param(i)];
+    vsc_memcpy(s->route, vsc.route[track], sizeof s->route);
+    s->used = 1; ++vsc_dev_changed;
+}
+int vsc_sound_recall(unsigned slot, unsigned track)
+{
+    if (slot >= VSC_SOUNDS || track >= VSC_TRACKS || !vsc_dev.sound[slot].used) return -1;
+    const struct vsc_sound *s = &vsc_dev.sound[slot];
+    for (unsigned i = 0; i < VSC_SOUND_NP; ++i) {
+        unsigned q = sound_param(i);
+        if (s->p[i] <= vsc_tparam_info(track, q)->max) vsc.t[track][q] = s->p[i];
+    }
+    vsc_memcpy(vsc.route[track], s->route, sizeof s->route);
+    return 0;
 }
 int vsc_device_valid(const struct vsc_device *d)
 {
-    return d->magic == VSC_DEV_MAGIC && d->version == 1 && d->bytes == sizeof *d &&
+    return d->magic == VSC_DEV_MAGIC && d->version == 2 && d->bytes == sizeof *d &&
            d->crc == vsc_crc32(&d->backlight, sizeof *d - offsetof(struct vsc_device, backlight)) &&
            d->backlight <= BACKLIGHT_HIGH;
 }

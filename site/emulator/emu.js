@@ -20,8 +20,8 @@
   /* ---------- panel: the FM-1's own layout ---------- */
   /* encoder indices as the FM-1 reports them: 0 SELECT, 1 ALGORITHM, 2-5 KNOB 1-4, 6 PRESETS */
   const ENC_FN = ['page', 'track', 'param 1', 'param 2', 'param 3', 'param 4', 'device / list'];
-  const BTN_FN = {FX: 'grain', SEL: 'filter', ENV: 'colour', LFO: 'mods', EDIT: 'material', GLO: 'space',
-    HOME: 'mix', SAVE: 'project', ARP: 'scenes', SEQ: 'steps', REC: 'record'};
+  const BTN_FN = {FX: 'grain', SEL: 'filter', ENV: 'colour', LFO: 'mods', EDIT: 'material', GLO: 'space · setup',
+    HOME: 'mix', SAVE: 'proj · sounds', ARP: 'scenes', SEQ: 'steps', REC: 'record'};
   const ROW1 = ['FX', 'SEL', 'ENV', 'LFO', 'EDIT', 'GLO'], ROW2 = ['HOME', 'SAVE', 'ARP', 'SEQ', 'PLAY', 'REC'];
   let master = 0.8;
   function makeEnc(role, parent, label, fn) {

@@ -155,7 +155,7 @@ x.midi(0xb0, 110, 10); run(1); ctl(); ok(x.get_param(0, P.P_FCUT) === 64, 'knob 
 x.midi(0xb0, 110, 63); run(1); ctl(); x.midi(0xb0, 110, 90); run(1); ctl();
 ok(Math.abs(x.get_param(0, P.P_FCUT) - 90) <= 1, 'knob CC picks up and follows: ' + x.get_param(0, P.P_FCUT));
 { const g0 = x.device_changed();
-  press(B.SAVE); press(B.SAVE);                // SETTINGS
+  press(B.GLO); press(B.GLO);                  // SPACE, then SETTINGS
   ctl(0, 0, [2, 0, 0, 0, 0, 0, 0]);            // PANEL view
   ctl(0, 0, [0, 0, 0, 0, 1, 0, 0]);            // METRO on (KNOB 3)
   ok(x.device_changed() !== g0, 'changing a panel setting marks the FM-1 settings to keep');
@@ -165,6 +165,23 @@ ok(Math.abs(x.get_param(0, P.P_FCUT) - 90) <= 1, 'knob CC picks up and follows: 
   x.set_global(10, 1); if (!x.playing()) press(12);
   let r2 = run(400, false); ok(r2.peak > 0.1, 'metronome clicks: ' + r2.peak.toFixed(2));
   press(12); for (let t = 0; t < 4; t++) x.set_param(t, P.P_LEVEL, 100); x.set_global(10, 0); }
+
+// 6c. SOUNDS under SAVE: store a track's sound, change it, load it back; mix and sequence stay
+{ run(2); if (x.playing()) { press(B.PLAY); run(2); }
+  ctl(0, 0, [0, -8, 0, 0, 0, 0, 0]);             // track 1
+  x.set_param(0, P.P_FCUT, 33); x.set_param(0, P.P_GSIZE, 21); x.set_param(0, P.P_LEVEL, 90);
+  press(B.SAVE); press(B.SAVE);                  // PROJECT, then SOUNDS
+  ctl(0, 0, [0, 0, 0, 0, 0, 0, -20]);            // slot 1
+  const g0 = x.device_changed();
+  ctl(0, 1 << B.REC); const req = ctl(0, 0);     // empty slot: REC saves
+  ok(x.device_changed() !== g0 && req === 10, 'REC on an empty sound slot saves it (req ' + req + ')');
+  paintCheck('sounds');
+  x.set_param(0, P.P_FCUT, 100); x.set_param(0, P.P_GSIZE, 99); x.set_param(0, P.P_LEVEL, 40);
+  press(B.REC);                                  // used slot: REC loads
+  ok(x.get_param(0, P.P_FCUT) === 33 && x.get_param(0, P.P_GSIZE) === 21, 'REC on a sound loads it onto the track');
+  ok(x.get_param(0, P.P_LEVEL) === 40, 'loading a sound leaves the mix alone');
+  ctl(0, 1 << B.SAVE); ctl(0, (1 << B.SAVE) | (1 << B.PLAY)); ctl(0, 1 << B.SAVE); ctl(0, 0); run(2);
+  ok(!x.playing(), 'SAVE + PLAY saves without starting playback'); }
 
 // 7. long run with everything moving: no NaN, no runaway
 for (let t = 0; t < 4; t++) { x.set_param(t, P.P_FTYPE, 4); x.set_param(t, P.P_GMIX, 100); x.set_param(t, P.P_GFDBK, 127); }

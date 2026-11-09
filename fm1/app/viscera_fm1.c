@@ -199,9 +199,8 @@ _Static_assert(sizeof(struct vsc_device) <= FM1_FLASH_SECTOR_BYTES, "device sett
 _Static_assert(8u * SLOT_BYTES + FM1_FLASH_SECTOR_BYTES <= VSC_STORE_BYTES, "the settings sector is inside the store");
 void vsc_fm1_device_load(void)
 {
-    static struct vsc_device d;
-    if (!vsc_fm1_storage_ok() || fm1_flash_read(DEVICE_OFFSET, &d, sizeof d)) return;
-    if (vsc_device_valid(&d)) vsc_memcpy(&vsc_dev, &d, sizeof d);
+    if (!vsc_fm1_storage_ok() || fm1_flash_read(DEVICE_OFFSET, &vsc_dev, sizeof vsc_dev) || !vsc_device_valid(&vsc_dev))
+        vsc_device_defaults();
 }
 int vsc_fm1_device_save(void)
 {

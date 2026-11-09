@@ -109,11 +109,19 @@ struct vsc_project {
 /* Settings that belong to the FM-1, not to a project: kept through power-off and
  * whatever project loads. The platform stores them when vsc_dev_changed moves. */
 enum { BACKLIGHT_OFF, BACKLIGHT_LOW, BACKLIGHT_MID, BACKLIGHT_HIGH };
+/* A sound: one track's devices and modulators (MATERIAL..COLOR and the four mods,
+ * with their routes), without its mix or sequence. Saved under SAVE -> SOUNDS. */
+#define VSC_SOUNDS 16
+#define VSC_SOUND_NP (P_LEVEL + 40)
+struct vsc_sound { uint8_t used, pad[3]; uint8_t p[VSC_SOUND_NP]; struct vsc_route route[VSC_MOD_ROUTES]; };
 struct vsc_device {
     uint32_t magic, version, bytes, crc;
     uint8_t backlight, knob_cc, metro, pad;
     struct vsc_learn learn[VSC_LEARN];
+    struct vsc_sound sound[VSC_SOUNDS];
 };
+void vsc_sound_store(unsigned slot, unsigned track);
+int vsc_sound_recall(unsigned slot, unsigned track);
 #define VSC_DEV_MAGIC 0x44435356u   /* 'VSCD' */
 extern struct vsc_device vsc_dev;
 extern volatile uint32_t vsc_dev_changed;   /* bumped on every change */
@@ -220,7 +228,7 @@ struct vsc_ui_input {
 };
 /* Host actions the UI asks the platform to perform. */
 enum { HOST_NONE, HOST_SAVE, HOST_LOAD, HOST_BT_AUDIO, HOST_BT_MIDI, HOST_BLE_ROLE,
-       HOST_BLE_SCAN, HOST_BLE_CONNECT, HOST_BLE_FORGET, HOST_BLE_DISCONNECT };
+       HOST_BLE_SCAN, HOST_BLE_CONNECT, HOST_BLE_FORGET, HOST_BLE_DISCONNECT, HOST_DEVICE_SAVE };
 struct vsc_host_status {
     uint8_t bt_audio, bt_midi, bt_audio_connected, bt_audio_playing, usb_connected;
     uint8_t ble_role, ble_state, ble_count;

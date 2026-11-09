@@ -59,6 +59,7 @@ static void configure_bt(unsigned features)
     if (fm1_bluetooth_configure(features) == 0) bt_features = features;
 }
 
+static uint32_t dev_saved_gen, dev_seen_gen, dev_changed_at;
 static void host(unsigned req, unsigned arg)
 {
     int r;
@@ -70,6 +71,10 @@ static void host(unsigned req, unsigned arg)
     case HOST_BLE_CONNECT: (void)fm1_ble_connect(arg); break;
     case HOST_BLE_FORGET: if (fm1_ble_forget_bonds() == 0) vsc_ui_notice("PAIRINGS FORGOTTEN", 1500); break;
     case HOST_BLE_DISCONNECT: (void)fm1_ble_disconnect(); break;
+    case HOST_DEVICE_SAVE:   /* a sound stored: write it now (the UI only asks while stopped) */
+        dev_saved_gen = dev_seen_gen = vsc_dev_changed;
+        vsc_ui_notice(vsc_fm1_device_save() == 0 ? "SOUND SAVED" : "SAVE FAILED", 1200);
+        break;
     case HOST_SAVE:
         r = vsc_fm1_save(arg);
         vsc_ui_notice(r == 0 ? "SAVED" : r == -2 ? "STOP PLAYBACK TO SAVE" : "SAVE FAILED", 1500);
@@ -133,7 +138,6 @@ static void leds(uint32_t now)
     }
 }
 /* the FM-1's own settings go to flash a second after the last change, while stopped */
-static uint32_t dev_saved_gen, dev_seen_gen, dev_changed_at;
 static void device_settings(uint32_t now)
 {
     uint32_t g = vsc_dev_changed;

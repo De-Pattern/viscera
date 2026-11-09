@@ -98,9 +98,9 @@ static void num(char *o, int v)
  * for each of KNOB 1-4. SELECT steps through a menu's views (the picture above stays
  * the same), ALGORITHM picks the track, and PRESETS does the page's own job: the
  * device in a slot, a modulator's type, a route, a step, a project slot. */
-enum { PG_MIX, PG_MAT, PG_GRAIN, PG_FILTER, PG_COLOR, PG_MODS, PG_SPACE, PG_SCENE, PG_STEPS, PG_PROJECT, PG_SETTINGS, PG_COUNT };
+enum { PG_MIX, PG_MAT, PG_GRAIN, PG_FILTER, PG_COLOR, PG_MODS, PG_SPACE, PG_SCENE, PG_STEPS, PG_PROJECT, PG_SETTINGS, PG_SOUND, PG_COUNT };
 static const char *const page_name[PG_COUNT] = {"MIX", "MATERIAL", "GRAIN", "FILTER", "COLOR", "MODS", "SPACE",
-                                                "PERFORM", "STEPS", "PROJECT", "SETTINGS"};
+                                                "PERFORM", "STEPS", "PROJECT", "SETTINGS", "SOUNDS"};
 enum { S_NONE, S_T, S_G, S_TEMPO, S_STEP, S_TT, S_SET, S_MAT };
 struct slot { uint8_t kind, id, tk; };
 #define T(p) {S_T, p, 0}
@@ -153,7 +153,7 @@ static uint8_t temp_on, rec_long, live_rec, learn_seen;
 static uint8_t temp_t[VSC_TRACKS][VSC_NP], temp_g[VSC_NG];
 static const char *notice; static uint32_t notice_until, now_ms;
 static char notice_buf[40];
-static unsigned proj_slot, set_dev;
+static unsigned proj_slot, set_dev, sound_slot;
 static uint8_t mod_hist[VSC_MODS][96]; static unsigned hist_w;   /* 0..255 */
 
 void vsc_ui_notice(const char *t, uint32_t ms) { notice = t; notice_until = now_ms + ms; }
@@ -340,6 +340,15 @@ static void say(const char *a, const char *b, uint32_t ms)
 static void apply_knob_cc(unsigned *req, unsigned *arg);
 void vsc_ui_init(void) { notice = "VISCERA " VSC_VERSION; notice_until = 1500; }
 
+/* store the track's sound in the chosen slot; the FM-1 writes it to flash at once.
+ * Like projects, only while stopped (a flash write stalls the sound). */
+static unsigned store_sound(void)
+{
+    if (vsc_meter.playing) { vsc_ui_notice("STOP PLAYBACK TO SAVE", 1200); return HOST_NONE; }
+    vsc_sound_store(sound_slot, track);
+    vsc_ui_notice("SOUND SAVED", 900);
+    return HOST_DEVICE_SAVE;
+}
 #define B(n) (1u << (n))
 unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
 {
@@ -373,7 +382,7 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
     if (!(in->buttons & (B(BTN_LFO) | B(BTN_ARP) | B(BTN_SAVE) | B(BTN_HOME)))) used = 0;
     /* menu buttons; pressing the button of the open menu goes to its next view */
     struct { unsigned btn, pg; } map[] = {{BTN_EDIT, PG_MAT}, {BTN_FX, PG_GRAIN}, {BTN_SCL, PG_FILTER},
-        {BTN_ENV, PG_COLOR}, {BTN_GLO, PG_SPACE}, {BTN_SEQ, PG_STEPS}};
+        {BTN_ENV, PG_COLOR}, {BTN_SEQ, PG_STEPS}};
     for (unsigned i = 0; i < sizeof map / sizeof map[0]; ++i)
         if (down & B(map[i].btn)) { if (page != map[i].pg) { page = map[i].pg; row = 0; } else row = (row + 1) % row_count(); }
     if ((up & B(BTN_HOME)) && !(prev_buttons & B(31))) { if (page != PG_MIX) { page = PG_MIX; row = 0; } else row = (row + 1) % row_count(); }
@@ -383,11 +392,15 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
         else { row = row >= MATRIX_VIEW ? 0 : (row / 3 + 1) * 3; if (row > MATRIX_VIEW) row = MATRIX_VIEW; }
     }
     if ((up & B(BTN_ARP)) && !(prev_buttons & B(31))) { if (page != PG_SCENE) { page = PG_SCENE; row = 0; } else row = (row + 1) % row_count(); }
-    if ((up & B(BTN_SAVE)) && !(prev_buttons & B(31))) { page = page == PG_PROJECT ? PG_SETTINGS : PG_PROJECT; row = 0; }
+    /* GLO: the global things, SPACE (the shared bus) then SETTINGS (the FM-1's own) */
+    if (down & B(BTN_GLO)) { page = page == PG_SPACE ? PG_SETTINGS : PG_SPACE; row = 0; }
+    /* SAVE: where things are kept, PROJECT then SOUNDS */
+    if ((up & B(BTN_SAVE)) && !(prev_buttons & B(31))) { page = page == PG_PROJECT ? PG_SOUND : PG_PROJECT; row = 0; }
     if (page == PG_MODS && row < MATRIX_VIEW) mod_sel = row / 3;
 
     /* transport */
-    if (down & B(BTN_PLAY)) vsc_event(EV_PLAY, track, 0, 0);
+    /* SAVE + PLAY saves on PROJECT and SOUNDS; it mustn't start the transport too */
+    if ((down & B(BTN_PLAY)) && !(save_held && (page == PG_PROJECT || page == PG_SOUND))) vsc_event(EV_PLAY, track, 0, 0);
     /* REC: the open page's action; held, its clear */
     int adsr_page = page == PG_MODS && row < MATRIX_VIEW && (vsc.t[track][P_MOD(row / 3, 0)] & 3) == MT_ADSR;
     if (down & B(BTN_REC)) {
@@ -411,6 +424,12 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
             else vsc_ui_notice(live_rec ? "STEP RECORD ON" : "STEP RECORD OFF", 900);
         }
         else if (page == PG_PROJECT) { *arg = proj_slot; req = vsc_host.slot_used[proj_slot] ? HOST_LOAD : HOST_SAVE; }
+        else if (page == PG_SOUND) {
+            if (vsc_dev.sound[sound_slot].used) {
+                vsc_sound_recall(sound_slot, track);
+                say("SOUND ON TRACK ", (const char[]){(char)('1' + track), 0}, 1000);
+            } else req = store_sound();
+        }
         else if (page == PG_SETTINGS && row == 0) { if (vsc_host.ble_count) { *arg = set_dev; req = HOST_BLE_CONNECT; } else req = HOST_BLE_SCAN; }
         else if (page == PG_SETTINGS && row == SET_LEARN) { vsc_dev.learn[learn_sel % VSC_LEARN].param = 255; ++vsc_dev_changed; vsc_ui_notice("MAPPING CLEARED", 800); }
         else if (page == PG_GRAIN) { vsc.t[track][P_GFREEZE] ^= 1; vsc_ui_notice(vsc.t[track][P_GFREEZE] ? "GRAINS LOCKED" : "GRAINS LISTENING", 900); }
@@ -420,12 +439,13 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
         else vsc_ui_notice("REC: LOOP TRACKS ONLY", 900);
     }
     if (page == PG_PROJECT && save_held && (down & B(BTN_PLAY))) { *arg = proj_slot; req = HOST_SAVE; used = B(31); }
+    if (page == PG_SOUND && save_held && (down & B(BTN_PLAY))) { req = store_sound(); used = B(31); }
 
     /* the left-hand encoders: SELECT 0, ALGORITHM 1, PRESETS 6 */
     if (in->enc[0]) {
         int d = in->enc[0];
-        if (page == PG_PROJECT && d > 0) { page = PG_SETTINGS; row = 0; }
-        else if (page == PG_SETTINGS && d < 0 && row == 0) page = PG_PROJECT;
+        if (page == PG_PROJECT && d > 0) { page = PG_SOUND; row = 0; }
+        else if (page == PG_SOUND && d < 0) page = PG_PROJECT;
         else row = (unsigned)clampi((int)row + d, 0, (int)row_count() - 1);
     }
     if (in->enc[1]) track = (unsigned)clampi((int)track + in->enc[1], 0, VSC_TRACKS - 1);
@@ -451,6 +471,7 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
             break;
         }
         case PG_PROJECT: proj_slot = (unsigned)clampi((int)proj_slot + d, 0, VSC_PROJECTS - 1); break;
+        case PG_SOUND: sound_slot = (unsigned)clampi((int)sound_slot + d, 0, VSC_SOUNDS - 1); break;
         case PG_SETTINGS:
             if (row == SET_LEARN) learn_sel = (unsigned)clampi((int)learn_sel + d, 0, VSC_LEARN - 1);
             else set_dev = (unsigned)clampi((int)set_dev + d, 0, vsc_host.ble_count ? vsc_host.ble_count - 1 : 0);
@@ -632,6 +653,7 @@ static void draw_knobs(void)
     case PG_SCENE: hint = "ARP+PAD: SCENE  ARP+KNOB: MAP MACRO"; break;
     case PG_STEPS: hint = vsc.t[track][P_SEQM] == SEQ_CAROM ? "PRESETS: STEPS  REC: ADD  HOLD: CLEAR" : "PRESETS: CAROM  OCT: PAGE  REC: REC"; break;
     case PG_PROJECT: hint = "PRESETS: SLOT REC: LOAD SAVE+PLAY: SAVE"; break;
+    case PG_SOUND: hint = "PRESETS: SLOT REC: LOAD SAVE+PLAY: SAVE"; break;
     case PG_SETTINGS: hint = row == 0 ? "PRESETS: DEVICE  REC: SCAN/CONNECT" : row == SET_LEARN ? "SAVE+KNOB: LEARN  REC: CLEAR"
                                   : row == 2 ? "KEPT THROUGH POWER-OFF" : "SELECT: PAGE"; break;
     default: hint = "SELECT: PAGE  ALGORITHM: TRACK"; break;
@@ -922,6 +944,25 @@ static void draw_vis(void)
         }
         if (!vsc_host.storage_ok) text(6, VIS_Y + 140, "STORAGE NOT AVAILABLE", C_WARN, 1);
         break;
+    case PG_SOUND: {
+        /* eight at a time; a sound is MATERIAL to COLOR and the modulators of one track */
+        static const char *const mode_n[] = {"PLAY", "LOOP", "KEYS", "THRU"};
+        static const char *const ft_n[] = {"LP", "BP", "HP", "PEAKS", "RESON", "NO FILTER"};
+        unsigned first = sound_slot / 8u * 8u;
+        for (unsigned s = first; s < first + 8u; ++s) {
+            int y = VIS_Y + 2 + (int)(s - first) * 17;
+            const struct vsc_sound *so = &vsc_dev.sound[s];
+            char lab[4] = {(char)('0' + (s + 1) / 10), (char)('0' + (s + 1) % 10), 0};
+            if (s == sound_slot) rect(0, y - 3, VSC_SCREEN_W, 14, C_PANEL);
+            text(6, y, lab, s == sound_slot ? C_INK : C_DIM, 1);
+            if (!so->used) { text(30, y, "EMPTY", C_LINE, 1); continue; }
+            text(30, y, mode_n[so->p[P_MODE] & 3], C_FG, 1);
+            text(80, y, ft_n[so->p[P_FTYPE] <= FT_OFF ? so->p[P_FTYPE] : FT_OFF], C_DIM, 1);
+        }
+        char t[24] = "REC LOADS ONTO TRACK "; t[21] = (char)('1' + track); t[22] = 0;
+        text(6, VIS_Y + 140, t, C_DIM, 1);
+        break;
+    }
     case PG_SETTINGS: if (row == 1) {
         text(6, VIS_Y + 4, "CLOCK", C_DIM, 1);
         text(80, VIS_Y + 4, vsc_meter.ext_clock ? "MIDI CLOCK ARRIVING" : "NO MIDI CLOCK", vsc_meter.ext_clock ? C_FG : C_LINE, 1);
@@ -1189,7 +1230,7 @@ void vsc_ui_leds(uint8_t out[41])
     for (unsigned i = 0; i < 41; ++i) out[i] = glow;
     /* the open page's button */
     static const uint8_t page_btn[PG_COUNT] = {BTN_HOME, BTN_EDIT, BTN_FX, BTN_SCL, BTN_ENV, BTN_LFO, BTN_GLO,
-                                               BTN_ARP, BTN_SEQ, BTN_SAVE, BTN_SAVE};
+                                               BTN_ARP, BTN_SEQ, BTN_SAVE, BTN_GLO, BTN_SAVE};
     out[page_btn[page]] = 2;
     if (vsc_meter.playing) out[BTN_PLAY] = 2;
     int recording = live_rec || (vsc.t[track][P_MODE] == MODE_LOOP && (vsc_meter.loop_state[track] == 1 || vsc_meter.loop_state[track] == 3));

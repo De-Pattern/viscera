@@ -8,7 +8,10 @@
 - **New:** learned CCs pick up too. A controller far from the value does nothing until it passes it, so nothing jumps.
 - **New:** METRO, a click on every beat with an accent on the bar, while playing.
 - **New:** SETTINGS → PANEL shows the version and the CPU load, with the peak.
-- **Changed:** BACKLIT, KNOB CC, METRO and the MIDI learn mappings belong to the FM-1. They are kept through power-off and loading a project, in their own flash sector (in the emulator, in the browser).
+- **Changed:** BACKLIT, KNOB CC, METRO, the MIDI learn mappings and the sounds belong to the FM-1. They are kept through power-off and loading a project, in their own flash sector (in the emulator, in the browser).
+- **Changed:** SETTINGS moved to GLO (press GLO on SPACE). SAVE is where things are kept: PROJECT, then SOUNDS.
+- **New:** SOUNDS: 16 sound slots kept on the FM-1. A sound is a track's devices and modulators, without its mix or sequence; REC loads one onto the selected track, or saves into an empty slot, and SAVE + PLAY saves over.
+- **Fixed:** SAVE + PLAY also started playback.
 - **Fixed:** a saved project would not load back (the format check compared against the wrong number).
 - **Changed:** projects saved by 0.2.1 don't load in 0.2.2 (MIDI learn moved out of the project).
 

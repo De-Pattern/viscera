@@ -15,6 +15,7 @@ CPU, after what worked on Ravel. In fm1-emu at the FM-1's measured timing (360 M
 - **Faster, same sound (bit-exact on the host):**
   - RESON runs band by band over each 32-frame sub-block, two bands at a time, and keeps its tuning until PITCH, SCALE, DETUNE or DECAY moves.
   - Parameter maths only clamps what a route or macro touched, and skips the rest of the work when nothing moved.
+- **Fixed:** the master limiter could round a hair past full scale (the FM-1 clipped it there anyway).
 - **Faster, inaudible:** a RESON band that is closed (SUSTAIN), rung out and below -100 dB after makeup is skipped.
 - **Not possible on this SDK: the second core.** M-VAVE's library starts it for its own engines' render jobs and gives apps no way to run work there. Getting it would mean reverse-engineering that library or moving Viscera to Felucca (as Ravel did), which loses Bluetooth and audio input.
 

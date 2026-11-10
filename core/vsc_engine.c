@@ -1640,7 +1640,8 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
             metro_ph += metro_inc; if (metro_ph >= 1.f) metro_ph -= 1.f;
             click = (metro_ph < 0.5f ? 0.3f : -0.3f) * metro_env; metro_env *= 0.9965f;   /* ~15 ms */
         }
-        float l = tanha(out[2 * i] * gl) + click, r = tanha(out[2 * i + 1] * gl) + click;
+        /* held to full scale: tanha can round a hair past 1 at its knee (the FM-1 clips there anyway) */
+        float l = clampf(tanha(out[2 * i] * gl) + click, -1.f, 1.f), r = clampf(tanha(out[2 * i + 1] * gl) + click, -1.f, 1.f);
         out[2 * i] = l; out[2 * i + 1] = r;
         main_prev[i] = (l + r) * 0.5f;
         vsc_scope[0][i] = l; vsc_scope[1][i] = r;

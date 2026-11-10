@@ -27,7 +27,7 @@ Felucca-based firmwares (Ravel, SLOOP and others) accept only packages whose 16 
 
 `tools/emulator/` simulates an FM-1 for this: `fm1_device.js` replaces Web MIDI with a device in a Web Worker (its own clock, a strict per-block deadline, Felucca's head check, stock V15's voice-bank restore), and `flash_test.py` installs through the real page in headless Chrome from each starting firmware, checking reply times, every written byte and the build ID afterwards. CI runs it on every build.
 
-Safe mode: hold OCT- and OCT+ while switching on. Viscera starts with sound and controls off; the update protocol still answers, so the page can always reinstall. A CPU guard rests the engine for about a second if rendering takes over 90 % of a block three times running.
+Safe mode: hold OCT- and OCT+ while switching on. Viscera starts with sound and controls off; the update protocol still answers, so the page can always reinstall. A CPU guard eases in two steps when rendering takes over 90 % of a block (1: the reverb rests; 2: also half the RESON bands and new grains), and only rests the engine for about a second if that isn't enough. GLO → SETTINGS → PANEL shows the load per track, SPACE and the rest, and the guard's step.
 
 ## First hardware test
 
@@ -40,7 +40,7 @@ Safe mode: hold OCT- and OCT+ while switching on. Viscera starts with sound and 
 
 - Browser emulator (wasm build of `core/` with the same UI).
 - PLAY material overview: decode the bank into a waveform picture in the control task.
-- Project names, copy and paste of steps, a CPU meter on the SETTINGS page (`vsc_fm1_cpu` is ready).
+- Project names, copy and paste of steps.
 
 ## If the FM-1 runs out of CPU
 
@@ -53,6 +53,8 @@ Only act on these once the unit shows overloads (underruns, glitches). They come
 5. **Grain caps.** Lower `VSC_GRAINS` under load, or cap active grains with a level correction (Ravel's Beads port needed about +3 dB at 16 grains).
 6. **Placement.** Hot loops in RAM (`VSC_HOT`), small helpers always inlined, nothing in the audio path that calls into flash or the C library. Watch the RAM budget: every byte of RAM code costs heap that Bluetooth needs.
 7. **Second core.** The SDK doesn't expose the second core to apps, so this isn't available yet; check new SDK releases before planning on it.
+
+Done in 0.2.6: 2 (silent and quiet tracks sleep, SPACE sleeps, the reverb rests under load), the guard's steps from 1 (no slack block: the SDK's audio buffering is fixed), RESON's cached tuning and band-by-band loop, 5 (half the new grains at the guard's second step), and the per-part CPU readout. Not done: 4 (needs approval: not bit-exact) and the slack block.
 
 Notes: the pi32v2 FPU has a hardware divide but no square root. Host instruction counts only rank ideas; the FM-1's cycles differ.
 

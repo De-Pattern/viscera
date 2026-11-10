@@ -15,8 +15,8 @@
 
 /* ------------------------------------------------------------ audio */
 static volatile uint8_t ready;
-static uint8_t over_count; static uint16_t rest_blocks;
-volatile uint8_t vsc_fm1_overload;   /* set while the CPU guard has silenced the engine */
+static uint8_t over_count, hard_count; static uint16_t rest_blocks, calm_blocks;
+volatile uint8_t vsc_fm1_overload;   /* set while the CPU guard has silenced the engine (its last resort) */
 static float in_bt[VSC_BLOCK * 2], in_usb[VSC_BLOCK * 2], mix[VSC_BLOCK * 2];
 static int32_t usb_raw[VSC_BLOCK * 2];
 static int16_t bt_raw[VSC_BLOCK * 2];
@@ -28,9 +28,15 @@ static inline __attribute__((always_inline)) uint32_t ticks_between(uint32_t sta
     return end >= start ? end - start : end + FM1_AUDIO_TIMER_PERIOD + 1u - start;
 }
 
+/* the engine's clock for the per-part CPU readout (called from the audio interrupt) */
+static FM1_AUDIO_CODE uint32_t clock_now(void) { return FM1_AUDIO_TIMER_COUNT; }
+static FM1_AUDIO_CODE uint32_t clock_since(uint32_t since) { return ticks_between(since, FM1_AUDIO_TIMER_COUNT); }
+
 void vsc_fm1_start(void)
 {
     vsc_init();
+    vsc_clock_now = clock_now;
+    vsc_clock_since = clock_since;
     vsc_project_defaults(&vsc);
     vsc_fm1_device_load();
     ready = 1;
@@ -69,13 +75,27 @@ FM1_AUDIO_CODE int vsc_fm1_render(int32_t *out)
     uint32_t used = ticks_between(t0, FM1_AUDIO_TIMER_COUNT);
     render_ticks = used;
     if (used > render_peak_ticks) render_peak_ticks = used;
-    /* CPU guard: if rendering eats more than 90% of a block three times in a
-     * row, rest for about a second. The audio interrupt must never starve the
-     * USB and control tasks: they carry the update protocol. (No division here:
-     * the compiler's divide helpers live in flash.) */
-    if (block_period && used < 0x10000000u && used * 10u > block_period * 9u) {   /* 32-bit: a block is far below 2^28 ticks */
-        if (++over_count >= 3) { over_count = 0; rest_blocks = 350; vsc_fm1_overload = 1; }
-    } else over_count = 0;
+    /* CPU guard, in steps as Ravel's: above 90% of a block two blocks running, ease
+     * (relief 1: SPACE's reverb rests; 2: also half of RESON's bands and of the new
+     * grains). Still over at relief 2 for three such pairs: rest for about a second
+     * (the audio interrupt must never starve the USB and control tasks, which carry
+     * the update protocol). Below 60% for about 3 s: one step back. (No division
+     * here: the compiler's divide helpers live in flash; 32-bit: a block is far
+     * below 2^28 ticks.) */
+    if (block_period && used < 0x10000000u && used * 10u > block_period * 9u) {
+        calm_blocks = 0;
+        if (++over_count >= 2) {
+            over_count = 0;
+            if (vsc_relief < 2) vsc_relief = (uint8_t)(vsc_relief + 1);
+            else if (++hard_count >= 3) { hard_count = 0; rest_blocks = 350; vsc_fm1_overload = 1; }
+        }
+    } else {
+        over_count = 0;
+        if (block_period && used * 10u < block_period * 6u) {
+            hard_count = 0;
+            if (vsc_relief && ++calm_blocks >= 1000u) { calm_blocks = 0; vsc_relief = (uint8_t)(vsc_relief - 1); }
+        } else calm_blocks = 0;
+    }
     return 0;
 }
 /* Render time as a share of one block (0..100+), and its peak since the last read. */
@@ -86,6 +106,22 @@ unsigned vsc_fm1_cpu(unsigned *peak)
     unsigned now = (unsigned)((uint64_t)render_ticks * 100u / period);
     if (peak) { *peak = (unsigned)((uint64_t)render_peak_ticks * 100u / period); render_peak_ticks = 0; }
     return now;
+}
+
+/* (control task) each part's share of a block: T1..T4, SPACE, then the rest (inputs,
+ * sequencer, master) */
+void vsc_fm1_parts(uint8_t *pct)
+{
+    uint32_t period = block_period ? block_period : 1u, sum = 0;
+    for (unsigned i = 0; i < VSC_PARTS; ++i) {
+        uint32_t v = vsc_meter.part_ticks[i];
+        sum += v;
+        uint32_t p = (uint32_t)((uint64_t)v * 100u / period);
+        pct[i] = (uint8_t)(p > 255u ? 255u : p);
+    }
+    uint32_t rest = render_ticks > sum ? render_ticks - sum : 0;
+    uint32_t p = (uint32_t)((uint64_t)rest * 100u / period);
+    pct[VSC_PARTS] = (uint8_t)(p > 255u ? 255u : p);
 }
 
 /* ------------------------------------------------------- sample bank */

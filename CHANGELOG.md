@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.6
+
+CPU, after what worked on Ravel. In fm1-emu at the FM-1's measured timing (360 MHz): one sample playing 25% → 20% (peak 30% → 27%); all four tracks and SPACE busy 59% → 53% (peak 58%).
+
+- **Changed: quiet tracks sleep even while they play.** A track that is muted, or has LEVEL and SEND both at 0, skips its chain unless another track takes it as its INPUT. Its sequencer and modulators keep running.
+- **New: the CPU guard eases before it mutes, in steps as Ravel's.** Above 90% of a block two blocks running, it moves up one step:
+  - EASED 1: SPACE's reverb rests (the delay keeps going).
+  - EASED 2: also every other RESON band (+3 dB to make up for them) and half of the new grains.
+  - Only if it's still over at EASED 2 does it rest the sound for about a second, as before.
+  - Below 60% for about 3 s, it steps back.
+  - Audible only while it's easing; the panel says so ("CPU HIGH: …").
+- **New: GLO → SETTINGS → PANEL shows where the CPU goes:** T1–T4, SP (SPACE) and + (inputs, sequencer, master) as % of a block, and the guard's step.
+- **Faster, same sound (bit-exact on the host):**
+  - RESON runs band by band over each 32-frame sub-block, two bands at a time, and keeps its tuning until PITCH, SCALE, DETUNE or DECAY moves.
+  - Parameter maths only clamps what a route or macro touched, and skips the rest of the work when nothing moved.
+- **Faster, inaudible:** a RESON band that is closed (SUSTAIN), rung out and below -100 dB after makeup is skipped.
+- **Not possible on this SDK: the second core.** M-VAVE's library starts it for its own engines' render jobs and gives apps no way to run work there. Getting it would mean reverse-engineering that library or moving Viscera to Felucca (as Ravel did), which loses Bluetooth and audio input.
+
 ## 0.2.5
 
 - **Fixed: CPU OVERLOAD and no sound on an FM-1, even with one sample.** Every track ran its whole chain (GRAIN, FILTER/RESON, COLOR) and SPACE ran on every block, sound or not: about 58% of the CPU while silent, 61% with one sample playing, in fm1-emu at the FM-1's measured timing. A real FM-1 is slower than that, so the CPU guard kept muting the sound. Now a track with nothing to play sleeps (its material and modulators still run, so a sample, a loop, the input or a note wakes it at once) and stays awake until its output has been quiet for about 1.5 s, so tails finish. COLOR's noise (a source of its own) and frozen grains keep a track awake. SPACE sleeps the same way, after its echoes and tail die away (about 4 s). In fm1-emu: silent 12%, one sample 25% (peak 30%). With all four tracks and SPACE busy it's still about 59% there.

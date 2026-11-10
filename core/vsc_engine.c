@@ -117,6 +117,8 @@ struct track {
     /* RING: band state, input history, the waves phase, noise per band, tone */
     float ky1[VSC_RING_BANDS], ky2[VSC_RING_BANDS], kx1, kx2;
     float kwph, knph, knz[VSC_RING_BANDS], knt[VSC_RING_BANDS], ktone, kgain[VSC_RING_BANDS];
+    /* the bands' tuning, kept until PITCH, SCALE, DETUNE or DECAY moves (krk: what it was made from) */
+    float ka1[VSC_RING_BANDS], ku[VSC_RING_BANDS], krk[3]; uint16_t kmask; uint8_t kok;
     float side[VSC_SUB];        /* this sub-block's stereo difference (RESON spreads its bands) */
     /* color */
     float comp_env, hold, hold_phase, tone_lp, dust;
@@ -143,6 +145,10 @@ struct track {
     uint16_t awake;             /* sub-blocks left before a silent track sleeps (see vsc_render) */
 };
 static struct track tr[VSC_TRACKS];
+/* The platform's clock for the CPU readout (unset: no readout), and the guard's relief. */
+uint32_t (*vsc_clock_now)(void);
+uint32_t (*vsc_clock_since)(uint32_t since);
+volatile uint8_t vsc_relief;
 /* A track with nothing to play sleeps: only its material (and modulators) run, so a
  * sample, a loop, the input or a note wakes it at once. Awake, it stays so until its
  * output has been silent for about 1.5 s, so tails (RESON, grains, COLOR) finish. */
@@ -316,43 +322,55 @@ static VSC_HOT void compute_globals(void)
 }
 static VSC_HOT void compute_params(unsigned t)
 {
+    /* Every value from the project (or a lock, or the scene morph) is already in
+     * 0..1 (no plain parameter goes above 127), so only what a route or a macro
+     * moved needs clamping: the same result as clamping everything, for less work. */
     struct track *k = &tr[t];
     const uint8_t *base = vsc.t[t];
     const struct vsc_scene *sc = &vsc.scene[vsc.g[G_TARGET] % VSC_SCENES];
     float morph = sc->used ? gv[G_MORPH] * (1.f / 127.f) : 0.f;
-    float mods[VSC_MODS];
-    for (unsigned m = 0; m < VSC_MODS; ++m) mods[m] = vsc_meter.mod_value[t][m];
+    uint8_t en[VSC_NP];
+    for (unsigned p = 0; p < P_MOD0; ++p) en[p] = is_enum[p];
+    for (unsigned m = 0; m < VSC_MODS; ++m) {
+        const uint8_t *me = mod_enum[base[P_MOD(m, 0)] & 3];
+        for (unsigned kk = 0; kk < VSC_MOD_PARAMS; ++kk) en[P_MOD(m, kk)] = me[kk];
+    }
+    for (unsigned p = P_MOD0 + 4 * VSC_MOD_PARAMS; p < VSC_NP; ++p) en[p] = is_enum[p];
+    const uint8_t *lock = vsc_lock[t];
     for (unsigned p = 0; p < VSC_NP; ++p) {
-        unsigned v = vsc_lock[t][p] != 255 ? vsc_lock[t][p] : base[p];
-        int en = is_enum[p];
-        if (p >= P_MOD0 && p < P_MOD0 + 4 * VSC_MOD_PARAMS) {
-            unsigned rel = p - P_MOD0, kk = rel % VSC_MOD_PARAMS;
-            en = mod_enum[base[p - kk] & 3][kk];
-        }
-        if (en) { k->e[p] = (float)v; continue; }
+        unsigned v = lock[p] != 255 ? lock[p] : base[p];
+        if (en[p]) { k->e[p] = (float)v; continue; }
         float x = (float)v * (1.f / 127.f);
         if (morph > 0.f) x += ((float)sc->t[t][p] * (1.f / 127.f) - x) * morph;
         k->e[p] = x;
     }
+    int moved = 0;
     for (unsigned r = 0; r < VSC_MOD_ROUTES; ++r) {
         const struct vsc_route *ro = &vsc.route[t][r];
         if (ro->param >= VSC_NP || !ro->depth) continue;   /* globals: compute_globals */
-        float mv = (ro->src & VSC_SRC_OTHER) ? vsc_meter.mod_value[vsc_src_track(t, ro->src)][ro->src & 3] : mods[ro->src & 3];
+        float mv = vsc_meter.mod_value[vsc_src_track(t, ro->src)][ro->src & 3];
         if (ro->flags & 1) mv = mv * 2.f - 1.f;
         k->e[ro->param] += (float)ro->depth * (1.f / 127.f) * mv;
+        moved = 1;
     }
     for (unsigned m = 0; m < VSC_MACROS; ++m) {
         float mv = gv[G_M0 + m] * (1.f / 127.f);
         if (mv <= 0.f) continue;
         for (unsigned r = 0; r < VSC_MACRO_ROUTES; ++r) {
             const struct vsc_mroute *ro = &vsc.macro[m][r];
-            if (ro->track == t && ro->param < VSC_NP && ro->depth)
-                k->e[ro->param] += (float)ro->depth * (1.f / 127.f) * mv;
+            if (ro->track == t && ro->param < VSC_NP && ro->depth) { k->e[ro->param] += (float)ro->depth * (1.f / 127.f) * mv; moved = 1; }
         }
     }
-    for (unsigned p = 0; p < VSC_NP; ++p)
-        if (!is_enum[p] || (p >= P_MOD0 && p < P_MOD0 + 4 * VSC_MOD_PARAMS && !mod_enum[base[P_MOD0 + (p - P_MOD0) / VSC_MOD_PARAMS * VSC_MOD_PARAMS] & 3][(p - P_MOD0) % VSC_MOD_PARAMS]))
-            k->e[p] = clampf(k->e[p], 0.f, 1.f);
+    if (!moved) return;
+    for (unsigned r = 0; r < VSC_MOD_ROUTES; ++r) {
+        unsigned p = vsc.route[t][r].param;
+        if (p < VSC_NP && vsc.route[t][r].depth && !en[p]) k->e[p] = clampf(k->e[p], 0.f, 1.f);
+    }
+    for (unsigned m = 0; m < VSC_MACROS; ++m)
+        for (unsigned r = 0; r < VSC_MACRO_ROUTES; ++r) {
+            const struct vsc_mroute *ro = &vsc.macro[m][r];
+            if (ro->track == t && ro->param < VSC_NP && ro->depth && !en[ro->param]) k->e[ro->param] = clampf(k->e[ro->param], 0.f, 1.f);
+        }
 }
 
 /* --------------------------------------------------------------- mods
@@ -657,7 +675,9 @@ static VSC_HOT void grains(unsigned t, unsigned off, unsigned n)
         k->gphase += spawn;
         if (k->gphase >= 1.f) {
             k->gphase -= 1.f;
-            for (unsigned g = 0; g < VSC_GRAINS; ++g) {
+            /* relief 2: new grains only in half the slots (playing ones finish) */
+            unsigned slots = vsc_relief >= 2 ? VSC_GRAINS / 2 : VSC_GRAINS;
+            for (unsigned g = 0; g < slots; ++g) {
                 struct grain *gr = &k->g[g];
                 if (gr->active) continue;
                 float semis = k->e[P_GPITCH] * 48.f - 24.f + rndb() * k->e[P_GDETUNE] * 12.f;
@@ -770,17 +790,26 @@ static VSC_HOT void ring(unsigned t, unsigned off, unsigned n)
     float nsm = clampf(nhz * dt * 4.f, 0.f, 1.f);
     float bin[VSC_RING_BANDS], a1[VSC_RING_BANDS], wl[VSC_RING_BANDS], wr[VSC_RING_BANDS];
     int last = -1;
+    /* the tuning only changes when what it is made from does: same values, made once */
+    if (!k->kok || k->kmask != mask || k->krk[0] != semis0 || k->krk[1] != det || k->krk[2] != r) {
+        for (unsigned b = 0; b < VSC_RING_BANDS; ++b) {
+            int s = (int)b * 9; if (s <= last) s = last + 1;
+            while (!(mask >> (s % 12) & 1)) ++s;
+            last = s;
+            float sign = (b & 1) ? 1.f : -1.f;
+            float semis = (float)s + semis0 + sign * det * 0.5f;     /* DETUNE: up to half a semitone apart */
+            float hz = 65.406f * exp2a(semis * (1.f / 12.f));
+            if (hz > 0.42f * (float)VSC_SR) hz = 0.42f * (float)VSC_SR;
+            k->ka1[b] = 2.f * r * cos2pi(hz * (1.f / (float)VSC_SR));
+            /* where this band sits on the cutoff's scale (20 Hz .. 20 kHz over 0..1) */
+            k->ku[b] = (semis + 20.51f) * (1.f / 119.4f);                  /* log2(hz/20)/9.95 */
+        }
+        k->kok = 1; k->kmask = (uint16_t)mask; k->krk[0] = semis0; k->krk[1] = det; k->krk[2] = r;
+    }
     for (unsigned b = 0; b < VSC_RING_BANDS; ++b) {
-        int s = (int)b * 9; if (s <= last) s = last + 1;
-        while (!(mask >> (s % 12) & 1)) ++s;
-        last = s;
         float sign = (b & 1) ? 1.f : -1.f;
-        float semis = (float)s + semis0 + sign * det * 0.5f;     /* DETUNE: up to half a semitone apart */
-        float hz = 65.406f * exp2a(semis * (1.f / 12.f));
-        if (hz > 0.42f * (float)VSC_SR) hz = 0.42f * (float)VSC_SR;
-        a1[b] = 2.f * r * cos2pi(hz * (1.f / (float)VSC_SR));
-        /* where this band sits on the cutoff's scale (20 Hz .. 20 kHz over 0..1) */
-        float u = (semis + 20.51f) * (1.f / 119.4f);                  /* log2(hz/20)/9.95 */
+        a1[b] = k->ka1[b];
+        float u = k->ku[b];
         vsc_meter.ring_x[t][b] = (uint8_t)clampf(u * 239.f, 0.f, 239.f);
         float d = (u - cut) / width, bp = 1.f / (1.f + d * d); bp *= bp;
         float lp = d <= 0.f ? 1.f : bp, hp = d >= 0.f ? 1.f : bp;
@@ -803,16 +832,54 @@ static VSC_HOT void ring(unsigned t, unsigned off, unsigned n)
     float wet = k->e[P_FMIX], tone = k->e[P_KTONE] * 2.f - 1.f;
     int send = vsc.t[t][P_FWMODE] == WET_SEND;
     float makeup = (2.5f + reso * 2.f) * (1.f + decay * decay * 4.f);   /* long rings are narrow: give them level back */
+    /* relief 2: every other band only (about 3 dB less of them, made up) */
+    unsigned bstep = vsc_relief >= 2 ? 2u : 1u;
+    if (bstep == 2u) makeup *= 1.41f;
     float x1 = k->kx1, x2 = k->kx2, tl = k->ktone;
-    for (unsigned i = 0; i < n; ++i) {
-        float v0 = x[i], dx = v0 - x2;
-        x2 = x1; x1 = v0;
-        float L = 0.f, R = 0.f;
-        for (unsigned b = 0; b < VSC_RING_BANDS; ++b) {
-            float y = bin[b] * dx + a1[b] * k->ky1[b] - a2 * k->ky2[b];
-            k->ky2[b] = k->ky1[b]; k->ky1[b] = y;
-            L += y * wl[b]; R += y * wr[b];
+    /* Band by band over the sub-block, each band's state in registers: the same sums
+     * in the same order (band 0 first) as sample by sample, for far fewer loads and
+     * stores. n is at most VSC_SUB. */
+    float dxs[VSC_SUB], Ls[VSC_SUB], Rs[VSC_SUB];
+    for (unsigned i = 0; i < n; ++i) { float v0 = x[i]; dxs[i] = v0 - x2; x2 = x1; x1 = v0; Ls[i] = 0.f; Rs[i] = 0.f; }
+    /* the bands that speak: relief 2 keeps every other one; a band closed to the input
+     * (SUSTAIN) whose output, made up, is under -100 dB and has rung out adds nothing and is left resting */
+    uint8_t on[VSC_RING_BANDS]; unsigned non = 0;
+    for (unsigned b = 0; b < VSC_RING_BANDS; b += bstep) {
+        if (!choke && absf(k->kgain[b]) * makeup < 1e-5f && (absf(k->ky1[b]) + absf(k->ky2[b])) * makeup < 1e-5f) {
+            k->ky1[b] = 0.f; k->ky2[b] = 0.f; continue;
         }
+        on[non++] = (uint8_t)b;
+    }
+    unsigned j = 0;
+    for (; j + 1u < non; j += 2u) {                          /* two bands a pass: half the sums' traffic */
+        unsigned b = on[j], c = on[j + 1u];
+        float p1 = k->ky1[b], p2 = k->ky2[b], pb = bin[b], pa = a1[b], pl = wl[b], pr = wr[b];
+        float q1 = k->ky1[c], q2 = k->ky2[c], qb = bin[c], qa = a1[c], ql = wl[c], qr = wr[c];
+        for (unsigned i = 0; i < n; ++i) {
+            float dx = dxs[i];
+            float y = pb * dx + pa * p1 - a2 * p2;
+            p2 = p1; p1 = y;
+            float z = qb * dx + qa * q1 - a2 * q2;
+            q2 = q1; q1 = z;
+            float L = Ls[i], R = Rs[i];
+            L += y * pl; R += y * pr;
+            L += z * ql; R += z * qr;
+            Ls[i] = L; Rs[i] = R;
+        }
+        k->ky1[b] = p1; k->ky2[b] = p2; k->ky1[c] = q1; k->ky2[c] = q2;
+    }
+    if (j < non) {                                           /* an odd one left */
+        unsigned b = on[j];
+        float y1 = k->ky1[b], y2 = k->ky2[b], bb = bin[b], aa = a1[b], gl = wl[b], gr = wr[b];
+        for (unsigned i = 0; i < n; ++i) {
+            float y = bb * dxs[i] + aa * y1 - a2 * y2;
+            y2 = y1; y1 = y;
+            Ls[i] += y * gl; Rs[i] += y * gr;
+        }
+        k->ky1[b] = y1; k->ky2[b] = y2;
+    }
+    for (unsigned i = 0; i < n; ++i) {
+        float v0 = x[i], L = Ls[i], R = Rs[i];
         float mid = (L + R) * makeup, dif = (L - R) * makeup;
         tl += (mid - tl) * 0.11f;                                        /* ~800 Hz */
         mid = tone < 0.f ? mid + (tl - mid) * -tone : mid - tl * tone;
@@ -1005,6 +1072,12 @@ static VSC_HOT void space(float *l, float *r, unsigned n)
     /* FREEZE: no new input, the delay recirculates and the reverb holds */
     float in_gain = 1.f;
     if (space_frozen) { in_gain = 0.f; fb = 1.f; rfb = 0.997f; damp = 0.05f; }
+    /* the reverb rests at level 0, and under relief 1 (not while frozen: it is the held sound);
+     * coming back it starts clean */
+    static uint8_t rv_rest;
+    int rv_on = space_frozen || (rlev > 0.002f && vsc_relief < 1);
+    if (!rv_on) rv_rest = 1;
+    else if (rv_rest) { rv_rest = 0; vsc_memset(rv_buf, 0, sizeof rv_buf); for (unsigned b = 0; b < 4; ++b) rv_lp[b] = 0.f; }
     for (unsigned i = 0; i < n; ++i) {
         float in = (space_l[i] + space_r[i]) * 0.5f * in_gain;
         /* delay */
@@ -1023,6 +1096,7 @@ static VSC_HOT void space(float *l, float *r, unsigned n)
             delay_line[dl_w] = (int16_t)(clampf(w, -1.f, 1.f) * 32767.f);
             if (++dl_w >= VSC_DELAY_FRAMES) dl_w = 0;
         }
+        if (!rv_on) { l[i] += tap * dlev; r[i] += tap2 * dlev; continue; }
         /* reverb, fed by the dry send and the delay */
         float rin = (in + tap * 0.4f) * 0.3f;
         unsigned o = 0;
@@ -1467,23 +1541,35 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
     for (unsigned t = 0; t < VSC_TRACKS; ++t) input_for(t, in);
     for (unsigned i = 0; i < VSC_BLOCK; ++i) { space_l[i] = space_r[i] = 0.f; out[2 * i] = out[2 * i + 1] = 0.f; }
 
+    /* which tracks another track listens to (its INPUT): those never sleep for being muted */
+    uint8_t heard[VSC_TRACKS] = {0};
+    for (unsigned u = 0; u < VSC_TRACKS; ++u) {
+        unsigned sel = vsc.t[u][P_INPUT];
+        if (sel >= IN_T1 && sel <= IN_T4) heard[sel - IN_T1] = 1;
+    }
+    uint32_t part[VSC_PARTS] = {0};
     for (unsigned off = 0; off < VSC_BLOCK; off += VSC_SUB) {
         compute_globals();
         sequencer(VSC_SUB);
         for (unsigned t = 0; t < VSC_TRACKS; ++t) {
             struct track *k = &tr[t];
+            uint32_t t0 = vsc_clock_now ? vsc_clock_now() : 0;
             /* asleep, the parameters only once a block (for the material) */
             if (k->awake || off == 0) compute_params(t);
             material(t, off, VSC_SUB);
             { float pk = 0.f; for (unsigned i = 0; i < VSC_SUB; ++i) { float a = absf(k->out[off + i]); if (a > pk) pk = a; } k->mat_pk = pk; }
-            /* awake: the material sounds, frozen grains play on, or COLOR's noise (a source of its own) is up */
-            if (k->mat_pk > VSC_WAKE_LEVEL || vsc.t[t][P_GFREEZE] || vsc.t[t][P_NOISE]) k->awake = VSC_WAKE_HOLD;
+            /* awake: the material sounds, frozen grains play on, or COLOR's noise (a source of its own) is up.
+             * A track nobody can hear (muted, or no level and no send, and no track listening
+             * to it) doesn't wake, and sleeps after its hold. */
+            int quiet = (vsc.t[t][P_MUTE] || (k->e[P_LEVEL] <= 0.f && k->e[P_SEND] <= 0.f)) && !heard[t];
+            if (!quiet && (k->mat_pk > VSC_WAKE_LEVEL || vsc.t[t][P_GFREEZE] || vsc.t[t][P_NOISE])) k->awake = VSC_WAKE_HOLD;
 #ifdef VSC_NO_SLEEP
             k->awake = VSC_WAKE_HOLD;             /* measuring: every track always awake */
 #endif
             run_mods(t, off, VSC_SUB);
             if (!k->awake) {                      /* asleep: silent, nothing more to do */
                 for (unsigned i = 0; i < VSC_SUB; ++i) { k->out[off + i] = 0.f; k->side[i] = 0.f; }
+                if (vsc_clock_now) part[t] += vsc_clock_since(t0);
                 continue;
             }
             grains(t, off, VSC_SUB);
@@ -1492,7 +1578,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
             djfilter(t, off, VSC_SUB);
             { float pk = 0.f;
               for (unsigned i = 0; i < VSC_SUB; ++i) { float a = absf(k->out[off + i]) + absf(k->side[i]); if (a > pk) pk = a; }
-              if (pk > VSC_WAKE_LEVEL) k->awake = VSC_WAKE_HOLD; else --k->awake; }
+              if (pk > VSC_WAKE_LEVEL && !quiet) k->awake = VSC_WAKE_HOLD; else --k->awake; }
             float lev = k->e[P_LEVEL]; lev = lev * lev * 1.6f;
             if (vsc.t[t][P_MUTE]) lev = 0.f;
             float pan = k->e[P_PAN];
@@ -1506,8 +1592,10 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
                 space_l[off + i] += l * send;
                 space_r[off + i] += r * send;
             }
+            if (vsc_clock_now) part[t] += vsc_clock_since(t0);
         }
     }
+    uint32_t ts = vsc_clock_now ? vsc_clock_now() : 0;
     {
         static float l[VSC_BLOCK], r[VSC_BLOCK];   /* static (RAM): 1 KB is too much for the interrupt's stack */
         /* SPACE sleeps too: it runs while something is sent to it, frozen, or until its
@@ -1529,6 +1617,10 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
             }
             if (pk > VSC_WAKE_LEVEL) space_awake = 1400u; else --space_awake;
         }
+    }
+    if (vsc_clock_now) {
+        part[VSC_TRACKS] = vsc_clock_since(ts);
+        for (unsigned i = 0; i < VSC_PARTS; ++i) vsc_meter.part_ticks[i] = part[i];
     }
     float target = gv[G_MAIN] * (1.f / 127.f);
     target *= target;

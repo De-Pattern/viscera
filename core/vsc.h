@@ -133,6 +133,12 @@ int vsc_sound_recall(unsigned slot, unsigned track);
 #define VSC_DEV_MAGIC 0x44435356u   /* 'VSCD' */
 extern struct vsc_device vsc_dev;
 extern volatile uint32_t vsc_dev_changed;   /* bumped on every change */
+/* CPU: the platform's clock (both unset: no readout), and the guard's relief level.
+ * Relief 1: SPACE's reverb rests. Relief 2: also half of RESON's bands and of the grains. */
+#define VSC_PARTS (VSC_TRACKS + 1)
+extern uint32_t (*vsc_clock_now)(void);
+extern uint32_t (*vsc_clock_since)(uint32_t since);
+extern volatile uint8_t vsc_relief;
 void vsc_device_defaults(void);
 int vsc_device_valid(const struct vsc_device *d);
 void vsc_device_seal(void);
@@ -188,6 +194,7 @@ struct vsc_meter {
     uint8_t ball_on[VSC_TRACKS][VSC_BALLS];
     uint8_t playing, ext_clock, bt_in, usb_in, space_frozen, reverse[VSC_TRACKS];
     float in_peak[2][2];             /* Bluetooth and USB audio in, left/right, with a short fall */
+    uint32_t part_ticks[VSC_PARTS];  /* the last block's time per part: T1..T4, SPACE (platform clock ticks) */
     uint8_t overview[VSC_TRACKS][240];   /* PLAY/KEYS: the sample's shape, 0..60 per column, filled by the audio side */
     uint8_t overview_slot[VSC_TRACKS];   /* which slot it shows (255: none yet) */
     float tempo;                     /* the tempo in use: internal, or measured from MIDI clock */
@@ -244,6 +251,8 @@ struct vsc_host_status {
     uint8_t ble_role, ble_state, ble_count;
     char ble_name[8][16];
     uint8_t cpu, cpu_peak;            /* render load, percent */
+    uint8_t part[VSC_PARTS + 1];      /* per part: T1..T4, SPACE, the rest (percent) */
+    uint8_t relief;                  /* the CPU guard's relief level (0..2) */
     uint8_t slot_used[VSC_PROJECTS];
     char slot_name[VSC_PROJECTS][12];
     uint8_t storage_ok, battery;

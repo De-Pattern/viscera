@@ -216,7 +216,11 @@ void groove_screen_control(void)
 
     if (now - status_at >= 250u) {
         status_at = now; refresh_status(); vsc_host.battery = (uint8_t)(c.battery >> 2);
-        { unsigned pk = 0, cpu = vsc_fm1_cpu(&pk); vsc_host.cpu = (uint8_t)(cpu > 255u ? 255u : cpu); vsc_host.cpu_peak = (uint8_t)(pk > 255u ? 255u : pk); }
+        { unsigned pk = 0, cpu = vsc_fm1_cpu(&pk); vsc_host.cpu = (uint8_t)(cpu > 254u ? 254u : cpu); vsc_host.cpu_peak = (uint8_t)(pk > 255u ? 255u : pk); }
+        vsc_fm1_parts(vsc_host.part);
+        { static uint8_t shown; uint8_t r = vsc_relief; vsc_host.relief = r;
+          if (r > shown) vsc_ui_notice(r >= 2 ? "CPU HIGH: FEWER GRAINS + BANDS" : "CPU HIGH: REVERB RESTS", 1500);
+          shown = r; }
         if (vsc_fm1_overload) vsc_ui_notice("CPU OVERLOAD: SOUND PAUSED", 1200);
     }
     if (now - slots_at >= 3000u) { slots_at = now; refresh_slots(); }

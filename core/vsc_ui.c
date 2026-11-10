@@ -1217,8 +1217,18 @@ static void draw_vis(void)
         char b[16] = "CPU "; num(b + 4, vsc_host.cpu); unsigned l = (unsigned)vsc_strlen(b); b[l] = '%'; b[l + 1] = 0;
         text(6, VIS_Y + 100, b, vsc_host.cpu > 85 ? C_WARN : C_FG, 1);
         rect(60, VIS_Y + 102, 170, 3, C_PANEL);
-        rect(60, VIS_Y + 102, vsc_host.cpu * 170 / 100, 3, vsc_host.cpu > 85 ? C_WARN : C_FG);
+        { unsigned w = vsc_host.cpu > 100 ? 170u : vsc_host.cpu * 170u / 100u;
+          rect(60, VIS_Y + 102, (int)w, 3, vsc_host.cpu > 85 ? C_WARN : C_FG); }
         if (vsc_host.cpu_peak) { int px0 = 60 + vsc_host.cpu_peak * 170 / 100; vline(px0 > 229 ? 229 : px0, VIS_Y + 99, 9, C_INK); }
+        /* where it goes: each track, SPACE, the rest (inputs, sequencer, master) */
+        static const char *const part_n[VSC_PARTS + 1] = {"T1", "T2", "T3", "T4", "SP", "+"};
+        for (unsigned i = 0; i <= VSC_PARTS; ++i) {
+            char pb[8]; copy_n(pb, part_n[i], 3); unsigned pl = (unsigned)vsc_strlen(pb);
+            pb[pl] = ' '; num(pb + pl + 1, vsc_host.part[i]);
+            text(6 + (int)i * 39, VIS_Y + 116, pb, vsc_host.part[i] > 30 ? C_WARN : C_DIM, 1);
+        }
+        text(6, VIS_Y + 130, vsc_host.relief >= 2 ? "GUARD: EASED 2 (GRAINS, BANDS)" : vsc_host.relief ? "GUARD: EASED 1 (REVERB RESTS)" : "GUARD: OFF",
+             vsc_host.relief ? C_WARN : C_LINE, 1);
         break;
     } else if (row == SET_LEARN) {
         int any = 0;

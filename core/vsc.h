@@ -32,6 +32,9 @@ enum vsc_tparam {
     /* SEQUENCER: STEPS or CAROM, and CAROM's physics */
     P_SEQM = P_MOD0 + 40, P_RSPEED, P_RGRAV, P_RLOSS, P_RSPREAD, P_RQUANT,
     P_RCOUNT, P_RWALLS, P_RJITTER, P_RGATE,
+    /* DISSECT (format 5), kept at the end so every earlier index stays put: GRAIN's
+     * trigger, RESON's excitation by the input's hits and its pitch following */
+    P_GTRIG, P_KEXCITE, P_KFOLLOW,
     VSC_NP
 };
 #define VSC_MOD_PARAMS 10
@@ -41,14 +44,25 @@ enum vsc_gparam {
     G_RSIZE, G_RDAMP, G_RLEVEL, G_MAIN, G_CLOCK, G_INMON,
     G_MORPH, G_TARGET, G_MSEL, G_MCOMP,
     G_M0, G_M1, G_M2, G_M3, G_M4, G_M5, G_M6, G_M7,
+    /* DISSECT: the shared listener's source, sensitivity, the band its hits come from,
+     * and what the hits drive */
+    G_ASRC, G_ASENS, G_AFOCUS, G_AHITS,
     VSC_NG
 };
 enum { MODE_PLAY, MODE_LOOP, MODE_KEYS, MODE_THRU };
 enum { IN_BT, IN_USB, IN_BOTH, IN_T1, IN_T2, IN_T3, IN_T4, IN_MAIN, IN_COUNT };
-enum { FT_LP, FT_BP, FT_HP, FT_PEAKS, FT_RING, FT_OFF };
+enum { FT_LP, FT_BP, FT_HP, FT_PEAKS, FT_RING, FT_OFF, FT_REBUILD };
 enum { RING_SUSTAIN, RING_CHOKE };
 #define VSC_RING_BANDS 10
 enum { MT_WAVE, MT_RANDOM, MT_FOLLOW, MT_ADSR };
+/* FOLLOW's INPUT: audio (0..7), then what DISSECT's listener hears (8..13) */
+enum { FIN_TRACK, FIN_MATER, FIN_T1, FIN_T2, FIN_T3, FIN_T4, FIN_MAIN, FIN_INPUT,
+       FIN_LOW, FIN_MID, FIN_HIGH, FIN_HITS, FIN_PITCH, FIN_BRIGHT, FIN_COUNT };
+enum { GTRIG_FREE, GTRIG_HITS, GTRIG_NOTES };         /* what starts grains */
+#define GQUANT_TUNE 4                                 /* GRAIN QUANT: land on the note */
+#define KSCALE_RATIOS 8                               /* RESON SCALE from here: HARM, MEMBR, BAR */
+enum { AFOCUS_FULL, AFOCUS_LOW, AFOCUS_MID, AFOCUS_HIGH };
+enum { AHITS_OFF, AHITS_BALLS, AHITS_STEPS };       /* hits launch CAROM balls, or clock STEPS */
 enum { WET_MIX, WET_SEND };
 enum { CLOCK_AUTO, CLOCK_INT, CLOCK_MIDI };
 enum { SEQ_STEPS, SEQ_CAROM };
@@ -99,7 +113,9 @@ static inline unsigned vsc_src_code(unsigned t, unsigned from_track, unsigned mo
 struct vsc_learn { uint8_t ch, cc, track, param; };
 #define VSC_LEARN 16
 #define VSC_GDEST 128
-#define VSC_FORMAT 4   /* project layout version: bump when the parameters change */
+#define VSC_FORMAT 5   /* project layout version: bump when the parameters change */
+#define VSC_NP_V4 (VSC_NP - 3)   /* format 4 (0.2.x): without the DISSECT parameters */
+#define VSC_NG_V4 (VSC_NG - 4)
 struct vsc_mroute { uint8_t track, param; int8_t depth; uint8_t pad; };
 struct vsc_scene { uint8_t used, pad[3]; uint8_t t[VSC_TRACKS][VSC_NP]; uint8_t macro[VSC_MACROS]; };
 struct vsc_project {
@@ -121,7 +137,8 @@ enum { BACKLIGHT_OFF, BACKLIGHT_LOW, BACKLIGHT_MID, BACKLIGHT_HIGH };
  * with their routes), without its mix or sequence. Saved under SAVE -> SOUNDS. */
 #define VSC_SOUNDS 16
 #define VSC_SOUND_NP (P_LEVEL + 40)
-struct vsc_sound { uint8_t used, pad[3]; uint8_t p[VSC_SOUND_NP]; struct vsc_route route[VSC_MOD_ROUTES]; };
+/* ext: GTRIG, KEXCITE, KFOLLOW, in what were pad bytes (0 in older sounds: their defaults) */
+struct vsc_sound { uint8_t used, ext[3]; uint8_t p[VSC_SOUND_NP]; struct vsc_route route[VSC_MOD_ROUTES]; };
 struct vsc_device {
     uint32_t magic, version, bytes, crc;
     uint8_t backlight, knob_cc, metro, pad;
@@ -200,11 +217,19 @@ struct vsc_meter {
     float tempo;                     /* the tempo in use: internal, or measured from MIDI clock */
     /* RING: each band's place on the screen's frequency axis (0..239) and its level */
     uint8_t ring_x[VSC_TRACKS][VSC_RING_BANDS], ring_amp[VSC_TRACKS][VSC_RING_BANDS];
+    /* DISSECT's listener: band levels and brightness 0..1, the pitch (Hz, 0 when none
+     * is heard) and how sure it is, the partials' levels, and a count of hits */
+    float ana_low, ana_mid, ana_high, ana_bright, ana_pitch, ana_conf, ana_hit;
+    float ana_harm[8];
+    uint32_t ana_hits;
+    uint8_t ana_on;                  /* the listener ran this block */
 };
+/* The UI sets this while it shows DISSECT, so the listener runs even if nothing uses it. */
+extern volatile uint8_t vsc_ana_view;
 extern struct vsc_project vsc;   /* the live project */
 extern struct vsc_meter vsc_meter;
 extern uint8_t vsc_lock[VSC_TRACKS][VSC_NP]; /* 255 = no lock */
-extern float vsc_scope[2][128];              /* last main output block, for the UI */
+extern uint8_t vsc_scope[128];               /* last main output block's level (0..255), for the UI */
 
 /* Loop memory, for the UI's overview (8-bit mu-law). */
 const uint8_t *vsc_loop_memory(unsigned track, uint32_t *frames, uint32_t *capacity);
@@ -219,6 +244,11 @@ void vsc_scene_store(unsigned scene);
 void vsc_scene_recall(unsigned scene);
 uint32_t vsc_crc32(const void *data, size_t bytes);
 int vsc_project_valid(const struct vsc_project *p);
+/* A format 4 project (0.2.x) whose raw bytes sit at the start of p (and whose CRC the
+ * caller has checked, or 0 to check it here): rewritten in place as the current format.
+ * Returns 0 when done, -1 when p doesn't hold one. */
+int vsc_project_upgrade(struct vsc_project *p, int check_crc);
+unsigned vsc_project_v4_bytes(void);
 /* Sets or clears a modulation route; depth -127..127, 0 removes it. param is a
  * track parameter, or VSC_GDEST + a global one. */
 int vsc_mod_dest_valid(unsigned code);   /* can a route move it? */

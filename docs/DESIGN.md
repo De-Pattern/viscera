@@ -35,10 +35,24 @@ flash sample bank ───────────┘                          
 Each track runs the same chain as the S-4's: MATERIAL, then GRAIN, FILTER and COLOR, then a send to SPACE. Parameters follow the S-4's devices; the FM-1 has four knobs, so each device's parameters come four at a time and SELECT steps through them.
 
 - **GRAIN**: a per-track capture ring (8-bit µ-law) read by up to 8 grains. PITCH, RATE, SIZE, SHAPE | SCAN, SPRAY, DETUNE, WET | REVRS, FDBK, QUANT, W.MODE. REC locks the buffer.
-- **FILTER**: **RESON**, a resonant bank of ten tuned bands after the S-4's filter device: CUTOFF, RESO, DECAY, PITCH | SLOPE (low-pass, band-pass, high-pass), TONE, SCALE, WET | WAVES, W.RATE, NOISE, N.RATE | TILT, DETUNE, D.MODE (SUSTAIN: the bands ring on after the shape closes; CHOKE: closing a band silences it), W.MODE (MIX or SEND). Or a classic LP, BP, HP, or PEAKS. PRESETS picks the device.
+- **FILTER**: **RESON**, a resonant bank of ten tuned bands after the S-4's filter device: CUTOFF, RESO, DECAY, PITCH | SLOPE (low-pass, band-pass, high-pass), TONE, SCALE, WET | WAVES, W.RATE, NOISE, N.RATE | TILT, DETUNE, D.MODE (SUSTAIN: the bands ring on after the shape closes; CHOKE: closing a band silences it), W.MODE (MIX or SEND) | EXCITE, FOLLOW (see DISSECT). SCALE also has HARM, MEMBR and BAR: a string's, a drum head's and a struck bar's partials. Or **REBUILD** (see DISSECT), a classic LP, BP, HP, or PEAKS. PRESETS picks the device.
 - **COLOR**: noise, drive, crush and compression in that order, then a two-band tilt: DRIVE, COMP, CRUSH, TILT | NOISE, N.DEC, N.TONE, WET | C.MODE (BITS, REDUX, BOTH), XOVER (80 Hz, 650 Hz, 2.5 kHz), N.TYPE (WHITE, PINK, DUST), W.MODE. The noise follows the input's envelope.
 - **SPACE**: a shared bus (the FM-1's RAM holds one, where the S-4 has one per track). Each track has a send on MIX; the bus has a tempo-synced delay and a reverb: DELAY, TIME, FDBK, TONE | REVERB, SIZE, DAMP, LONG. REC freezes it, holding REC clears it.
 - Every WET can be MIX (crossfade) or SEND (the dry signal stays, the effect is added), as on the S-4.
+
+### DISSECT: taking the music apart
+
+GLO's second page. One listener for the whole engine hears DISSECT's SOURCE (BT, USB, both, a track, or the main mix) once a block, and only while something uses it:
+
+- **EXTRACT** (the listener): SOURCE, SENS (how easily a rise counts as a hit), FOCUS (FULL, or hits from the LOW, MID or HIGH band only), HITS (OFF; BALLS: each hit throws a ball into every CAROM track, at the pitch heard; STEPS: the hits clock the STEPS sequencers while PLAY is on). It hears three bands (below about 150 Hz, to 2.5 kHz, above), hits (a rise in the FOCUS band against its recent level, at most one per 36 ms), and the pitch (YIN on an 11 kHz 8-bit history, 50 Hz to 1 kHz) with the levels of its first eight partials, every 46 ms.
+- **FRAGMENT** (GRAIN): TRIG FREE (as before), HITS (each hit plays a burst of 1–8 grains, RATE sets how many) or NOTES (keys, steps and CAROM do). The grains start where a remembered hit fell in the track's buffer: SCAN picks how many hits back (of 8), SPRAY scatters among older ones. QUANT TUNE pitches each grain so the pitch heard at its hit lands on the note (NOTES) or on C. REC locks the buffer, and the hits in it with it.
+- **RESONATE** (RESON): EXCITE lets the hits strike the bank (a short burst as strong as the hit) while the track's own sound feeds it less, to none at full EXCITE. FOLLOW tunes the lowest band to the pitch heard, to the semitone, held through silence; PITCH shifts it.
+- **REBUILD** (a FILTER device): up to eight sine partials at the pitch heard and its partials' levels: PARTS, SHIFT, SMEAR (how slowly they follow), WET | STRTCH (inharmonic), TILT (more or fewer upper partials), DETUNE (odd and even apart, and across the stereo field), TONE | UNVOIC (HOLD the last pitch, or FADE), SNAP (to the semitone), W.MODE.
+- **FOLLOW** modulators can follow the listener too: INPUT LOW, MID, HIGH, HITS, PITCH (A1–A6, held) or BRIGHT (the high band's share).
+
+The page shows the three bands, the last moments of level with each hit as a bright stroke, the pitch (note, Hz, how sure) and the partials. Its views are the knobs above: EXTRACT, two of FRAGMENT, two of RESONATE or REBUILD (for the track's FILTER; KNOB 4 on the second picks it).
+
+CPU, after Ravel: the listener is off unless something listens or the page is on screen, skips the pitch while the source is silent and under the guard's second step, stops its pitch search at the first clear dip, and costs a few hundred integer multiplies a block. REBUILD skips silent partials and plays four at most under the guard's second step. In fm1-emu at the FM-1's timing, every DISSECT device on, all tracks awake: about 55% of a block (peak 58%), as 0.2.6's worst case.
 
 ### Modulation
 
@@ -86,14 +100,14 @@ The FM-1's left-hand encoders are the same kind of control on every page, but th
 | PRESETS | The page's list: the device in this slot (MATERIAL, FILTER), the sequencer (STEPS or CAROM), a modulator's type, a row in the matrix, a project slot, a Bluetooth device, a learned mapping |
 | MASTER | Output level |
 | EDIT / FX / SEL / ENV | MATERIAL / GRAIN / FILTER / COLOR (press again for the next page) |
-| GLO | SPACE, then SETTINGS: Bluetooth, AUDIO IN, clock, PANEL, MIDI learn (SELECT pages) |
+| GLO | SPACE, then DISSECT, then SETTINGS: Bluetooth, AUDIO IN, clock, PANEL, MIDI learn (SELECT pages) |
 | LFO | The MATRIX, then the four modulators; hold + turn a knob = map |
 | HOME | MIX: level, pan, send, filter and mute, each across the four tracks; hold HOME + a top pad = track |
 | ARP | PERFORM: macros and scenes; hold + turn = map a macro; hold + pad = scene |
 | SEQ | STEPS or CAROM |
 | SAVE | PROJECT, then SOUNDS: PRESETS picks a slot, REC loads (or saves into an empty one), SAVE + PLAY saves over; hold + turn = MIDI learn |
 | PLAY | Play / stop |
-| REC | The page's action: record or overdub (LOOP), restart (PLAY), lock (GRAIN), freeze (SPACE), trigger (ADSR), record steps; held, clear |
+| REC | The page's action: record or overdub (LOOP), restart (PLAY), lock (GRAIN, DISSECT), freeze (SPACE), trigger (ADSR), record steps; held, clear |
 | OCT− / OCT+ | Octave; both held = TEMP |
 
 The screen is white on black (an alternative background, a dark violet-grey gradient from #2C2A32 at the top to #100F12, is kept behind `VSC_SCREEN_GRADIENT` in `core/vsc_ui.c`). Its layout follows the S-4's: the track and page at the top with the tempo, a picture of the device, the four parameter cells (a bar for continuous values with a centre mark for bipolar ones, the value while you turn, a coloured marker where a modulator is mapped), and the page's actions along the bottom. MATERIAL, FILTER and the modulators draw as the S-4 does; GRAIN, COLOR and SPACE have their own pictures of the sound coming apart: grains lifting out of a dust horizon, a body of matter worn, coarsened and sheared by COLOR, echoes leaving as broken rings beside a drifting reverb cloud.

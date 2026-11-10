@@ -107,7 +107,7 @@ press(B.EDIT); for (let i = 0; i < 6; i++) { ctl(0, 0, [0, 0, 0, 0, 0, 0, 1]); p
 press(B.SCL); for (let i = 0; i < 6; i++) { ctl(0, 0, [0, 0, 0, 0, 0, 0, -1]); paintCheck('filter device ' + i); run(5); }
 press(B.LFO); press(B.LFO); for (let i = 0; i < 4; i++) { ctl(0, 0, [0, 0, 0, 0, 0, 0, 1]); paintCheck('mod type ' + i); run(5); }
 // the matrix: LFO opens it first; it lists every route on every track, then NEW
-{ const NP = x.np(), ROUTES = 32 + 4 * NP + 24 + 4;
+{ const NP = x.np(), ROUTES = 32 + 4 * NP + x.ng() + 4;
   const routes = () => { const b = new Uint8Array(mem(), x.project() + ROUTES, 4 * 16 * 4), out = [];
     for (let t = 0; t < 4; t++) for (let r = 0; r < 16; r++) { const o = (t * 16 + r) * 4; if (b[o + 1] !== 255) out.push({t, src: b[o], param: b[o + 1], depth: (b[o + 2] << 24) >> 24, flags: b[o + 3]}); }
     return out; };
@@ -185,7 +185,7 @@ x.midi(0xb0, 110, 10); run(1); ctl(); ok(x.get_param(0, P.P_FCUT) === 64, 'knob 
 x.midi(0xb0, 110, 63); run(1); ctl(); x.midi(0xb0, 110, 90); run(1); ctl();
 ok(Math.abs(x.get_param(0, P.P_FCUT) - 90) <= 1, 'knob CC picks up and follows: ' + x.get_param(0, P.P_FCUT));
 { const g0 = x.device_changed();
-  press(B.GLO); press(B.GLO);                  // SPACE, then SETTINGS
+  press(B.GLO); press(B.GLO); press(B.GLO);    // SPACE, DISSECT, then SETTINGS
   ctl(0, 0, [3, 0, 0, 0, 0, 0, 0]);            // PANEL view
   ctl(0, 0, [0, 0, 0, 0, 1, 0, 0]);            // METRO on (KNOB 3)
   ok(x.device_changed() !== g0, 'changing a panel setting marks the FM-1 settings to keep');
@@ -223,6 +223,87 @@ ok(Math.abs(x.get_param(0, P.P_FCUT) - 90) <= 1, 'knob CC picks up and follows: 
   ok(x.get_param(0, P.P_LEVEL) === 40, 'loading a sound leaves the mix alone');
   ctl(0, 1 << B.SAVE); ctl(0, (1 << B.SAVE) | (1 << B.PLAY)); ctl(0, 1 << B.SAVE); ctl(0, 0); run(2);
   ok(!x.playing(), 'SAVE + PLAY saves without starting playback'); }
+
+// 8. DISSECT: the listener, and what it drives
+{ const G = (() => {
+    const h = fs.readFileSync(new URL('../../core/vsc.h', import.meta.url), 'utf8');
+    const body = h.slice(h.indexOf('enum vsc_gparam {') + 17, h.indexOf('VSC_NG\n};')).replace(/\/\*[\s\S]*?\*\//g, '');
+    const idx = {}; body.split(',').map(s => s.trim()).filter(Boolean).forEach((n, i) => { idx[n] = i; }); return idx; })();
+  if (x.playing()) press(B.PLAY);
+  for (let t = 0; t < 4; t++) { x.set_param(t, P.P_MODE, 3); x.set_param(t, P.P_INPUT, 0); x.set_param(t, P.P_FTYPE, 5);
+    x.set_param(t, P.P_GMIX, 0); x.set_param(t, P.P_GFDBK, 0); x.set_param(t, P.P_MUTE, 1); x.set_param(t, P.P_LEVEL, 0); }
+  x.set_param(0, P.P_MUTE, 0); x.set_param(0, P.P_LEVEL, 100);
+  for (const p of ['P_TILT', 'P_DJF', 'P_PAN']) x.set_param(0, P[p], 64);
+  x.set_global(G.G_ASRC, 0); x.set_global(G.G_ASENS, 80); x.set_global(G.G_AFOCUS, 0); x.set_global(G.G_AHITS, 0);
+  x.set_global(2, 50); x.set_global(6, 70);
+  let fr = 0;
+  const drums = () => { for (let i = 0; i < 128; i++, fr++) { const t = fr / 44100, tb = t % 0.5, th = (t + 0.25) % 0.5;
+      const v = 0.7 * Math.exp(-tb * 25) * Math.sin(2 * Math.PI * (50 + 80 * Math.exp(-tb * 40)) * tb) + 0.25 * Math.exp(-th * 60) * (Math.random() * 2 - 1) + 0.08 * Math.sin(2 * Math.PI * 220 * t);
+      inbuf[2 * i] = inbuf[2 * i + 1] = v; } };
+  const tone = (f, a = 0.4) => () => { for (let i = 0; i < 128; i++, fr++) { const v = a * Math.sin(2 * Math.PI * f * fr / 44100); inbuf[2 * i] = inbuf[2 * i + 1] = v; } };
+  const play = (gen, blocks) => { let peak = 0, sum = 0, nan = false;
+    for (let b = 0; b < blocks; b++) { gen(); x.render(1); const o = new Float32Array(mem(), x.output_buffer(), 256);
+      for (let i = 0; i < 256; i++) { const v = o[i]; if (!Number.isFinite(v)) nan = true; peak = Math.max(peak, Math.abs(v)); sum += v * v; } }
+    return {peak, nan, rms: Math.sqrt(sum / (blocks * 256))}; };
+  // nothing listens: the listener stays off
+  play(drums, 40); const h0 = x.ana_hits(); play(drums, 700); ok(x.ana_hits() === h0, 'the listener sleeps while nothing uses it');
+  // the page on screen wakes it: hits and pitch
+  press(B.GLO); press(B.GLO); paintCheck('dissect');
+  ok(x.ana_hits() === h0, 'opening DISSECT alone changes nothing yet');
+  play(drums, 20); const h1 = x.ana_hits(); play(drums, 689);   /* 2 s: four kicks and four hats */
+  ok(Math.abs(x.ana_hits() - h1 - 8) <= 1, 'hits: a kick and a hat a beat for 2 s: ' + (x.ana_hits() - h1));
+  play(tone(220), 120); ok(Math.abs(x.ana_pitch() - 220) < 2 && x.ana_conf() > 0.5, 'pitch: 220 Hz: ' + x.ana_pitch().toFixed(1) + ' ' + x.ana_conf().toFixed(2));
+  play(tone(880), 120); ok(Math.abs(x.ana_pitch() - 880) < 8, 'pitch: 880 Hz (no octave slip): ' + x.ana_pitch().toFixed(1));
+  { const h2 = x.ana_hits(); play(tone(147), 300); ok(x.ana_hits() - h2 <= 1, 'a steady tone makes no hits: ' + (x.ana_hits() - h2)); }
+  for (let v = 0; v < 5; v++) { for (let k = 2; k < 6; k++) { const e = [0, 0, 0, 0, 0, 0, 0]; e[k] = 1; ctl(0, 0, e); e[k] = -1; ctl(0, 0, e); }
+    paintCheck('dissect view ' + v); ctl(0, 0, [1, 0, 0, 0, 0, 0, 0]); }
+  ctl(0, 0, [-9, 0, 0, 0, 0, 0, 0]);
+  // REBUILD: partials from the pitch heard
+  x.set_param(0, P.P_FTYPE, 6); x.set_param(0, P.P_FMIX, 127);
+  r = play(tone(330), 300); ok(!r.nan && r.rms > 0.05 && r.peak <= 1, 'REBUILD sounds from the pitch heard ' + JSON.stringify(r));
+  { press(B.SCL); paintCheck('rebuild page'); for (let v = 0; v < 3; v++) { ctl(0, 0, [0, 0, 1, 1, 1, 1, 0]); paintCheck('rebuild view ' + v); ctl(0, 0, [1, 0, 0, 0, 0, 0, 0]); } press(B.GLO); press(B.GLO); }
+  // RESON EXCITE: the hits strike the bank
+  x.set_param(0, P.P_FTYPE, 4); x.set_param(0, P.P_KEXCITE, 127); x.set_param(0, P.P_FCUT, 40); x.set_param(0, P.P_KSCALE, 9); x.set_param(0, P.P_FMIX, 127);
+  r = play(drums, 700); ok(!r.nan && r.rms > 0.01 && r.peak <= 1, 'RESON EXCITE rings on hits ' + JSON.stringify(r));
+  x.set_param(0, P.P_KFOLLOW, 1); r = play(tone(196), 200); ok(!r.nan, 'RESON FOLLOW');
+  x.set_param(0, P.P_KEXCITE, 0); x.set_param(0, P.P_KFOLLOW, 0); x.set_param(0, P.P_FTYPE, 5);
+  // GRAIN HITS and NOTES, with TUNE
+  x.set_param(0, P.P_GSIZE, 50);
+  x.set_param(0, P.P_GTRIG, 1); x.set_param(0, P.P_GMIX, 127); x.set_param(0, P.P_GDENS, 60); x.set_param(0, P.P_GQUANT, 4);
+  r = play(drums, 700); ok(!r.nan && r.rms > 0.01 && r.peak <= 1, 'GRAIN HITS bursts on hits ' + JSON.stringify(r));
+  x.set_param(0, P.P_GTRIG, 2);
+  for (let i = 0; i < 10; i++) { x.midi(0x90, 60 + i, 100); play(drums, 20); x.midi(0x80, 60 + i, 0); }
+  r = play(drums, 50); ok(!r.nan, 'GRAIN NOTES');
+  x.set_param(0, P.P_GTRIG, 0); x.set_param(0, P.P_GQUANT, 0); x.set_param(0, P.P_GMIX, 0);
+  // FOLLOW on the listener's LOW band moves
+  x.set_param(0, P.P_MOD0 + 20, 2); x.set_param(0, P.P_MOD0 + 25, 8);
+  { const seen = new Set(); for (let i = 0; i < 60; i++) { play(drums, 4); seen.add(x.mod_value(0, 2).toFixed(2)); } ok(seen.size > 5, 'FOLLOW LOW moves with the music: ' + seen.size); }
+  // HITS STEPS: the music clocks the sequencer
+  x.set_global(G.G_AHITS, 2); press(B.PLAY); play(tone(147), 100);
+  { const s0 = x.step_now(0); play(tone(147), 300); const s1 = x.step_now(0); play(drums, 345); const s2 = x.step_now(0);
+    ok(s1 === s0 && s2 !== s1, 'HITS STEPS: no hits, no steps; hits step it: ' + [s0, s1, s2]); }
+  x.set_global(G.G_AHITS, 1); x.set_param(1, P.P_SEQM, 1); r = play(drums, 300); ok(!r.nan, 'HITS BALLS');
+  press(B.PLAY); x.set_global(G.G_AHITS, 0); x.set_param(1, P.P_SEQM, 0);
+  press(B.HOME); run(5);
+  // a 0.2.x project (format 4) loads: built from this one without the new parameters
+  { const NP = x.np(), NG = x.ng(), np4 = NP - 3, ng4 = NG - 4, cur = new Uint8Array(mem(), x.project(), x.project_bytes()).slice();
+    x.set_param(2, P.P_FCUT, 77); x.set_global(0, 33);
+    const now = new Uint8Array(mem(), x.project(), x.project_bytes()).slice();
+    const v4 = new Uint8Array(x.project_v4_bytes()); let o = 0, i = 0;
+    const take = (n) => { v4.set(now.subarray(i, i + n), o); o += n; i += n; }, skip = (n) => { i += n; };
+    take(32);
+    for (let t = 0; t < 4; t++) { take(np4); skip(3); }
+    take(ng4); skip(4); take(4 + 4 * 16 * 4 + 8 * 8 * 4 + 4 * 64 * 8);
+    for (let sc = 0; sc < 8; sc++) { take(4); for (let t = 0; t < 4; t++) { take(np4); skip(3); } take(8); }
+    const dv = new DataView(v4.buffer); dv.setUint32(4, 4, true); dv.setUint32(8, v4.length, true);
+    let c = 0xffffffff; for (let k = 16; k < v4.length; k++) { c ^= v4[k]; for (let b = 0; b < 8; b++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1)); }
+    dv.setUint32(12, (~c) >>> 0, true);
+    const p = new Uint8Array(mem(), x.project(), x.project_bytes());
+    p.fill(0xee); p.set(v4);
+    ok(x.project_upgrade() === 1, 'a format 4 project upgrades');
+    ok(x.get_param(2, P.P_FCUT) === 77 && x.get_global(0) === 33 && x.get_param(3, P.P_GTRIG) === 0, 'its values survive, the new ones are defaults');
+    p.set(cur); }
+}
 
 // 7. long run with everything moving: no NaN, no runaway
 for (let t = 0; t < 4; t++) { x.set_param(t, P.P_FTYPE, 4); x.set_param(t, P.P_GMIX, 100); x.set_param(t, P.P_GFDBK, 127); }

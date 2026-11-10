@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.3.0
+
+**DISSECT: take a piece of music apart and rebuild it.** GLO's second page (GLO: SPACE, DISSECT, SETTINGS). Projects saved by 0.2.x load and are converted; sounds keep working.
+
+- **New: one listener for the whole engine.** It hears SOURCE (BT, USB, both, a track or the main mix). It runs once a block, and only while something uses it or the page is open.
+  - Three bands.
+  - Hits: SENS sets how easily they count; FOCUS takes them from one band.
+  - The pitch (50 Hz to 1 kHz) and the levels of its first eight partials.
+- **New: GRAIN TRIG.**
+  - HITS: each hit plays a burst of 1 to 8 grains from where that hit fell in the buffer.
+  - NOTES: keys, steps and CAROM play them.
+  - SCAN picks which of the last 8 hits, SPRAY scatters among them.
+  - QUANT TUNE tunes each grain so the pitch heard lands on the note.
+  - REC on DISSECT locks the buffer, and its hits with it.
+- **New: RESON EXCITE and FOLLOW.**
+  - EXCITE: the hits strike the bank, and the track's own sound feeds it less.
+  - FOLLOW: the lowest band goes to the pitch heard, to the semitone.
+  - New scales HARM, MEMBR and BAR: a string's, a drum head's and a struck bar's partials.
+- **New: REBUILD (FILTER).** Up to eight sine partials at the pitch heard and its partials' levels. Controls: SHIFT, SMEAR, STRTCH, TILT, DETUNE, HOLD or FADE when there's no pitch, and SNAP.
+- **New: HITS on EXTRACT.**
+  - BALLS: each hit throws a ball into every CAROM track at the pitch heard.
+  - STEPS: hits clock the STEPS sequencers while PLAY is on.
+- **New: FOLLOW modulators follow the listener.** New INPUTs: LOW, MID, HIGH, HITS, PITCH, BRIGHT.
+- **CPU, after Ravel:**
+  - The listener is off unless something uses it.
+  - It skips the pitch while the source is silent and at the guard's second step.
+  - It stops at the first clear pitch, and the search is integer work on every other frame.
+  - REBUILD skips silent partials, and plays four at most at the guard's second step.
+  - In fm1-emu at the FM-1's timing:
+    - Nothing listening: as 0.2.6 (20% with one sample).
+    - Every DISSECT device on and all tracks awake: about 55% (peak 58%).
+- **RAM:** the inputs are now converted in place and the engine renders straight into the output block, which saves 2.5 KB. The screen's curve and scope are 8-bit. Heap 114.6 KB (needs 110).
+- **Unchanged:** existing sounds are bit-exact on the host until a DISSECT control is used.
+- **Changed:** project format 5. 0.2.x projects load (on the FM-1 and in the browser) and gain the new controls at their defaults.
+
 ## 0.2.6
 
 CPU, after what worked on Ravel. In fm1-emu at the FM-1's measured timing (360 MHz): one sample playing 25% → 20% (peak 30% → 27%); all four tracks and SPACE busy 59% → 53% (peak 58%).

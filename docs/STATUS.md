@@ -54,6 +54,8 @@ Only act on these once the unit shows overloads (underruns, glitches). They come
 6. **Placement.** Hot loops in RAM (`VSC_HOT`), small helpers always inlined, nothing in the audio path that calls into flash or the C library. Watch the RAM budget: every byte of RAM code costs heap that Bluetooth needs.
 7. **Second core.** The SDK doesn't expose the second core to apps, so this isn't available yet; check new SDK releases before planning on it.
 
+DISSECT (0.3.0) follows the same rules: off unless used, control rate, integer pitch search with an early stop, silent partials skipped, steps back under the guard.
+
 Done in 0.2.6: 2 (silent and quiet tracks sleep, SPACE sleeps, the reverb rests under load), the guard's steps from 1 (no slack block: the SDK's audio buffering is fixed), RESON's cached tuning and band-by-band loop, 5 (half the new grains at the guard's second step), and the per-part CPU readout. Not done: 4 (needs approval: not bit-exact) and the slack block.
 
 Notes: the pi32v2 FPU has a hardware divide but no square root. Host instruction counts only rank ideas; the FM-1's cycles differ.

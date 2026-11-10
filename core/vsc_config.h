@@ -43,9 +43,13 @@
 #if defined(__GCC_PI32V2__)
 #define VSC_FM1 1
 #define VSC_HOT     __attribute__((section(".volatile_ram_code"), noinline, used))
+/* RAM code built for size: RAM code costs heap that Bluetooth needs, so the parts that
+ * run seldom or whose loops are short take less of it */
+#define VSC_HOT_SMALL __attribute__((section(".volatile_ram_code"), noinline, used, minsize))
 #define VSC_HOTDATA __attribute__((section(".volatile_ram.fm1"), aligned(4)))
 #else
 #define VSC_HOT
+#define VSC_HOT_SMALL
 #define VSC_HOTDATA
 #endif
 #define VSC_INL static inline __attribute__((always_inline))

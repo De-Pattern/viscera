@@ -114,6 +114,9 @@ W_EXPORT(project_seal) void w_project_seal(unsigned slot)
     vsc.crc = vsc_crc32(&vsc.name, sizeof vsc - offsetof(struct vsc_project, name));
 }
 W_EXPORT(project_check) int w_project_check(void) { return vsc_project_valid(&vsc); }
+/* a 0.2.x project (format 4) copied in at the start of the project: upgraded in place */
+W_EXPORT(project_upgrade) int w_project_upgrade(void) { return vsc_project_upgrade(&vsc, 1) == 0 && vsc_project_valid(&vsc); }
+W_EXPORT(project_v4_bytes) unsigned w_project_v4_bytes(void) { return vsc_project_v4_bytes(); }
 W_EXPORT(stop_all) void w_stop_all(void) { vsc_event(EV_STOP, 0, 0, 0); vsc_event(EV_PANIC, 0, 0, 0); }
 W_EXPORT(slot_info) void w_slot_info(unsigned slot, unsigned used, const char *name)
 {
@@ -149,6 +152,13 @@ W_EXPORT(tempo_now) float w_tempo_now(void) { return vsc_meter.tempo; }
 W_EXPORT(playing) unsigned w_playing(void) { return vsc_meter.playing; }
 W_EXPORT(learn_entry) unsigned w_learn_entry(unsigned l) { return l < VSC_LEARN ? (unsigned)vsc_dev.learn[l].ch | (unsigned)vsc_dev.learn[l].cc << 8 | (unsigned)vsc_dev.learn[l].track << 16 | (unsigned)vsc_dev.learn[l].param << 24 : 0; }
 W_EXPORT(np) unsigned w_np(void) { return VSC_NP; }
+W_EXPORT(ng) unsigned w_ng(void) { return VSC_NG; }
+/* DISSECT's listener, for the tests */
+W_EXPORT(ana_hits) unsigned w_ana_hits(void) { return vsc_meter.ana_hits; }
+W_EXPORT(ana_pitch) float w_ana_pitch(void) { return vsc_meter.ana_pitch; }
+W_EXPORT(ana_conf) float w_ana_conf(void) { return vsc_meter.ana_conf; }
+W_EXPORT(ana_harm) float w_ana_harm(unsigned h) { return h < 8 ? vsc_meter.ana_harm[h] : 0.f; }
+W_EXPORT(step_now) unsigned w_step_now(unsigned t) { return t < VSC_TRACKS ? vsc_meter.step[t] : 0; }
 
 /* ---- the panel's LEDs and the FM-1's own settings ---- */
 static uint8_t leds[41];

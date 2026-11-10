@@ -98,9 +98,9 @@ static void num(char *o, int v)
  * for each of KNOB 1-4. SELECT steps through a menu's views (the picture above stays
  * the same), ALGORITHM picks the track, and PRESETS does the page's own job: the
  * device in a slot, a modulator's type, a route, a step, a project slot. */
-enum { PG_MIX, PG_MAT, PG_GRAIN, PG_FILTER, PG_COLOR, PG_MODS, PG_SPACE, PG_SCENE, PG_STEPS, PG_PROJECT, PG_SETTINGS, PG_SOUND, PG_COUNT };
+enum { PG_MIX, PG_MAT, PG_GRAIN, PG_FILTER, PG_COLOR, PG_MODS, PG_SPACE, PG_SCENE, PG_STEPS, PG_PROJECT, PG_SETTINGS, PG_SOUND, PG_DISSECT, PG_COUNT };
 static const char *const page_name[PG_COUNT] = {"MIX", "MATERIAL", "GRAIN", "FILTER", "COLOR", "MODS", "SPACE",
-                                                "PERFORM", "STEPS", "PROJECT", "SETTINGS", "SOUNDS"};
+                                                "PERFORM", "STEPS", "PROJECT", "SETTINGS", "SOUNDS", "DISSECT"};
 enum { S_NONE, S_T, S_G, S_TEMPO, S_STEP, S_TT, S_SET, S_MAT };
 struct slot { uint8_t kind, id, tk; };
 #define T(p) {S_T, p, 0}
@@ -115,13 +115,30 @@ static const struct slot v_loop[3][4] = {{T(P_SPEED), T(P_START), T(P_LEN), T(P_
 static const struct slot v_keys[4][4] = {{T(P_PITCH), T(P_START), T(P_LEN), T(P_GAIN)}, {T(P_SLOT), T(P_LOOPM), T(P_GLIDE), T(P_VELO)},
                                          {T(P_ATK), T(P_DEC), T(P_SUS), T(P_REL)}, {T(P_SPEED), N, N, N}};
 static const struct slot v_thru[1][4] = {{T(P_INPUT), T(P_GAIN), N, N}};
-static const struct slot v_grain[3][4] = {{T(P_GPITCH), T(P_GDENS), T(P_GSIZE), T(P_GSHAPE)},
+static const struct slot v_grain[4][4] = {{T(P_GPITCH), T(P_GDENS), T(P_GSIZE), T(P_GSHAPE)},
                                           {T(P_GTIME), T(P_GSPRAY), T(P_GDETUNE), T(P_GMIX)},
-                                          {T(P_GREV), T(P_GFDBK), T(P_GQUANT), T(P_GWMODE)}};
-static const struct slot v_reson[4][4] = {{T(P_FCUT), T(P_FRES), T(P_KDECAY), T(P_KPITCH)},
+                                          {T(P_GREV), T(P_GFDBK), T(P_GQUANT), T(P_GWMODE)},
+                                          {T(P_GTRIG), N, N, N}};
+static const struct slot v_reson[5][4] = {{T(P_FCUT), T(P_FRES), T(P_KDECAY), T(P_KPITCH)},
                                           {T(P_KSLOPE), T(P_KTONE), T(P_KSCALE), T(P_FMIX)},
                                           {T(P_KWAVES), T(P_KWRATE), T(P_KNOISE), T(P_KNRATE)},
-                                          {T(P_KTILT), T(P_KDETUN), T(P_KDMODE), T(P_FWMODE)}};
+                                          {T(P_KTILT), T(P_KDETUN), T(P_KDMODE), T(P_FWMODE)},
+                                          {T(P_KEXCITE), T(P_KFOLLOW), N, N}};
+/* REBUILD: RESON's parameters under its own names (vsc_tparam_info) */
+static const struct slot v_rebuild[3][4] = {{T(P_KSCALE), T(P_KPITCH), T(P_KDECAY), T(P_FMIX)},
+                                            {T(P_KWAVES), T(P_KTILT), T(P_KDETUN), T(P_KTONE)},
+                                            {T(P_KDMODE), T(P_KFOLLOW), T(P_FWMODE), N}};
+/* DISSECT: the listener (global), then the selected track's devices as the music drives them */
+static const struct slot v_dissect[5][4] = {{G(G_ASRC), G(G_ASENS), G(G_AFOCUS), G(G_AHITS)},
+                                            {T(P_GTRIG), T(P_GSIZE), T(P_GDENS), T(P_GMIX)},
+                                            {T(P_GTIME), T(P_GSPRAY), T(P_GPITCH), T(P_GQUANT)},
+                                            {N, N, N, N}, {N, N, N, N}};
+static const struct slot v_dis_reson[2][4] = {{T(P_KSCALE), T(P_KPITCH), T(P_KDECAY), T(P_KEXCITE)},
+                                              {T(P_FCUT), T(P_KFOLLOW), T(P_FMIX), T(P_FTYPE)}};
+static const struct slot v_dis_rebuild[2][4] = {{T(P_KSCALE), T(P_KPITCH), T(P_KDECAY), T(P_FMIX)},
+                                                {T(P_KWAVES), T(P_KTILT), T(P_KFOLLOW), T(P_FTYPE)}};
+static const struct slot v_dis_other[1][4] = {{T(P_FTYPE), N, N, N}};
+#define DIS_BODY 3   /* DISSECT views 3 and 4: RESONATE or REBUILD, after the track's FILTER */
 static const struct slot v_svf[1][4] = {{T(P_FCUT), T(P_FRES), T(P_FMIX), T(P_FWMODE)}};
 static const struct slot v_peaks[2][4] = {{T(P_FCUT), T(P_FRES), T(P_FSPREAD), T(P_FSCALE)}, {T(P_FMIX), T(P_FWMODE), N, N}};
 static const struct slot v_color[3][4] = {{T(P_DRIVE), T(P_COMP), T(P_CRUSH), T(P_TILT)},
@@ -162,6 +179,8 @@ static const char *notice; static uint32_t notice_until, now_ms;
 static char notice_buf[40];
 static unsigned proj_slot, set_dev, sound_slot;
 static uint8_t mod_hist[VSC_MODS][96]; static unsigned hist_w;   /* 0..255 */
+static uint8_t dis_lev[96], dis_hit[96];   /* DISSECT: what the listener heard lately, a column a frame */
+static uint32_t dis_hits_seen;
 
 void vsc_ui_notice(const char *t, uint32_t ms) { notice = t; notice_until = now_ms + ms; }
 
@@ -170,9 +189,11 @@ static unsigned row_count(void)
     switch (page) {
     case PG_MIX: return 6;
     case PG_MAT: { unsigned m = vsc.t[track][P_MODE]; return m == MODE_PLAY ? 2 : m == MODE_LOOP ? 3 : m == MODE_KEYS ? 4 : 1; }
-    case PG_GRAIN: case PG_COLOR: case PG_SCENE: return 3;
+    case PG_COLOR: case PG_SCENE: return 3;
+    case PG_GRAIN: return 4;
+    case PG_DISSECT: return 5;
     case PG_SETTINGS: return 5;
-    case PG_FILTER: { unsigned f = vsc.t[track][P_FTYPE]; return f == FT_RING ? 4 : f == FT_PEAKS ? 2 : 1; }
+    case PG_FILTER: { unsigned f = vsc.t[track][P_FTYPE]; return f == FT_RING ? 5 : f == FT_REBUILD ? 3 : f == FT_PEAKS ? 2 : 1; }
     case PG_MODS: return MOD_VIEWS;
     case PG_SPACE: return 2;
     case PG_STEPS: return vsc.t[track][P_SEQM] == SEQ_CAROM ? 3 : 2;
@@ -195,6 +216,7 @@ static struct slot slot_at(unsigned i)
     case PG_GRAIN: return v_grain[r][i];
     case PG_FILTER: switch (vsc.t[track][P_FTYPE]) {
         case FT_RING: return v_reson[r][i];
+        case FT_REBUILD: return v_rebuild[r][i];
         case FT_PEAKS: return v_peaks[r][i];
         case FT_OFF: return none;
         default: return v_svf[0][i];
@@ -204,6 +226,13 @@ static struct slot slot_at(unsigned i)
     case PG_SCENE: return v_scene[r][i];
     case PG_STEPS: return vsc.t[track][P_SEQM] == SEQ_CAROM ? v_carom[r][i] : v_steps[r][i];
     case PG_SETTINGS: return v_settings[r][i];
+    case PG_DISSECT:
+        if (r < DIS_BODY) return v_dissect[r][i];
+        switch (vsc.t[track][P_FTYPE]) {
+        case FT_RING: return v_dis_reson[r - DIS_BODY][i];
+        case FT_REBUILD: return v_dis_rebuild[r - DIS_BODY][i];
+        default: return v_dis_other[0][i];
+        }
     case PG_MODS: {
         if (r == MATRIX_VIEW) { struct slot s = {S_MAT, (uint8_t)i, 0}; return s; }
         unsigned m = VMOD(r), pg = VPAGE(r), k = pg < 2 ? 1 + pg * 4 + i : (i == 0 ? 9 : 99);
@@ -261,16 +290,20 @@ enum { D_MAT, D_GRAIN, D_FILTER, D_COLOR, D_MIX, D_MODS, D_TRACK_DEVICES };
 #define D_SPACE (VSC_TRACKS * D_TRACK_DEVICES)
 #define D_PERFORM (D_SPACE + 1)
 #define D_MASTER (D_SPACE + 2)
-#define D_COUNT (D_SPACE + 3)
+#define D_DISSECT (D_SPACE + 3)
+#define D_COUNT (D_SPACE + 4)
 static const char *const dev_short[D_TRACK_DEVICES] = {"MATER", "GRAIN", "FILTR", "COLOR", "MIX", "MODS"};
 static unsigned dev_of(unsigned t, unsigned code)
 {
     if (code >= VSC_GDEST) {
         unsigned g = code - VSC_GDEST;
         if (g == G_DTIME || g == G_DFEED || g == G_DTONE || g == G_DLONG || g == G_DLEVEL || g == G_RSIZE || g == G_RDAMP || g == G_RLEVEL) return D_SPACE;
+        if (g >= G_ASRC) return D_DISSECT;
         if (g >= G_M0 || g == G_MORPH) return D_PERFORM;
         return D_MASTER;
     }
+    if (code == P_GTRIG) return t * D_TRACK_DEVICES + D_GRAIN;
+    if (code == P_KEXCITE || code == P_KFOLLOW) return t * D_TRACK_DEVICES + D_FILTER;
     unsigned d = code < P_GMIX ? D_MAT : code < P_FTYPE ? D_GRAIN : code < P_DRIVE ? D_FILTER : code < P_LEVEL ? D_COLOR
                : code < P_MOD0 ? D_MIX : D_MODS;
     return t * D_TRACK_DEVICES + d;
@@ -300,6 +333,7 @@ static unsigned dest_list(unsigned dev, unsigned list[VSC_NP + VSC_NG])
     if (dev >= D_SPACE) {
         if (dev == D_SPACE) n = dest_views(list, n, v_space, ROWS(v_space), 0);
         else if (dev == D_PERFORM) n = dest_views(list, n, v_scene, ROWS(v_scene), 0);
+        else if (dev == D_DISSECT) n = dest_views(list, n, v_dissect, 1, 0);
         else n = dest_views(list, n, &v_mix[5], 1, 0);
         for (unsigned g = 0; g < VSC_NG; ++g) if (dev_of(0, VSC_GDEST + g) == dev) n = dest_add(list, n, VSC_GDEST + g);
         return n;
@@ -315,6 +349,7 @@ static unsigned dest_list(unsigned dev, unsigned list[VSC_NP + VSC_NG])
     case D_GRAIN: n = dest_views(list, n, v_grain, ROWS(v_grain), t); break;
     case D_FILTER: switch (vsc.t[t][P_FTYPE]) {
         case FT_RING: n = dest_views(list, n, v_reson, ROWS(v_reson), t); break;
+        case FT_REBUILD: n = dest_views(list, n, v_rebuild, ROWS(v_rebuild), t); break;
         case FT_PEAKS: n = dest_views(list, n, v_peaks, ROWS(v_peaks), t); break;
         default: n = dest_views(list, n, v_svf, ROWS(v_svf), t); break;
         } break;
@@ -323,6 +358,7 @@ static unsigned dest_list(unsigned dev, unsigned list[VSC_NP + VSC_NG])
     default: for (unsigned m = 0; m < VSC_MODS; ++m) for (unsigned k = 1; k < VSC_MOD_PARAMS; ++k) n = dest_add(list, n, P_MOD(m, k)); break;
     }
     for (unsigned c = 0; c < P_SEQM; ++c) if (dev_of(t, c) == dev) n = dest_add(list, n, c);
+    for (unsigned c = P_GTRIG; c < VSC_NP; ++c) if (dev_of(t, c) == dev) n = dest_add(list, n, c);
     return n;
 }
 /* a destination's name as on its page: "CUTOFF"; a modulator's with its number, "2 RATE" */
@@ -338,7 +374,7 @@ static void dest_name(unsigned t, unsigned code, char *out)
 /* the device as "T2 FILTR", or SPACE, PERFORM, MASTER */
 static void dev_name(unsigned dev, char *out)
 {
-    if (dev >= D_SPACE) { copy_n(out, dev == D_SPACE ? "SPACE" : dev == D_PERFORM ? "PERFORM" : "MASTER", 8); return; }
+    if (dev >= D_SPACE) { copy_n(out, dev == D_SPACE ? "SPACE" : dev == D_PERFORM ? "PERFORM" : dev == D_DISSECT ? "DISSECT" : "MASTER", 8); return; }
     out[0] = 'T'; out[1] = (char)('1' + dev / D_TRACK_DEVICES); out[2] = ' ';
     copy_n(out + 3, dev_short[dev % D_TRACK_DEVICES], 5);
 }
@@ -552,8 +588,9 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
         else { row = row == MATRIX_VIEW ? 1 : (VMOD(row) + 1) * 3 + 1; if (row >= MOD_VIEWS) row = MATRIX_VIEW; }
     }
     if ((up & B(BTN_ARP)) && !(prev_buttons & B(31))) { if (page != PG_SCENE) { page = PG_SCENE; row = 0; } else row = (row + 1) % row_count(); }
-    /* GLO: the global things, SPACE (the shared bus) then SETTINGS (the FM-1's own) */
-    if (down & B(BTN_GLO)) { page = page == PG_SPACE ? PG_SETTINGS : PG_SPACE; row = 0; }
+    /* GLO: the global things, SPACE (the shared bus), DISSECT (the listener), then
+     * SETTINGS (the FM-1's own) */
+    if (down & B(BTN_GLO)) { page = page == PG_SPACE ? PG_DISSECT : page == PG_DISSECT ? PG_SETTINGS : PG_SPACE; row = 0; }
     /* SAVE: where things are kept, PROJECT then SOUNDS */
     if ((up & B(BTN_SAVE)) && !(prev_buttons & B(31))) { page = page == PG_PROJECT ? PG_SOUND : PG_PROJECT; row = 0; }
     if (page == PG_MODS && row != MATRIX_VIEW) mod_sel = VMOD(row);
@@ -600,7 +637,7 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
             unsigned tt; struct vsc_route *ro = matrix_at(route_sel, &tt);
             if (ro) { ro->flags ^= 1; vsc_ui_notice(ro->flags & 1 ? "BIPOLAR: SWINGS BOTH WAYS" : "UNIPOLAR: ONE WAY", 900); }
         }
-        else if (page == PG_GRAIN) { vsc.t[track][P_GFREEZE] ^= 1; vsc_ui_notice(vsc.t[track][P_GFREEZE] ? "GRAINS LOCKED" : "GRAINS LISTENING", 900); }
+        else if (page == PG_GRAIN || page == PG_DISSECT) { vsc.t[track][P_GFREEZE] ^= 1; vsc_ui_notice(vsc.t[track][P_GFREEZE] ? "GRAINS LOCKED" : "GRAINS LISTENING", 900); }
         else if (page == PG_SPACE) { vsc_event(EV_ACTION, 0, ACT_SPACE_FREEZE, 0); vsc_ui_notice(vsc_meter.space_frozen ? "SPACE FLOWING" : "SPACE FROZEN", 900); }
         else if (page == PG_MAT && vsc.t[track][P_MODE] == MODE_PLAY) vsc_event(EV_ACTION, track, ACT_TAPE_REWIND, 0);
         else if (vsc.t[track][P_MODE] == MODE_LOOP) vsc_event(EV_REC, track, 0, 0);
@@ -625,7 +662,7 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
                              say("MACRO ", (const char[]){(char)('1' + vsc.g[G_MSEL]), 0}, 900); }
         else switch (page) {
         case PG_MAT: vsc.t[track][P_MODE] = (uint8_t)clampi((int)vsc.t[track][P_MODE] + d, 0, MODE_THRU); row = 0; break;
-        case PG_FILTER: vsc.t[track][P_FTYPE] = (uint8_t)clampi((int)vsc.t[track][P_FTYPE] + d, 0, FT_OFF); row = 0; break;
+        case PG_FILTER: vsc.t[track][P_FTYPE] = (uint8_t)clampi((int)vsc.t[track][P_FTYPE] + d, 0, FT_REBUILD); row = 0; break;
         case PG_MODS:
             if (row == MATRIX_VIEW) route_sel = (unsigned)clampi((int)route_sel + d, 0, (int)matrix_count());
             else {
@@ -709,6 +746,7 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
         }
     }
     apply_knob_cc(&req, arg);
+    vsc_ana_view = page == PG_DISSECT;   /* the listener runs while its page is on screen */
     prev_buttons = (in->buttons & 0x7fffffffu) | used;
     prev_keys = in->keys;
     return req;
@@ -725,7 +763,14 @@ static const char *page_title(void)
     static char buf[16];
     switch (page) {
     case PG_MAT: { static const char *const m[] = {"PLAY", "LOOP", "KEYS", "THRU"}; return m[vsc.t[track][P_MODE] & 3]; }
-    case PG_FILTER: return vsc.t[track][P_FTYPE] == FT_RING ? "RESON" : vsc.t[track][P_FTYPE] == FT_OFF ? "FILTER OFF" : "FILTER";
+    case PG_FILTER: return vsc.t[track][P_FTYPE] == FT_RING ? "RESON" : vsc.t[track][P_FTYPE] == FT_REBUILD ? "REBUILD"
+                         : vsc.t[track][P_FTYPE] == FT_OFF ? "FILTER OFF" : "FILTER";
+    case PG_DISSECT: {
+        static const char *const bank[3] = {"DISSECT: EXTRACT", "DISSECT: FRAGMENT", "DISSECT: FRAGMENT"};
+        if (row < DIS_BODY) return bank[row];
+        unsigned f = vsc.t[track][P_FTYPE];
+        return f == FT_RING ? "DISSECT: RESONATE" : f == FT_REBUILD ? "DISSECT: REBUILD" : "DISSECT: BODY";
+    }
     case PG_MODS:
         if (row == MATRIX_VIEW) return "MATRIX";
         { unsigned m = VMOD(row); copy_n(buf, mtype_name[vsc.t[track][P_MOD(m, 0)] & 3], 8);
@@ -825,6 +870,9 @@ static void draw_knobs(void)
     case PG_MAT: hint = vsc.t[track][P_MODE] == MODE_LOOP ? "PRESETS: DEVICE  REC: REC/DUB  HOLD: CLR"
                       : vsc.t[track][P_MODE] == MODE_PLAY ? "PRESETS: DEVICE  REC: RESTART" : "PRESETS: DEVICE  SELECT: PAGE"; break;
     case PG_GRAIN: hint = "REC: LOCK BUFFER  SELECT: PAGE"; break;
+    case PG_DISSECT: hint = row >= DIS_BODY && vsc.t[track][P_FTYPE] != FT_RING && vsc.t[track][P_FTYPE] != FT_REBUILD
+                          ? "KNOB 1: FILTER TO RESON OR REBLD" : vsc.t[track][P_GFREEZE] ? "REC: LISTEN AGAIN  SELECT: BANK"
+                          : "REC: CAPTURE (LOCK)  SELECT: BANK"; break;
     case PG_FILTER: hint = "PRESETS: DEVICE  SELECT: PAGE"; break;
     case PG_SPACE: hint = "REC: FREEZE  HOLD REC: CLEAR"; break;
     case PG_MODS: hint = row == MATRIX_VIEW ? "PRESETS: ROW  REC: BI/UNI  LFO: MODS"
@@ -854,7 +902,9 @@ static void draw_knobs(void)
 
 /* visualisations, computed once per frame and painted band by band */
 static uint8_t wave[VSC_SCREEN_W];      /* 0..60 amplitude per column */
-static float curve[VSC_SCREEN_W];       /* 0..1 per column */
+static uint8_t curve_q[VSC_SCREEN_W];   /* 0..1 per column, in 1/255ths (RAM is short) */
+#define CGET(x) ((float)curve_q[x] * (1.f / 255.f))
+static void cset(int x, float v) { curve_q[x] = (uint8_t)(v <= 0.f ? 0.f : v >= 1.f ? 255.f : v * 255.f + 0.5f); }
 static int adsr_node[4][2];             /* the ADSR picture's corners: x, level 0..254 */
 static void draw_vis(void)
 {
@@ -913,10 +963,10 @@ static void draw_vis(void)
     }
     case PG_FILTER: {
         /* dense bars, as on the S-4: the bank's shape in grey, the bands that ring lit */
-        int base = VIS_Y + 140, h = 120, ring = vsc.t[t][P_FTYPE] == FT_RING;
+        int base = VIS_Y + 140, h = 120, ring = vsc.t[t][P_FTYPE] == FT_RING || vsc.t[t][P_FTYPE] == FT_REBUILD;
         for (int i = 0; i < 47; ++i) {
             int xx = 4 + i * 5;
-            int env = (int)(curve[xx] * (float)h);
+            int env = (int)(CGET(xx) * (float)h);
             int lit = 0;
             if (ring)
                 for (unsigned bb = 0; bb < VSC_RING_BANDS; ++bb) {
@@ -960,6 +1010,55 @@ static void draw_vis(void)
                 }
             }
         }
+        break;
+    }
+    case PG_DISSECT: {
+        /* the listener: its three bands, the last few seconds of level with each hit a
+         * bright stroke, the pitch it hears (note, Hz, how sure) and its partials */
+        static const char *const bn[3] = {"LOW", "MID", "HIGH"};
+        const float bv[3] = {vsc_meter.ana_low, vsc_meter.ana_mid, vsc_meter.ana_high};
+        if (!vsc_meter.ana_on) text(4, VIS_Y + 2, "LISTENER OFF", C_DIM, 1);
+        else { char b[16]; copy_n(b, "HITS ", 6); num(b + 5, (int)(vsc_meter.ana_hits % 100000u)); text(4, VIS_Y + 2, b, C_MID, 1); }
+        { int f = (int)(vsc_meter.ana_hit * 8.f); if (f > 0) rect(226, VIS_Y + 1, 10, 10, f > 4 ? C_INK : C_FG); else rect(226, VIS_Y + 1, 10, 10, C_LINE); }
+        for (int b = 0; b < 3; ++b) {
+            int y = VIS_Y + 16 + b * 10;
+            text(4, y, bn[b], C_DIM, 1);
+            rect(34, y + 1, 200, 5, C_PANEL);
+            float v = bv[b] > 1.f ? 1.f : bv[b];
+            rect(34, y + 1, (int)(v * 200.f), 5, C_FG);
+        }
+        int base = VIS_Y + 98;
+        for (int xx = 0; xx < VSC_SCREEN_W; ++xx) {
+            unsigned i = (hist_w + (unsigned)(xx * 96 / VSC_SCREEN_W)) % 96;
+            int h = dis_lev[i] * 40 / 255;
+            if (h) vline(xx, base - h, h, C_LINE);
+            if (dis_hit[i] && (xx * 96 / VSC_SCREEN_W) != ((xx - 1) * 96 / VSC_SCREEN_W)) {
+                int hh = dis_hit[i] * 44 / 255;
+                vline(xx, base - hh, hh, C_INK); vline(xx + 1, base - hh, hh, C_FG);
+            }
+        }
+        hline(0, base, VSC_SCREEN_W, C_LINE);
+        float hz = vsc_meter.ana_pitch, conf = vsc_meter.ana_conf;
+        if (hz > 0.f && conf > 0.05f) {
+            /* the note: 69 + 12 log2(hz / 440) */
+            union { float f; uint32_t u; } v; v.f = hz / 440.f;
+            float l2 = (float)((int)(v.u >> 23) - 127) + ((float)(v.u & 0x7fffff) / 8388608.f) * 0.98f;
+            int note = (int)(69.f + 12.f * l2 + (69.f + 12.f * l2 >= 0.f ? 0.5f : -0.5f));
+            static const char *const nn[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+            char b[12]; copy_n(b, nn[((note % 12) + 12) % 12], 3);
+            unsigned l = (unsigned)vsc_strlen(b); num(b + l, note / 12 - 1);
+            text(4, VIS_Y + 106, b, conf > 0.5f ? C_INK : C_DIM, 2);
+            char hzs[12]; num(hzs, (int)(hz + 0.5f)); l = (unsigned)vsc_strlen(hzs); copy_n(hzs + l, " HZ", 4);
+            text(4, VIS_Y + 126, hzs, C_MID, 1);
+            rect(4, VIS_Y + 138, 100, 3, C_PANEL); rect(4, VIS_Y + 138, (int)(conf * 100.f), 3, conf > 0.5f ? C_FG : C_DIM);
+        } else text(4, VIS_Y + 110, "NO PITCH", C_DIM, 1);
+        for (int h = 0; h < 8; ++h) {
+            float a = vsc_meter.ana_harm[h] * 3.f; if (a > 1.f) a = 1.f;
+            int hh = (int)(a * 36.f), xx = 122 + h * 14;
+            rect(xx, VIS_Y + 104, 10, 36, C_PANEL);
+            if (hh) rect(xx, VIS_Y + 140 - hh, 10, hh, h ? C_FG : C_INK);
+        }
+        if (vsc.t[t][P_GFREEZE]) text(150, VIS_Y + 2, "LOCKED", C_WARN, 1);
         break;
     }
     case PG_SPACE: {
@@ -1041,7 +1140,7 @@ static void draw_vis(void)
             int phx = ty == MT_WAVE || ty == MT_RANDOM ? (int)(ph * 239.f) : 239;
             int prev = -1;
             for (int xx = 0; xx < VSC_SCREEN_W; ++xx) {
-                float v = curve[xx];
+                float v = CGET(xx);
                 int y = base - (int)(v * (float)h);
                 if (xx <= phx && (ty == MT_WAVE || ty == MT_RANDOM)) {
                     for (int yy = y + 2; yy < base; yy += 1) px(xx, yy, mix565(C_PANEL, C_MID, (xx * 256) / (phx + 1)));
@@ -1055,7 +1154,7 @@ static void draw_vis(void)
                 for (int xx = 0; xx < VSC_SCREEN_W; xx += 4) px(xx, yy, C_INK);
                 for (unsigned k = 0; k < 4; ++k) rect(adsr_node[k][0] - 1, base - adsr_node[k][1] * h / 255 - 1, 3, 3, C_INK);
             }
-            if (ty == MT_FOLLOW) for (int xx = 0; xx < VSC_SCREEN_W; xx += 2) vline(xx, base - (int)(curve[xx] * (float)h), (int)(curve[xx] * (float)h), C_LINE);
+            if (ty == MT_FOLLOW) for (int xx = 0; xx < VSC_SCREEN_W; xx += 2) vline(xx, base - (int)(CGET(xx) * (float)h), (int)(CGET(xx) * (float)h), C_LINE);
             /* the four slots along the top: type and live value */
             for (unsigned k = 0; k < VSC_MODS; ++k) {
                 int x0 = 4 + (int)k * 59;
@@ -1301,8 +1400,7 @@ static void compute_wave(void)
     }
     /* THRU: a coarse picture from the main scope */
     for (int x = 0; x < VSC_SCREEN_W; ++x) {
-        float v = vsc_scope[0][x * 128 / VSC_SCREEN_W];
-        if (v < 0) v = -v;
+        float v = (float)vsc_scope[x * 128 / VSC_SCREEN_W] * (1.f / 255.f);
         wave[x] = (uint8_t)(v > 1.f ? 60 : v * 60.f);
     }
 }
@@ -1324,8 +1422,10 @@ static void compute_curve(void)
             float lp = d <= 0.f ? 1.f : bp, hp = d >= 0.f ? 1.f : bp;
             float g = slope < 0.5f ? lp + (bp - lp) * slope * 2.f : bp + (hp - bp) * (slope - 0.5f) * 2.f;
             g *= 1.f + reso * 2.f * bp;
-            curve[x] = g / 3.f > 1.f ? 1.f : g / 3.f;
+            cset(x, g / 3.f > 1.f ? 1.f : g / 3.f);
         }
+    } else if (page == PG_FILTER && vsc.t[t][P_FTYPE] == FT_REBUILD) {
+        for (int x = 0; x < VSC_SCREEN_W; ++x) cset(x, 0.f);   /* just the partials, lit */
     } else if (page == PG_FILTER) {
         unsigned type = vsc.t[t][P_FTYPE];
         float fc = 20.f * fexp2((float)vsc.t[t][P_FCUT] / 127.f * 9.95f);
@@ -1352,7 +1452,7 @@ static void compute_curve(void)
             union { float f; uint32_t u; } u; u.f = mm;
             db = ((float)((int)(u.u >> 23) - 127) + (float)(u.u & 0x7fffff) / 8388608.f) * 3.0103f;
             float y = (db + 36.f) / 48.f;
-            curve[x] = y < 0 ? 0 : y > 1 ? 1 : y;
+            cset(x, y < 0 ? 0 : y > 1 ? 1 : y);
         }
     } else if (page == PG_COLOR) {
         float drive = (float)vsc.t[t][P_DRIVE] / 127.f, bits = vsc.t[t][P_CMODE] == 1 ? 0.f : (float)vsc.t[t][P_CRUSH] / 127.f;
@@ -1362,25 +1462,25 @@ static void compute_curve(void)
             if (v > 3.f) v = 3.f; if (v < -3.f) v = -3.f;
             v = v * (27.f + v * v) / (27.f + 9.f * v * v);
             if (bits > 0.01f) { float q = v * lev; int qi = (int)(q + (q < 0 ? -0.5f : 0.5f)); v = (float)qi / lev; }
-            curve[x] = (v + 1.f) * 0.5f;
+            cset(x, (v + 1.f) * 0.5f);
         }
     } else if (page == PG_SPACE) {
         float fb = (float)vsc.g[G_DFEED] / 127.f * 0.95f;
         static const float beats[9] = {0.125f, 1.f / 6.f, 0.25f, 1.f / 3.f, 0.375f, 0.5f, 2.f / 3.f, 0.75f, 1.f};
         float period = beats[vsc.g[G_DTIME] % 9] * 4.f * 60.f / (float)vsc.tempo;
-        for (int x = 0; x < VSC_SCREEN_W; ++x) curve[x] = 0.f;
+        for (int x = 0; x < VSC_SCREEN_W; ++x) cset(x, 0.f);
         float a = 1.f;
         for (int k = 0; k < 24 && a > 0.02f; ++k) {
             int x = (int)((float)(k + 1) * period / 4.f * 239.f);
             if (x >= VSC_SCREEN_W) break;
-            curve[x] = a; if (x + 1 < VSC_SCREEN_W) curve[x + 1] = a;
+            cset(x, a); if (x + 1 < VSC_SCREEN_W) cset(x + 1, a);
             a *= fb;
         }
         /* reverb tail as a dim ramp */
         float rs = (float)vsc.g[G_RSIZE] / 127.f;
         for (int x = 0; x < VSC_SCREEN_W; ++x) {
             float tail = 0.5f * fexp2(-(float)x / (20.f + rs * 160.f) * 3.f);
-            if (tail > curve[x]) curve[x] = tail;
+            if (tail > CGET(x)) cset(x, tail);
         }
     }
 }
@@ -1412,7 +1512,7 @@ static void compute_mod_curve(void)
             }
             v = cv > 0.f ? v + (v * v * v - v) * cv : v + ((1.f - (1.f - v) * (1.f - v) * (1.f - v)) - v) * -cv;
             v = v * amount + off;
-            curve[x] = v < 0.f ? 0.f : v > 1.f ? 1.f : v;
+            cset(x, v < 0.f ? 0.f : v > 1.f ? 1.f : v);
         }
     } else if (ty == MT_ADSR) {
         float A = 0.001f + 4.f * (b[1] / 127.f) * (b[1] / 127.f), D = 0.005f + 4.f * (b[2] / 127.f) * (b[2] / 127.f);
@@ -1424,7 +1524,7 @@ static void compute_mod_curve(void)
             else if (x <= xd) v = 1.f - (1.f - S) * (float)(x - xa) / (float)(xd - xa ? xd - xa : 1);
             else if (x <= xh) v = S;
             else v = S * (1.f - (float)(x - xh) / (float)(239 - xh ? 239 - xh : 1));
-            curve[x] = v * (b[8] / 127.f);
+            cset(x, v * (b[8] / 127.f));
         }
         int amt = b[8] * 2;
         adsr_node[0][0] = 0; adsr_node[0][1] = 0;
@@ -1433,12 +1533,19 @@ static void compute_mod_curve(void)
         adsr_node[3][0] = xh; adsr_node[3][1] = (int)(S * (float)amt);
     } else {
         /* RANDOM and FOLLOW: what they have done lately */
-        for (int x = 0; x < VSC_SCREEN_W; ++x) curve[x] = (float)mod_hist[m][(hist_w + (unsigned)(x * 96 / VSC_SCREEN_W)) % 96] * (1.f / 255.f);
+        for (int x = 0; x < VSC_SCREEN_W; ++x) cset(x, (float)mod_hist[m][(hist_w + (unsigned)(x * 96 / VSC_SCREEN_W)) % 96] * (1.f / 255.f));
     }
 }
 void vsc_ui_frame(uint32_t now)
 {
     now_ms = now;
+    if (page == PG_DISSECT) {
+        float lev = vsc_meter.ana_low + vsc_meter.ana_mid + vsc_meter.ana_high;
+        dis_lev[hist_w] = (uint8_t)(lev > 1.f ? 255.f : lev * 255.f);
+        uint32_t h = vsc_meter.ana_hits;
+        dis_hit[hist_w] = h != dis_hits_seen ? (uint8_t)(64.f + 191.f * (vsc_meter.ana_hit > 1.f ? 1.f : vsc_meter.ana_hit)) : 0;
+        dis_hits_seen = h;
+    }
     for (unsigned m = 0; m < VSC_MODS; ++m) {
         mod_hist[m][hist_w] = (uint8_t)(vsc_meter.mod_value[track][m] * 255.f);
     }
@@ -1472,7 +1579,7 @@ void vsc_ui_leds(uint8_t out[41])
     for (unsigned i = 0; i < 41; ++i) out[i] = glow;
     /* the open page's button */
     static const uint8_t page_btn[PG_COUNT] = {BTN_HOME, BTN_EDIT, BTN_FX, BTN_SCL, BTN_ENV, BTN_LFO, BTN_GLO,
-                                               BTN_ARP, BTN_SEQ, BTN_SAVE, BTN_GLO, BTN_SAVE};
+                                               BTN_ARP, BTN_SEQ, BTN_SAVE, BTN_GLO, BTN_SAVE, BTN_GLO};
     out[page_btn[page]] = 2;
     if (vsc_meter.playing) out[BTN_PLAY] = 2;
     int recording = live_rec || (vsc.t[track][P_MODE] == MODE_LOOP && (vsc_meter.loop_state[track] == 1 || vsc_meter.loop_state[track] == 3));

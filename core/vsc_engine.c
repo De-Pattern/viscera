@@ -7,7 +7,7 @@
 struct vsc_project vsc;
 struct vsc_meter vsc_meter;
 uint8_t vsc_lock[VSC_TRACKS][VSC_NP];
-float vsc_scope[2][128];
+uint8_t vsc_scope[128];
 
 /* ---------------------------------------------------------------- maths */
 VSC_INL float clampf(float x, float lo, float hi) { return x < lo ? lo : x > hi ? hi : x; }
@@ -37,7 +37,33 @@ VSC_INL float sin01(float p)
     float x = p < 0.5f ? p * 4.f - 1.f : 3.f - p * 4.f; /* triangle -1..1 */
     return x * (1.5f - 0.5f * x * x);
 }
+/* cos(2 pi p) for p in 0..0.5, accurate enough to tune a resonator */
+VSC_INL float cos2pi(float p)
+{
+    float x = p * 6.28318531f, flip = 1.f;
+    if (x > 1.57079633f) { x = 3.14159265f - x; flip = -1.f; }
+    float x2 = x * x;
+    return flip * (1.f + x2 * (-0.5f + x2 * (1.f / 24.f + x2 * (-1.f / 720.f + x2 * (1.f / 40320.f)))));
+}
 VSC_INL float tanpre(float x) { float x2 = x * x; return x * (15.f - x2) / (15.f - 6.f * x2); }
+/* log2(x) for x > 0, about 2e-4 absolute error */
+VSC_INL float log2a(float x)
+{
+    union { float f; uint32_t u; } v; v.f = x;
+    float e = (float)(int)((v.u >> 23) & 255u) - 127.f;
+    v.u = (v.u & 0x007fffffu) | 0x3f800000u;   /* mantissa in [1,2) */
+    float m = v.f;
+    return e + ((((-0.07915816f * m + 0.62887362f) * m - 2.08121416f) * m + 4.02854794f) * m - 2.49684606f);
+}
+VSC_INL float sqrta(float x)
+{
+    if (x <= 0.f) return 0.f;
+    union { float f; uint32_t u; } v; v.f = x;
+    v.u = 0x1fbd1df5u + (v.u >> 1);
+    float y = v.f;
+    y = 0.5f * (y + x / y); y = 0.5f * (y + x / y);
+    return y;
+}
 
 static uint32_t rng = 0x9e3779b9u;
 VSC_INL uint32_t rnd(void) { rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; return rng; }
@@ -100,6 +126,7 @@ struct voice {
     int8_t dir; uint8_t note, stage, on;
 };
 struct grain { float pos, inc; uint32_t len, t; float amp; uint8_t active; };
+#define VSC_GEVENTS 8           /* hits remembered per track (GRAIN SCAN picks among them) */
 struct track {
     /* material */
     uint32_t ipos; float fpos; int8_t dir; uint8_t running;
@@ -143,6 +170,15 @@ struct track {
     float in[VSC_BLOCK];
     float pan_l, pan_r, send;
     uint16_t awake;             /* sub-blocks left before a silent track sleeps (see vsc_render) */
+    /* DISSECT: where the listener's hits fell in this track's grain ring (frames written,
+     * and the pitch heard then), a burst of grains under way, the note that asked for it */
+    struct gev { uint32_t at; float note; } ev[VSC_GEVENTS];
+    uint32_t gtotal;            /* frames written to the grain ring, ever */
+    uint8_t ev_w, ev_n, gburst, gnote_hit;
+    int32_t gwait; float gnote;
+    float kburst;               /* RESON EXCITE: the hit's burst, decaying */
+    float kfol;                 /* RESON FOLLOW: the last note it followed (0: none yet) */
+    uint8_t kmode;              /* which device the FILTER state belongs to (RESON or REBUILD) */
 };
 static struct track tr[VSC_TRACKS];
 /* The platform's clock for the CPU readout (unset: no readout), and the guard's relief. */
@@ -236,6 +272,7 @@ static VSC_HOT void note_on(unsigned t, unsigned note, unsigned vel)
     if (t < VSC_TRACKS) tr[t].awake = VSC_WAKE_HOLD;
     struct track *k = &tr[t];
     unsigned mode = vsc.t[t][P_MODE];
+    if (vsc.t[t][P_GTRIG] == GTRIG_NOTES) { k->gnote = (float)note; k->gnote_hit = 1; }   /* GRAIN: notes start grains */
     k->gates++;
     k->env_stage = 1;
     for (unsigned m = 0; m < VSC_MODS; ++m)
@@ -373,6 +410,202 @@ static VSC_HOT void compute_params(unsigned t)
         }
 }
 
+/* ------------------------------------------------------------- DISSECT
+ * One listener for the whole engine, run once a block on DISSECT's SOURCE, and only
+ * while something uses it (a track's TRIG, EXCITE, FOLLOW or TUNE, REBUILD, a FOLLOW
+ * modulator on one of its inputs, HITS, or the page on screen). It hears:
+ *  - three bands (below ~150 Hz, to ~2.5 kHz, above), per 32-frame sub-block;
+ *  - hits: a rise in the FOCUS band against its recent level, over a threshold that
+ *    SENS sets and the recent rises raise, at most one per 36 ms;
+ *  - pitch: YIN on an 11 kHz, 8-bit history (lags 50 Hz .. 1 kHz), spread over 15
+ *    blocks and stopped at the first clear dip, then the levels of its first eight
+ *    partials (Goertzel), every 16 blocks (46 ms).
+ * Ravel's rules: nothing runs when nothing listens or the source is silent, the pitch
+ * search costs a few hundred multiplies a block (integer), and no new long buffers. */
+#define ANA_SUBS   (VSC_BLOCK / VSC_SUB)
+#define ANA_RING   1024u      /* 8-bit history at 11025 Hz: 93 ms */
+#define ANA_W      256u       /* the window YIN compares */
+#define ANA_TMIN   11u        /* lags: 1 kHz .. */
+#define ANA_TMAX   220u       /* .. 50 Hz */
+#define ANA_PERIOD 16u        /* blocks per reading */
+#define ANA_LAGS   14u        /* lags a block: 15 blocks cover them all */
+#define ANA_PART   8u
+static struct {
+    float lp1, lp2, lp3, prev[3], slow, odf_avg, agc, agc_used;
+    float hit[ANA_SUBS], band[ANA_SUBS][3];
+    float note;               /* the last pitch heard clearly, as a MIDI note (0: none yet) */
+    float cum, best, b0, b1, b2, p1, p2;
+    uint32_t dw, ws;
+    unsigned dphase, blk, tau, best_tau, refr;
+    uint8_t found, voiced;
+    int8_t ring[ANA_RING];
+} ana;
+volatile uint8_t vsc_ana_view;
+/* the listener's pitch now, as a note (0 when none is heard) */
+VSC_INL float ana_note_now(void) { return ana.voiced ? ana.note : 0.f; }
+static VSC_HOT_SMALL void ana_pitch_end(void)
+{
+    /* the dip YIN found (or the deepest), refined between its neighbours */
+    float conf = 0.f, hz = 0.f;
+    if (ana.best < 0.6f && ana.agc_used > 0.f) {
+        float den = ana.b0 - 2.f * ana.b1 + ana.b2, off = 0.f;
+        if (den > 1e-6f) off = clampf(0.5f * (ana.b0 - ana.b2) / den, -0.5f, 0.5f);
+        float lag = (float)ana.best_tau + off;
+        hz = 11025.f / lag;
+        conf = clampf(1.f - ana.best * 2.5f, 0.f, 1.f);
+    }
+    ana.voiced = conf > 0.5f;
+    vsc_meter.ana_conf = conf;
+    if (!ana.voiced) {
+        for (unsigned h = 0; h < ANA_PART; ++h) vsc_meter.ana_harm[h] *= 0.7f;
+        return;
+    }
+    ana.note = 69.f + 12.f * log2a(hz * (1.f / 440.f));
+    vsc_meter.ana_pitch = hz;
+    /* the partials' levels over the same window: a triangle window, one Goertzel each */
+    float norm = 2.f / (float)(ANA_W / 2u * ANA_W / 2u) / ana.agc_used;
+    for (unsigned h = 0; h < ANA_PART; ++h) {
+        float f = hz * (float)(h + 1u);
+        if (f > 5000.f) { vsc_meter.ana_harm[h] = 0.f; continue; }
+        float c = 2.f * cos2pi(f * (1.f / 11025.f)), s1 = 0.f, s2 = 0.f;
+        for (unsigned j = 0; j < ANA_W; ++j) {
+            int w = j < ANA_W / 2u ? (int)j : (int)(ANA_W - j);
+            float x = (float)(ana.ring[(ana.ws + j) & (ANA_RING - 1u)] * w);
+            float s0 = x + c * s1 - s2; s2 = s1; s1 = s0;
+        }
+        float pw = s1 * s1 + s2 * s2 - c * s1 * s2;
+        float lp = f * (1.f / 2500.f);   /* undo the two 2.5 kHz poles in front of the history */
+        vsc_meter.ana_harm[h] = sqrta(pw) * norm * (1.f + lp * lp);
+    }
+    /* high notes: the integer lag can miss the first dip and find the second, an octave
+     * low. Then the "fundamental" and every other partial are empty: move up an octave */
+    float *hm = vsc_meter.ana_harm;
+    if (hz < 700.f && hm[1] > 0.01f && hm[0] < hm[1] * 0.2f && hm[2] < hm[1] * 0.2f) {
+        hz *= 2.f; ana.note += 12.f; vsc_meter.ana_pitch = hz;
+        hm[0] = hm[1]; hm[1] = hm[3]; hm[2] = hm[5]; hm[3] = hm[7];
+        for (unsigned h = 4; h < ANA_PART; ++h) hm[h] = 0.f;
+    }
+}
+static VSC_HOT_SMALL void ana_block(const struct vsc_inputs *in, int wanted)
+{
+    for (unsigned s = 0; s < ANA_SUBS; ++s) ana.hit[s] = 0.f;
+    vsc_meter.ana_on = (uint8_t)wanted;
+    vsc_meter.ana_hit *= 0.85f;
+    if (!wanted) { ana.voiced = 0; vsc_meter.ana_conf = 0.f; return; }
+    unsigned sel = vsc.g[G_ASRC];
+    const float *mono = sel >= IN_T1 && sel <= IN_T4 ? tr[sel - IN_T1].prev : sel == IN_MAIN ? main_prev : 0;
+    const float *bt = !mono && (sel == IN_BT || sel == IN_BOTH) ? in->bt : 0;
+    const float *usb = !mono && (sel == IN_USB || sel == IN_BOTH) ? in->usb : 0;
+    float sens = (float)vsc.g[G_ASENS] * (1.f / 127.f);
+    float base = 0.12f + 1.4f * (1.f - sens) * (1.f - sens);
+    unsigned focus = vsc.g[G_AFOCUS] & 3u;
+    float pk = 0.f;
+    for (unsigned s = 0; s < ANA_SUBS; ++s) {
+        float sl = 0.f, sm = 0.f, sh = 0.f;
+        for (unsigned i = 0; i < VSC_SUB; ++i) {
+            unsigned j = s * VSC_SUB + i;
+            float x = mono ? mono[j] : 0.f;
+            if (bt) x += (bt[2 * j] + bt[2 * j + 1]) * 0.5f;
+            if (usb) x += (usb[2 * j] + usb[2 * j + 1]) * 0.5f;
+            ana.lp1 += (x - ana.lp1) * 0.0211f;          /* 150 Hz */
+            ana.lp2 += (x - ana.lp2) * 0.2997f;          /* 2.5 kHz */
+            ana.lp3 += (ana.lp2 - ana.lp3) * 0.2997f;    /* and again, before the decimator */
+            sl += absf(ana.lp1); sm += absf(ana.lp2 - ana.lp1); sh += absf(x - ana.lp2);
+            float a = absf(x); if (a > pk) pk = a;
+            if (++ana.dphase >= 4u) {
+                ana.dphase = 0;
+                float v = ana.lp3, av = absf(v);
+                ana.agc = av > ana.agc ? av : ana.agc * 0.9995f;
+                float g = 100.f / (ana.agc > 0.002f ? ana.agc : 0.002f);
+                ana.ring[ana.dw & (ANA_RING - 1u)] = (int8_t)(int)clampf(v * g, -127.f, 127.f);
+                ++ana.dw;
+            }
+        }
+        float L[3] = {sl * (2.f / VSC_SUB), sm * (2.f / VSC_SUB), sh * (2.f / VSC_SUB)};
+        float flux = 0.f, lev = 0.f;
+        for (unsigned b = 0; b < 3; ++b) {
+            /* each band's envelope: instant rise, ~36 ms fall, so a waveform's own ripple
+             * (a low note's cycle, a saw's edge) doesn't read as a hit */
+            float e = L[b] > ana.prev[b] ? L[b] : ana.prev[b] + (L[b] - ana.prev[b]) * 0.02f;
+            ana.band[s][b] = clampf(e, 0.f, 1.f);
+            if (!focus || focus - 1u == b) { if (e > ana.prev[b]) flux += e - ana.prev[b]; lev += e; }
+            ana.prev[b] = e;
+        }
+        float odf = flux / (ana.slow + 0.01f);
+        ana.slow += (lev - ana.slow) * 0.015f;
+        ana.odf_avg += (odf - ana.odf_avg) * 0.03f;
+        float thr = base + ana.odf_avg * 2.f;
+        if (ana.refr) --ana.refr;
+        else if (odf > thr && lev > 0.005f) {
+            float st = clampf(lev * 3.f, 0.15f, 1.f);
+            ana.hit[s] = st; ana.refr = 50u;
+            ++vsc_meter.ana_hits;
+            if (st > vsc_meter.ana_hit) vsc_meter.ana_hit = st;
+        }
+    }
+    {   /* the meters: the last sub-block's bands, lightly smoothed */
+        const float *b = ana.band[ANA_SUBS - 1u];
+        vsc_meter.ana_low += (b[0] - vsc_meter.ana_low) * 0.3f;
+        vsc_meter.ana_mid += (b[1] - vsc_meter.ana_mid) * 0.3f;
+        vsc_meter.ana_high += (b[2] - vsc_meter.ana_high) * 0.3f;
+        float sum = b[0] + b[1] + b[2];
+        vsc_meter.ana_bright = sum > 0.01f ? b[2] / sum : vsc_meter.ana_bright * 0.95f;
+    }
+    /* the pitch: quiet sources skip it (a reading starts over when sound returns), and
+     * the CPU guard's second step pauses it (the last pitch holds) */
+    if (pk < 0.003f) { ana.blk = 0; ana.voiced = 0; vsc_meter.ana_conf *= 0.8f; return; }
+    if (vsc_relief >= 2) { ana.blk = 0; return; }
+    if (ana.blk == 0) {
+        ana.ws = ana.dw - (ANA_W + ANA_TMAX + 1u);
+        ana.tau = ANA_TMIN; ana.cum = 0.f; ana.found = 0; ana.best = 9.f; ana.best_tau = 0;
+        ana.p1 = ana.p2 = 9.f; ana.agc_used = 100.f / (ana.agc > 0.002f ? ana.agc : 0.002f);
+    }
+    if (ana.blk < ANA_PERIOD - 1u) {
+        for (unsigned n = 0; n < ANA_LAGS && !ana.found && ana.tau <= ANA_TMAX; ++n, ++ana.tau) {
+            /* every other frame of the window (as good for this, half the work), in runs
+             * where neither read wraps the ring, so the inner loop has no masking */
+            int32_t d = 0;
+            unsigned i0 = ana.ws & (ANA_RING - 1u), i1 = (ana.ws + ana.tau) & (ANA_RING - 1u);
+            for (unsigned j = 0; j < ANA_W;) {
+                unsigned run = ANA_W - j, r0 = ANA_RING - i0, r1 = ANA_RING - i1;
+                if (r0 < run) run = r0;
+                if (r1 < run) run = r1;
+                const int8_t *p = ana.ring + i0, *q = ana.ring + i1;
+                for (unsigned k = 0; k < run; k += 2) { int e = p[k] - q[k]; d += e * e; }
+                run = (run + 1u) & ~1u;
+                j += run; i0 = (i0 + run) & (ANA_RING - 1u); i1 = (i1 + run) & (ANA_RING - 1u);
+            }
+            float df = (float)d;
+            ana.cum += df;
+            float cm = ana.cum > 0.f ? df * (float)(ana.tau - ANA_TMIN + 1u) / ana.cum : 1.f;
+            /* a dip at the previous lag: the first under 0.2 wins, else the deepest */
+            if (ana.p1 < ana.p2 && ana.p1 <= cm) {
+                if (ana.p1 < 0.2f || ana.p1 < ana.best) {
+                    ana.best = ana.p1; ana.best_tau = ana.tau - 1u;
+                    ana.b0 = ana.p2; ana.b1 = ana.p1; ana.b2 = cm;
+                    if (ana.p1 < 0.2f) ana.found = 1;
+                }
+            }
+            ana.p2 = ana.p1; ana.p1 = cm;
+        }
+    } else ana_pitch_end();
+    if (++ana.blk >= ANA_PERIOD) ana.blk = 0;
+}
+/* is anything listening this block? */
+static VSC_HOT_SMALL int ana_wanted(void)
+{
+    if (vsc_ana_view || vsc.g[G_AHITS] != AHITS_OFF) return 1;
+    for (unsigned t = 0; t < VSC_TRACKS; ++t) {
+        const uint8_t *b = vsc.t[t];
+        unsigned ft = b[P_FTYPE];
+        if (ft == FT_REBUILD || (ft == FT_RING && (b[P_KEXCITE] || b[P_KFOLLOW]))) return 1;
+        if (b[P_GTRIG] != GTRIG_FREE || b[P_GQUANT] == GQUANT_TUNE) return 1;
+        for (unsigned m = 0; m < VSC_MODS; ++m)
+            if ((b[P_MOD(m, 0)] & 3) == MT_FOLLOW && b[P_MOD(m, 5)] >= FIN_LOW) return 1;
+    }
+    return 0;
+}
+
 /* --------------------------------------------------------------- mods
  * Four slots per track, each WAVE, RANDOM, FOLLOW or ADSR. Every modulator puts out
  * 0..1; a route reads that as is (unipolar) or as -1..1 (bipolar). Rates sync to
@@ -448,9 +681,22 @@ static VSC_HOT void run_mods(unsigned t, unsigned off, unsigned frames)
             break;
         }
         case MT_FOLLOW: {
-            unsigned src = b[P_MOD(m, 5)] & 7;
+            unsigned src = b[P_MOD(m, 5)];
+            if (src >= FIN_COUNT) src = FIN_TRACK;
             float pk = 0.f;
-            if (src >= 2 && src <= 5) pk = vsc_meter.peak[src - 2];
+            if (src >= FIN_LOW) {
+                /* what DISSECT's listener hears, this sub-block */
+                unsigned sub = off / VSC_SUB; if (sub >= ANA_SUBS) sub = ANA_SUBS - 1u;
+                const float *bd = ana.band[sub];
+                switch (src) {
+                case FIN_LOW: pk = bd[0]; break;
+                case FIN_MID: pk = bd[1]; break;
+                case FIN_HIGH: pk = bd[2]; break;
+                case FIN_HITS: pk = ana.hit[sub]; break;
+                case FIN_PITCH: pk = ana.note > 0.f ? clampf((ana.note - 33.f) * (1.f / 60.f), 0.f, 1.f) : 0.f; break;   /* A1 .. A6, held */
+                default: { float sum = bd[0] + bd[1] + bd[2]; pk = sum > 0.01f ? clampf(bd[2] / sum * 2.f, 0.f, 1.f) : 0.f; } break;
+                }
+            } else if (src >= 2 && src <= 5) pk = vsc_meter.peak[src - 2];
             else if (src == 6) pk = vsc_meter.main_peak;
             else {
                 const float *buf = src == 0 ? k->out + off : src == 7 ? k->in + off : 0;
@@ -464,7 +710,7 @@ static VSC_HOT void run_mods(unsigned t, unsigned off, unsigned frames)
                     }
                 }
             }
-            pk *= 0.5f + 4.f * e[8];                                    /* GAIN */
+            if (src != FIN_PITCH && src != FIN_BRIGHT) pk *= 0.5f + 4.f * e[8];   /* GAIN (levels only) */
             float rise = 0.001f + 0.5f * e[3] * e[3], fall = 0.01f + 2.f * e[4] * e[4];
             float c = pk > s->env ? dt / (rise + dt) : dt / (fall + dt);
             s->env += (pk - s->env) * c;
@@ -648,6 +894,12 @@ static VSC_HOT void material(unsigned t, unsigned off, unsigned n)
 
 /* -------------------------------------------------------------- grains */
 static VSC_HOTDATA const int8_t quant_steps[4] = {0, 1, 12, 7};
+/* DISSECT on GRAIN: TRIG HITS starts a burst of grains (RATE sets how many, 1..8, half a
+ * grain apart) at each hit the listener hears; NOTES does the same for each note (keys,
+ * steps, CAROM), played at the note. The grains start where a remembered hit fell in
+ * this track's buffer: SCAN picks how many hits back, SPRAY scatters among older ones.
+ * QUANT TUNE pitches each grain so the pitch heard at its hit lands on the note (NOTES)
+ * or on C (HITS, FREE: the pitch heard now). FREE is as before. */
 static VSC_HOT void grains(unsigned t, unsigned off, unsigned n)
 {
     struct track *k = &tr[t];
@@ -657,11 +909,29 @@ static VSC_HOT void grains(unsigned t, unsigned off, unsigned n)
     uint8_t *ring = grain_ring[t];
     int freeze = vsc.t[t][P_GFREEZE];
     float fb = k->e[P_GFDBK] * 0.9f;
+    unsigned trig = vsc.t[t][P_GTRIG];
+    {   /* a hit heard in this sub-block marks the place it falls in the ring */
+        float hit = ana.hit[off / VSC_SUB < ANA_SUBS ? off / VSC_SUB : 0];
+        if (hit > 0.f && !freeze) {
+            struct gev *ev = &k->ev[k->ev_w];
+            ev->at = k->gtotal; ev->note = ana_note_now();
+            k->ev_w = (uint8_t)((k->ev_w + 1u) % VSC_GEVENTS);
+            if (k->ev_n < VSC_GEVENTS) ++k->ev_n;
+            if (trig == GTRIG_HITS) { k->gburst = (uint8_t)(1u + (unsigned)(k->e[P_GDENS] * 7.99f)); k->gwait = 0; }
+        }
+        if (k->gnote_hit) {
+            k->gnote_hit = 0;
+            if (trig == GTRIG_NOTES) { k->gburst = (uint8_t)(1u + (unsigned)(k->e[P_GDENS] * 7.99f)); k->gwait = 0; }
+        }
+    }
     if (mix <= 0.001f && fb <= 0.f) {
         /* Keep the ring filled so the grains have material when MIX rises. */
-        if (!freeze)
+        if (!freeze) {
             for (unsigned i = 0; i < n; ++i) { ring[k->gw] = ulaw_enc(x[i]); if (++k->gw >= VSC_GRAIN_FRAMES) k->gw = 0; }
+            k->gtotal += n;
+        }
         for (unsigned g = 0; g < VSC_GRAINS; ++g) k->g[g].active = 0;
+        k->gburst = 0;
         return;
     }
     float size = k->e[P_GSIZE];
@@ -671,23 +941,49 @@ static VSC_HOT void grains(unsigned t, unsigned off, unsigned n)
     float per_sec = 0.5f + dens * dens * 80.f;
     float spawn = per_sec / (float)VSC_SR;
     float shape = k->e[P_GSHAPE];
+    unsigned qm = vsc.t[t][P_GQUANT];
+    int32_t gap = (int32_t)(glen / 2u > 64u ? glen / 2u : 64u);
     for (unsigned i = 0; i < n; ++i) {
-        k->gphase += spawn;
-        if (k->gphase >= 1.f) {
-            k->gphase -= 1.f;
+        int fire = 0;
+        if (trig == GTRIG_FREE) {
+            k->gphase += spawn;
+            if (k->gphase >= 1.f) { k->gphase -= 1.f; fire = 1; }
+        } else if (k->gburst && --k->gwait <= 0) { fire = 1; --k->gburst; k->gwait = gap; }
+        if (fire) {
             /* relief 2: new grains only in half the slots (playing ones finish) */
             unsigned slots = vsc_relief >= 2 ? VSC_GRAINS / 2 : VSC_GRAINS;
             for (unsigned g = 0; g < slots; ++g) {
                 struct grain *gr = &k->g[g];
                 if (gr->active) continue;
                 float semis = k->e[P_GPITCH] * 48.f - 24.f + rndb() * k->e[P_GDETUNE] * 12.f;
-                int q = quant_steps[vsc.t[t][P_GQUANT] & 3];
+                int q = qm < 4 ? quant_steps[qm] : 0;
                 if (q) { float s = semis / (float)q; semis = (float)floori(s + 0.5f) * (float)q; }
+                /* which remembered hit (HITS, NOTES): SCAN back, SPRAY among older ones */
+                const struct gev *ev = 0;
+                if (trig != GTRIG_FREE && k->ev_n) {
+                    unsigned back_n = (unsigned)(k->e[P_GTIME] * 7.99f) + (unsigned)(rndu() * k->e[P_GSPRAY] * 7.99f);
+                    if (back_n >= k->ev_n) back_n = k->ev_n - 1u;
+                    ev = &k->ev[(k->ev_w + VSC_GEVENTS - 1u - back_n) % VSC_GEVENTS];
+                }
+                if (trig == GTRIG_NOTES && qm != GQUANT_TUNE) semis += k->gnote - 60.f;
+                if (qm == GQUANT_TUNE) {
+                    float heard = trig == GTRIG_FREE ? ana_note_now() : ev ? ev->note : 0.f;
+                    float want = trig == GTRIG_NOTES ? k->gnote : 60.f;
+                    if (heard > 0.f) semis += clampf(want - heard, -36.f, 36.f);
+                    else if (trig == GTRIG_NOTES) semis += k->gnote - 60.f;
+                }
                 float ratio = exp2a(semis * (1.f / 12.f));
                 int rev = rndu() < k->e[P_GREV];
                 float need = (float)glen * (ratio > 1.f ? ratio : 1.f) + 64.f;
                 float room = (float)VSC_GRAIN_FRAMES - need - 64.f;
                 float back = need + k->e[P_GTIME] * room * 0.9f + rndu() * k->e[P_GSPRAY] * room * 0.5f;
+                if (ev) {
+                    /* start at the hit; far enough behind the write head not to overtake it */
+                    float age = (float)(k->gtotal + i - ev->at);
+                    float lead = rev ? (float)glen * ratio + 32.f : ratio > 1.f ? (float)glen * (ratio - 1.f) + 32.f : 16.f;
+                    float b2 = age > lead ? age : lead;
+                    if (b2 + need < (float)VSC_GRAIN_FRAMES - 64.f) back = b2;   /* else the hit is overwritten: as FREE */
+                }
                 if (back > (float)VSC_GRAIN_FRAMES - 64.f) back = (float)VSC_GRAIN_FRAMES - 64.f;
                 float start = (float)k->gw - back;
                 if (rev) start += (float)glen * ratio;
@@ -730,6 +1026,7 @@ static VSC_HOT void grains(unsigned t, unsigned off, unsigned n)
         k->gfb = acc;
         x[i] = gsend ? x[i] + acc * mix : x[i] + (acc - x[i]) * mix;
     }
+    if (!freeze) k->gtotal += n;
 }
 
 /* -------------------------------------------------------------- filter */
@@ -759,22 +1056,33 @@ static VSC_HOTDATA const uint16_t ring_scales[8] = {
     (1<<0)|(1<<2)|(1<<4)|(1<<6)|(1<<8)|(1<<10),          /* WHOLE */
     (1<<0)|(1<<7),                                       /* FIFTHS */
     (1<<0)};                                             /* OCTAVE */
-/* cos(2 pi p) for p in 0..0.5, accurate enough to tune a resonator */
-VSC_INL float cos2pi(float p)
-{
-    float x = p * 6.28318531f, flip = 1.f;
-    if (x > 1.57079633f) { x = 3.14159265f - x; flip = -1.f; }
-    float x2 = x * x;
-    return flip * (1.f + x2 * (-0.5f + x2 * (1.f / 24.f + x2 * (-1.f / 720.f + x2 * (1.f / 40320.f)))));
-}
+/* HARM, MEMBR, BAR: 12 log2 of the partials' ratios (1..10; Bessel zeros for a drum
+ * head's modes; a free bar's) */
+static VSC_HOTDATA const float ring_ratio_semis[3][VSC_RING_BANDS] = {
+    {0.00f, 12.00f, 19.02f, 24.00f, 27.86f, 31.02f, 33.69f, 36.00f, 38.04f, 39.86f},
+    {0.00f, 8.07f, 13.14f, 14.39f, 16.89f, 18.54f, 19.90f, 21.69f, 22.18f, 24.26f},
+    {0.00f, 17.55f, 29.21f, 37.91f, 44.86f, 50.64f, 55.60f, 59.93f, 63.78f, 67.25f}};
 static VSC_HOT void ring(unsigned t, unsigned off, unsigned n)
 {
     struct track *k = &tr[t];
     float *x = k->out + off, *sd = k->side;
     const float dt = (float)n * (1.f / (float)VSC_SR);
     /* pitches: ten bands rising ~0.75 octave each from C2, snapped upward onto the scale */
-    unsigned mask = ring_scales[vsc.t[t][P_KSCALE] & 7];
+    if (k->kmode != FT_RING) {   /* REBUILD had this state: start clean */
+        k->kmode = FT_RING; k->kok = 0;
+        for (unsigned b = 0; b < VSC_RING_BANDS; ++b) { k->ky1[b] = k->ky2[b] = 0.f; k->kgain[b] = 0.f; }
+    }
+    unsigned ksc = vsc.t[t][P_KSCALE];
+    /* SCALE: a scale's notes, or HARM, MEMBR, BAR (fixed ratios: a string's, a drum
+     * head's, a struck bar's partials) */
+    unsigned mask = ksc >= KSCALE_RATIOS ? 0x1000u << ((ksc - KSCALE_RATIOS) % 3u) : ring_scales[ksc & 7];
     float semis0 = clampf(k->e[P_KPITCH] * 127.f - 24.f, -24.f, 24.f);
+    if (vsc.t[t][P_KFOLLOW]) {
+        /* FOLLOW: the lowest band on the pitch the listener hears, to the semitone (so the
+         * tuning is only remade when the note changes), held through silence; PITCH shifts it */
+        if (ana.voiced) k->kfol = (float)floori(ana.note + 0.5f);
+        if (k->kfol > 0.f) semis0 = clampf(k->kfol - 36.f + semis0, -24.f, 48.f);
+    }
     float decay = k->e[P_KDECAY], t60 = 0.03f * exp2a(decay * 7.f);
     float r = exp2a(-9.966f / (t60 * (float)VSC_SR));          /* 60 dB over t60 */
     float b0 = (1.f - r * r) * 0.5f, a2 = r * r;
@@ -793,11 +1101,16 @@ static VSC_HOT void ring(unsigned t, unsigned off, unsigned n)
     /* the tuning only changes when what it is made from does: same values, made once */
     if (!k->kok || k->kmask != mask || k->krk[0] != semis0 || k->krk[1] != det || k->krk[2] != r) {
         for (unsigned b = 0; b < VSC_RING_BANDS; ++b) {
-            int s = (int)b * 9; if (s <= last) s = last + 1;
-            while (!(mask >> (s % 12) & 1)) ++s;
-            last = s;
+            float fs;
+            if (mask >= 0x1000u) fs = ring_ratio_semis[(ksc - KSCALE_RATIOS) % 3u][b];
+            else {
+                int s = (int)b * 9; if (s <= last) s = last + 1;
+                while (!(mask >> (s % 12) & 1)) ++s;
+                last = s;
+                fs = (float)s;
+            }
             float sign = (b & 1) ? 1.f : -1.f;
-            float semis = (float)s + semis0 + sign * det * 0.5f;     /* DETUNE: up to half a semitone apart */
+            float semis = fs + semis0 + sign * det * 0.5f;     /* DETUNE: up to half a semitone apart */
             float hz = 65.406f * exp2a(semis * (1.f / 12.f));
             if (hz > 0.42f * (float)VSC_SR) hz = 0.42f * (float)VSC_SR;
             k->ka1[b] = 2.f * r * cos2pi(hz * (1.f / (float)VSC_SR));
@@ -840,7 +1153,23 @@ static VSC_HOT void ring(unsigned t, unsigned off, unsigned n)
      * in the same order (band 0 first) as sample by sample, for far fewer loads and
      * stores. n is at most VSC_SUB. */
     float dxs[VSC_SUB], Ls[VSC_SUB], Rs[VSC_SUB];
-    for (unsigned i = 0; i < n; ++i) { float v0 = x[i]; dxs[i] = v0 - x2; x2 = x1; x1 = v0; Ls[i] = 0.f; Rs[i] = 0.f; }
+    float kexc = k->e[P_KEXCITE];
+    if (kexc > 0.f) {
+        /* EXCITE: the listener's hits strike the bank (a short noise burst as strong as the
+         * hit), and the track's own sound feeds it less, to none at full EXCITE */
+        float hit = ana.hit[off / VSC_SUB < ANA_SUBS ? off / VSC_SUB : 0];
+        if (hit > k->kburst) k->kburst = hit;
+        /* a burst carries little energy into each narrow band: scaled so a full hit rings
+         * near full level whatever DECAY is (b0 is the bands' input gain) */
+        float dry = 1.f - kexc, strike = kexc * clampf(0.0125f / (b0 * makeup), 1.f, 40.f);
+        for (unsigned i = 0; i < n; ++i) {
+            float v0 = x[i] * dry + rndb() * k->kburst * strike;
+            k->kburst *= 0.994f;                                          /* ~4 ms */
+            dxs[i] = v0 - x2; x2 = x1; x1 = v0; Ls[i] = 0.f; Rs[i] = 0.f;
+        }
+        if (k->kburst < 1e-5f) k->kburst = 0.f;
+    } else
+        for (unsigned i = 0; i < n; ++i) { float v0 = x[i]; dxs[i] = v0 - x2; x2 = x1; x1 = v0; Ls[i] = 0.f; Rs[i] = 0.f; }
     /* the bands that speak: relief 2 keeps every other one; a band closed to the input
      * (SUSTAIN) whose output, made up, is under -100 dB and has rung out adds nothing and is left resting */
     uint8_t on[VSC_RING_BANDS]; unsigned non = 0;
@@ -896,6 +1225,86 @@ static VSC_HOT void ring(unsigned t, unsigned off, unsigned n)
     }
 }
 
+/* --------------------------------------------------------------- REBUILD
+ * DISSECT's resynthesis, in the FILTER slot: up to eight sine partials at the pitch the
+ * listener hears, at its partials' levels. SHIFT moves them (semitones), STRTCH spreads
+ * them apart (inharmonic), TILT gives more or fewer of the upper ones, DETUNE pulls odd
+ * and even apart in pitch and across the stereo field. SMEAR is how slowly they follow;
+ * UNVOIC what they do when no pitch is heard: HOLD the last, or FADE. SNAP puts the pitch
+ * on the nearest semitone. WET blends with the track's own sound, TONE tilts as RESON's.
+ * Each partial is a rotating phasor (four multiplies a frame, renormalised once a
+ * sub-block); silent ones are skipped. */
+static VSC_HOTDATA const float log2_h[8] = {0.f, 1.f, 1.5849625f, 2.f, 2.3219281f, 2.5849625f, 2.8073549f, 3.f};
+static VSC_HOT_SMALL void rebuild(unsigned t, unsigned off, unsigned n)
+{
+    struct track *k = &tr[t];
+    float *x = k->out + off, *sd = k->side;
+    /* the partials live in RESON's band state: ky1/ky2 the phasor, kgain the level,
+     * ka1 the frequency, ku the level they head for */
+    if (k->kmode != FT_REBUILD) {
+        k->kmode = FT_REBUILD; k->kok = 0;
+        for (unsigned b = 0; b < VSC_RING_BANDS; ++b) { k->ky1[b] = 1.f; k->ky2[b] = 0.f; k->kgain[b] = 0.f; k->ka1[b] = 0.f; k->ku[b] = 0.f; }
+    }
+    unsigned parts = (vsc.t[t][P_KSCALE] > 7u ? 7u : vsc.t[t][P_KSCALE]) + 1u;
+    if (vsc_relief >= 2 && parts > 4u) parts = 4u;                 /* relief 2: four at most */
+    float shift = k->e[P_KPITCH] * 127.f - 24.f;
+    float stretch = 1.f + k->e[P_KWAVES] * 0.15f, tilt = (k->e[P_KTILT] * 2.f - 1.f) * 1.5f;
+    float det = k->e[P_KDETUN], smear = k->e[P_KDECAY];
+    float dt = (float)n * (1.f / (float)VSC_SR), tau = 0.004f + 2.f * smear * smear, c = dt / (tau + dt);
+    int fade = vsc.t[t][P_KDMODE] == RING_CHOKE, voiced = ana.voiced;
+    float note = ana.note;                                        /* held through silence */
+    if (vsc.t[t][P_KFOLLOW] && note > 0.f) note = (float)floori(note + 0.5f);   /* SNAP */
+    float f0 = note > 0.f ? 440.f * exp2a((note - 69.f + shift) * (1.f / 12.f)) : 0.f;
+    float wet = k->e[P_FMIX], tone = k->e[P_KTONE] * 2.f - 1.f;
+    int send = vsc.t[t][P_FWMODE] == WET_SEND;
+    float Ls[VSC_SUB], Rs[VSC_SUB];
+    for (unsigned i = 0; i < n; ++i) { Ls[i] = 0.f; Rs[i] = 0.f; }
+    for (unsigned h = 0; h < VSC_RING_BANDS; ++h) {
+        if (h >= parts) { k->kgain[h] = 0.f; vsc_meter.ring_amp[t][h] = 0; continue; }
+        float sign = (h & 1u) ? 1.f : -1.f;
+        float tf = k->ka1[h];
+        if (f0 > 0.f) {
+            tf = f0 * exp2a(log2_h[h] * stretch) * (1.f + sign * det * 0.006f);   /* DETUNE: up to 10 cents */
+            if (voiced) k->ku[h] = vsc_meter.ana_harm[h] * exp2a(log2_h[h] * tilt);
+        }
+        float ta = fade && !voiced ? 0.f : k->ku[h];
+        if (tf > 0.45f * (float)VSC_SR) ta = 0.f;
+        float f = k->ka1[h] > 0.f ? k->ka1[h] + (tf - k->ka1[h]) * c : tf;
+        k->ka1[h] = f;
+        float a0 = k->kgain[h], a1 = a0 + (ta - a0) * c;
+        if (a1 < 1e-7f) a1 = 0.f;                                 /* no denormals */
+        k->kgain[h] = a1;
+        float u = f > 20.f ? log2a(f * (1.f / 20.f)) * (1.f / 9.95f) : 0.f;
+        vsc_meter.ring_x[t][h] = (uint8_t)clampf(u * 239.f, 0.f, 239.f);
+        vsc_meter.ring_amp[t][h] = (uint8_t)(clampf(a1 * 4.f, 0.f, 1.f) * 255.f);
+        float p = f * (1.f / (float)VSC_SR);
+        if ((a0 < 1e-5f && a1 < 1e-5f) || p <= 0.f || p > 0.45f) continue;   /* silent: skipped */
+        float cs = cos2pi(p), sn = cos2pi(absf(p - 0.25f));                  /* sin(2 pi p), p <= 0.5 */
+        float re = k->ky1[h], im = k->ky2[h], a = a0, da = (a1 - a0) / (float)n;
+        float pan = 0.5f + sign * det * 0.45f, gl = 1.f - pan, gr = pan;
+        for (unsigned i = 0; i < n; ++i) {
+            float r2 = re * cs - im * sn;
+            im = re * sn + im * cs; re = r2;
+            a += da;
+            float y = im * a;
+            Ls[i] += y * gl; Rs[i] += y * gr;
+        }
+        float m = 1.5f - 0.5f * (re * re + im * im);
+        k->ky1[h] = re * m; k->ky2[h] = im * m;
+    }
+    float tl = k->ktone;
+    for (unsigned i = 0; i < n; ++i) {
+        float v0 = x[i], L = Ls[i], R = Rs[i];
+        float mid = L + R, dif = L - R;
+        tl += (mid - tl) * 0.11f;
+        mid = tone < 0.f ? mid + (tl - mid) * -tone : mid - tl * tone;
+        mid = tanha(mid); dif = tanha(dif) * 0.35f;
+        x[i] = send ? v0 + mid * wet : v0 + (mid - v0) * wet;
+        sd[i] = dif * wet;
+    }
+    k->ktone = tl;
+}
+
 static VSC_HOT void filter(unsigned t, unsigned off, unsigned n)
 {
     struct track *k = &tr[t];
@@ -903,6 +1312,7 @@ static VSC_HOT void filter(unsigned t, unsigned off, unsigned n)
     for (unsigned i = 0; i < n; ++i) k->side[i] = 0.f;
     if (type == FT_OFF) return;
     if (type == FT_RING) { ring(t, off, n); return; }
+    if (type == FT_REBUILD) { rebuild(t, off, n); return; }
     float *x = k->out + off;
     float mix = k->e[P_FMIX];
     int send = vsc.t[t][P_FWMODE] == WET_SEND;
@@ -1266,7 +1676,7 @@ VSC_INL int follow_clock(void)
     unsigned c = vsc.g[G_CLOCK];
     return c == CLOCK_MIDI || (c == CLOCK_AUTO && vsc_meter.ext_clock);
 }
-static VSC_HOT void sequencer(unsigned n)
+static VSC_HOT void sequencer(unsigned n, unsigned sub)
 {
     for (unsigned t = 0; t < VSC_TRACKS; ++t)
         if (tr[t].gate_left > 0) {
@@ -1278,6 +1688,10 @@ static VSC_HOT void sequencer(unsigned n)
         if (seq_running && vsc.t[t][P_SEQM] == SEQ_CAROM) carom(t, n);
     }
     if (!seq_running) return;
+    if (vsc.g[G_AHITS] == AHITS_STEPS) {   /* DISSECT HITS STEPS: the music's hits clock the steps */
+        if (ana.hit[sub] > 0.f) { ++seq_step; metro_tick(); fire_step(); }
+        return;
+    }
     if (follow_clock()) { /* MIDI clock: steps fire on every sixth pulse */
         while (seq_ext_pending) { --seq_ext_pending; metro_tick(); fire_step(); ++seq_step; }
         return;
@@ -1540,6 +1954,10 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
     }
     for (unsigned t = 0; t < VSC_TRACKS; ++t) input_for(t, in);
     for (unsigned i = 0; i < VSC_BLOCK; ++i) { space_l[i] = space_r[i] = 0.f; out[2 * i] = out[2 * i + 1] = 0.f; }
+    {   /* DISSECT's listener, once for everyone (timed with the rest: the "+" part) */
+        int want = ana_wanted();
+        ana_block(in, want);
+    }
 
     /* which tracks another track listens to (its INPUT): those never sleep for being muted */
     uint8_t heard[VSC_TRACKS] = {0};
@@ -1550,7 +1968,16 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
     uint32_t part[VSC_PARTS] = {0};
     for (unsigned off = 0; off < VSC_BLOCK; off += VSC_SUB) {
         compute_globals();
-        sequencer(VSC_SUB);
+        unsigned sub = off / VSC_SUB;
+        float hit = ana.hit[sub];
+        if (hit > 0.f && vsc.g[G_AHITS] == AHITS_BALLS) {
+            /* HITS BALLS: each hit throws a ball into every CAROM track, at the pitch heard */
+            float nh = ana_note_now();
+            unsigned note = nh > 0.f ? (unsigned)clampf((float)floori(nh + 0.5f), 24.f, 96.f) : 60u;
+            for (unsigned t = 0; t < VSC_TRACKS; ++t)
+                if (vsc.t[t][P_SEQM] == SEQ_CAROM && !vsc.t[t][P_MUTE]) { ball_add(t, note, (unsigned)(40.f + hit * 87.f)); ball_seeded[t] = 1; }
+        }
+        sequencer(VSC_SUB, sub);
         for (unsigned t = 0; t < VSC_TRACKS; ++t) {
             struct track *k = &tr[t];
             uint32_t t0 = vsc_clock_now ? vsc_clock_now() : 0;
@@ -1562,7 +1989,15 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
              * A track nobody can hear (muted, or no level and no send, and no track listening
              * to it) doesn't wake, and sleeps after its hold. */
             int quiet = (vsc.t[t][P_MUTE] || (k->e[P_LEVEL] <= 0.f && k->e[P_SEND] <= 0.f)) && !heard[t];
-            if (!quiet && (k->mat_pk > VSC_WAKE_LEVEL || vsc.t[t][P_GFREEZE] || vsc.t[t][P_NOISE])) k->awake = VSC_WAKE_HOLD;
+            /* DISSECT wakes a track whose devices play from the listener: REBUILD while a pitch
+             * is heard, RESON's EXCITE and GRAIN's HITS on a hit */
+            int lis = 0;
+            if (vsc_meter.ana_on) {
+                unsigned ft = vsc.t[t][P_FTYPE];
+                lis = (ft == FT_REBUILD && ana.voiced) ||
+                      (hit > 0.f && ((ft == FT_RING && vsc.t[t][P_KEXCITE]) || vsc.t[t][P_GTRIG] == GTRIG_HITS));
+            }
+            if (!quiet && (k->mat_pk > VSC_WAKE_LEVEL || vsc.t[t][P_GFREEZE] || vsc.t[t][P_NOISE] || lis)) k->awake = VSC_WAKE_HOLD;
 #ifdef VSC_NO_SLEEP
             k->awake = VSC_WAKE_HOLD;             /* measuring: every track always awake */
 #endif
@@ -1644,8 +2079,8 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
         float l = clampf(tanha(out[2 * i] * gl) + click, -1.f, 1.f), r = clampf(tanha(out[2 * i + 1] * gl) + click, -1.f, 1.f);
         out[2 * i] = l; out[2 * i + 1] = r;
         main_prev[i] = (l + r) * 0.5f;
-        vsc_scope[0][i] = l; vsc_scope[1][i] = r;
         float a = absf(l) > absf(r) ? absf(l) : absf(r);
+        vsc_scope[i] = (uint8_t)(a * 255.f);
         if (a > mp) mp = a;
     }
     vsc_meter.main_peak = mp > vsc_meter.main_peak ? mp : vsc_meter.main_peak * 0.97f;

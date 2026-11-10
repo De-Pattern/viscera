@@ -13,7 +13,7 @@
   <img src="docs/art/cycle.gif" width="520" alt="The install page animation: vapour, rain, swell, melt, settle">
 </p>
 
-Viscera brings sound in over Bluetooth (a phone or tablet) or USB (a computer), or plays it from the FM-1's flash sample bank, then takes it apart. Each track runs MATERIAL → GRAIN → FILTER → COLOR into a shared SPACE bus (delay and reverb), with four modulators per track, macros, scenes that morph, and a step sequencer with parameter locks.
+Viscera brings sound in over Bluetooth (a phone or tablet) or USB (a computer), or plays it from the FM-1's flash sample bank, then takes it apart. Each track runs MATERIAL → GRAIN → FILTER → COLOR into a shared SPACE bus (delay and reverb), with four modulators per track, macros, scenes that morph, and a step sequencer with parameter locks. DISSECT listens to the music coming in (its bands, hits and pitch) and lets it drive the devices: hits start grains and strike RESON, the pitch tunes RESON, REBUILD resynthesises it as partials, and hits can throw CAROM balls or clock the steps.
 
 It's built on M-VAVE's official FM1 Open SDK (V14), so Bluetooth, USB audio and MIDI keep working, and samples uploaded with M-VAVE's workbench still play.
 

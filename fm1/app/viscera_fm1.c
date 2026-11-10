@@ -17,9 +17,14 @@
 static volatile uint8_t ready;
 static uint8_t over_count, hard_count; static uint16_t rest_blocks, calm_blocks;
 volatile uint8_t vsc_fm1_overload;   /* set while the CPU guard has silenced the engine (its last resort) */
-static float in_bt[VSC_BLOCK * 2], in_usb[VSC_BLOCK * 2], mix[VSC_BLOCK * 2];
-static int32_t usb_raw[VSC_BLOCK * 2];
-static int16_t bt_raw[VSC_BLOCK * 2];
+/* The inputs are read raw into the buffers they are then converted in place in, and the
+ * engine renders into the output block itself: 2.5 KB less RAM, which the library's
+ * start-up needs as heap. may_alias: the same memory is read as one type and written
+ * as another. */
+typedef float __attribute__((may_alias)) af32;
+typedef int32_t __attribute__((may_alias)) ai32;
+typedef int16_t __attribute__((may_alias)) ai16;
+static float in_bt[VSC_BLOCK * 2], in_usb[VSC_BLOCK * 2];
 static uint32_t render_peak_ticks, render_ticks, block_period, block_prev;
 /* the audio timer, read directly (fm1_device_ticks lives in flash; nothing the audio
  * interrupt calls may) */
@@ -56,21 +61,29 @@ FM1_AUDIO_CODE int vsc_fm1_render(int32_t *out)
     block_prev = t0 | 1u;
     struct vsc_inputs in = {0, 0};
     uint16_t gains[2];
-    if (fm1_usb_audio_read(usb_raw, VSC_BLOCK, gains) == VSC_BLOCK) {
-        for (unsigned i = 0; i < VSC_BLOCK * 2; ++i) in_usb[i] = (float)usb_raw[i] * (1.f / 8388608.f);
-        in.usb = in_usb;
+    {   /* USB: Q23 in int32, converted where it lies (same size) */
+        ai32 *raw = (ai32 *)in_usb; af32 *f = (af32 *)in_usb;
+        if (fm1_usb_audio_read((int32_t *)raw, VSC_BLOCK, gains) == VSC_BLOCK) {
+            for (unsigned i = 0; i < VSC_BLOCK * 2; ++i) { int32_t v = raw[i]; f[i] = (float)v * (1.f / 8388608.f); }
+            in.usb = in_usb;
+        }
     }
-    if (fm1_bluetooth_audio_read(bt_raw, VSC_BLOCK) == VSC_BLOCK) {
-        for (unsigned i = 0; i < VSC_BLOCK * 2; ++i) in_bt[i] = (float)bt_raw[i] * (1.f / 32768.f);
-        in.bt = in_bt;
+    {   /* Bluetooth: int16 in the first half, widened from the end down (each read
+         * happens before its bytes are overwritten) */
+        ai16 *raw = (ai16 *)in_bt; af32 *f = (af32 *)in_bt;
+        if (fm1_bluetooth_audio_read((int16_t *)raw, VSC_BLOCK) == VSC_BLOCK) {
+            for (unsigned i = VSC_BLOCK * 2; i-- > 0;) { int16_t v = raw[i]; f[i] = (float)v * (1.f / 32768.f); }
+            in.bt = in_bt;
+        }
     }
-    vsc_render(&in, mix);
+    af32 *mix = (af32 *)out;   /* rendered into the output block, converted to Q23 in place */
+    vsc_render(&in, (float *)mix);
     int mon = vsc.g[G_INMON];
     for (unsigned i = 0; i < VSC_BLOCK * 2; ++i) {
         float v = mix[i];
         if (mon) { if (in.bt) v += in_bt[i]; if (in.usb) v += in_usb[i]; }
         if (v > 1.f) v = 1.f; else if (v < -1.f) v = -1.f;
-        out[i] = (int32_t)(v * 8388607.f);
+        ((ai32 *)out)[i] = (int32_t)(v * 8388607.f);
     }
     uint32_t used = ticks_between(t0, FM1_AUDIO_TIMER_COUNT);
     render_ticks = used;
@@ -196,7 +209,8 @@ int vsc_fm1_slot_info(unsigned slot, char name[12])
 {
     uint32_t head[4];
     if (fm1_flash_read(slot_offset(slot), head, sizeof head)) return 0;
-    if (head[0] != VSC_MAGIC || head[2] != sizeof(struct vsc_project)) return 0;
+    /* this format, or 0.2.x's (format 4: loading upgrades it) */
+    if (head[0] != VSC_MAGIC || (head[2] != sizeof(struct vsc_project) && !(head[1] == 4u && head[2] == vsc_project_v4_bytes()))) return 0;
     if (fm1_flash_read(slot_offset(slot) + 16u, name, 12)) return 0;
     return 1;
 }
@@ -223,9 +237,10 @@ int vsc_fm1_load(unsigned slot)
     if (slot >= VSC_PROJECTS) return -1;
     uint32_t base = slot_offset(slot), head[4];
     if (fm1_flash_read(base, head, sizeof head)) return -3;
-    if (head[0] != VSC_MAGIC || head[1] != VSC_FORMAT || head[2] != sizeof(struct vsc_project)) return -4;
+    int old = head[0] == VSC_MAGIC && head[1] == 4u && head[2] == vsc_project_v4_bytes();   /* 0.2.x: upgraded below */
+    if (!old && (head[0] != VSC_MAGIC || head[1] != VSC_FORMAT || head[2] != sizeof(struct vsc_project))) return -4;
     uint8_t buf[256];
-    uint32_t c = 0xffffffffu, at = offsetof(struct vsc_project, name), end = sizeof(struct vsc_project);
+    uint32_t c = 0xffffffffu, at = offsetof(struct vsc_project, name), end = head[2];
     while (at < end) {
         uint32_t n = end - at < sizeof buf ? end - at : sizeof buf;
         if (fm1_flash_read(base + at, buf, n)) return -3;
@@ -238,7 +253,8 @@ int vsc_fm1_load(unsigned slot)
     if (~c != head[3]) return -4;
     vsc_event(EV_STOP, 0, 0, 0);
     vsc_event(EV_PANIC, 0, 0, 0);
-    if (fm1_flash_read(base, &vsc, sizeof vsc)) return -3;
+    if (fm1_flash_read(base, &vsc, end)) return -3;
+    if (old && vsc_project_upgrade(&vsc, 0)) return -4;   /* its CRC was checked above */
     vsc_learn_release();
     return 0;
 }

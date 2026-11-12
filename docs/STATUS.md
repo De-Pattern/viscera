@@ -13,7 +13,7 @@ The firmware builds and packages on Linux, and the package passes M-VAVE's own u
 
 Budget at 0.1.0: app image 443,528 of 453,921 bytes; Bluetooth heap 54,924 bytes (needs 49,152).
 
-Budget at 1.0.0 (PUTTY): app image 452,884 of 453,921 bytes; heap 116,012 bytes (the build refuses less than 112,640). The control task's functions in `viscera_fm1.c` are built for size, and the engine's per-event functions (notes, captures, steps, MIDI, events) sit in RAM built for size, to fit.
+Budget at 1.0.0 (PUTTY): app image 453,268 of 453,921 bytes; heap 117,676 bytes (the build refuses less than 112,640). The control task's functions in `viscera_fm1.c` are built for size, and the engine's per-event functions (notes, captures, steps, MIDI, events) sit in RAM built for size, to fit.
 
 ## Identity and build ID
 

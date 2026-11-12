@@ -22,7 +22,7 @@
 - **Kept:** COLOR, SPACE, the modulators and matrix, PERFORM, scenes, macros, CAROM, DISSECT's listener (now driving SHARDS), MIDI learn, sounds, settings, the CPU guard.
 - **Gone:** PLAY, LOOP, KEYS and THRU modes as they were, GRAIN, the filters, RESON and REBUILD.
 - **Changed:** project format 6 and device settings version 3: 0.x projects and sounds don't load. The delay line is 8-bit µ-law (as the captures), which frees RAM for the vocoders.
-- **Budgets:** app image 452.9 KB of 453.9 KB; heap 116.0 KB (needs 110). CPU in fm1-emu at the FM-1's timing, with two SPECTRA tracks (one crossing), dense SHARDS, HANDS and SPACE all busy: 72–85% a block (the guard steps in above 90%); one SPECTRA instead: 51–77%; HANDS and SHARDS only: 54%.
+- **Budgets:** app image 453.3 KB of 453.9 KB; heap 117.7 KB (needs 110). CPU in fm1-emu at the FM-1's timing, with two SPECTRA tracks (one crossing), dense SHARDS, HANDS and SPACE all busy: 72–85% a block (the guard steps in above 90%); one SPECTRA instead: 51–77%; HANDS and SHARDS only: 54%.
 
 ## 0.3.0
 

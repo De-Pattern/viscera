@@ -85,6 +85,22 @@ static void host(unsigned req, unsigned arg)
         vsc_ui_notice(r == 0 ? "SAVED" : r == -2 ? "STOP PLAYBACK TO SAVE" : "SAVE FAILED", 1500);
         refresh_slots();
         break;
+    case HOST_KEEP: {   /* the first KEEP asks again: a new reel takes the stock firmware's project space */
+        static uint32_t asked_at;
+        uint32_t now = fm1_millis();
+        int confirmed = asked_at && now - asked_at < 5000u;
+        r = vsc_fm1_reel_keep(arg, confirmed);
+        if (r == -5) { asked_at = now; vsc_ui_notice("AGAIN: A NEW REEL ERASES STOCK PROJECTS", 5000); break; }
+        asked_at = 0;
+        vsc_ui_notice(r == 0 ? "KEPT ON THE REEL" : r == -2 ? "KEEP: LET THE CAPTURE PLAY FIRST" : r == -6 ? "THE REEL IS FULL (SETTINGS)" : "KEEP FAILED", 1300);
+        vsc_host.reel_free = (uint8_t)vsc_fm1_reel_free();
+        break;
+    }
+    case HOST_REEL_CLEAR:
+        r = vsc_fm1_reel_clear();
+        vsc_ui_notice(r == 0 ? "REEL ERASED" : "ERASE FAILED", 1200);
+        vsc_host.reel_free = (uint8_t)vsc_fm1_reel_free();
+        break;
     case HOST_LOAD:
         r = vsc_fm1_load(arg);
         vsc_ui_notice(r == 0 ? "LOADED" : "LOAD FAILED", 1500);
@@ -136,6 +152,7 @@ static void start(void)
     vsc_ui_init();
     configure_bt(FM1_BT_AUDIO | FM1_BT_MIDI);
     refresh_slots();
+    vsc_host.reel_free = (uint8_t)vsc_fm1_reel_free();
 }
 
 /* A start that has run for a while is a good one: clear the guard's count. In safe
@@ -219,7 +236,7 @@ void groove_screen_control(void)
         { unsigned pk = 0, cpu = vsc_fm1_cpu(&pk); vsc_host.cpu = (uint8_t)(cpu > 254u ? 254u : cpu); vsc_host.cpu_peak = (uint8_t)(pk > 255u ? 255u : pk); }
         vsc_fm1_parts(vsc_host.part);
         { static uint8_t shown; uint8_t r = vsc_relief; vsc_host.relief = r;
-          if (r > shown) vsc_ui_notice(r >= 2 ? "CPU HIGH: FEWER GRAINS + BANDS" : "CPU HIGH: REVERB RESTS", 1500);
+          if (r > shown) vsc_ui_notice(r >= 2 ? "CPU HIGH: SHARDS + SPECTRA EASED" : "CPU HIGH: REVERB RESTS", 1500);
           shown = r; }
         if (vsc_fm1_overload) vsc_ui_notice("CPU OVERLOAD: SOUND PAUSED", 1200);
     }

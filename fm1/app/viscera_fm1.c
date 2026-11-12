@@ -13,6 +13,9 @@
 
 #include "vsc_sea_table.inc"
 
+/* the control task's functions: size over speed (flash is short) */
+#define CTRL __attribute__((minsize))
+
 /* ------------------------------------------------------------ audio */
 static volatile uint8_t ready;
 static uint8_t over_count, hard_count; static uint16_t rest_blocks, calm_blocks;
@@ -37,13 +40,14 @@ static inline __attribute__((always_inline)) uint32_t ticks_between(uint32_t sta
 static FM1_AUDIO_CODE uint32_t clock_now(void) { return FM1_AUDIO_TIMER_COUNT; }
 static FM1_AUDIO_CODE uint32_t clock_since(uint32_t since) { return ticks_between(since, FM1_AUDIO_TIMER_COUNT); }
 
-void vsc_fm1_start(void)
+CTRL void vsc_fm1_start(void)
 {
     vsc_init();
     vsc_clock_now = clock_now;
     vsc_clock_since = clock_since;
     vsc_project_defaults(&vsc);
     vsc_fm1_device_load();
+    vsc_fm1_reel_load();
     ready = 1;
 }
 
@@ -95,7 +99,11 @@ FM1_AUDIO_CODE int vsc_fm1_render(int32_t *out)
      * the update protocol). Below 60% for about 3 s: one step back. (No division
      * here: the compiler's divide helpers live in flash; 32-bit: a block is far
      * below 2^28 ticks.) */
+#ifdef VSC_BENCH
+    if (0) {
+#else
     if (block_period && used < 0x10000000u && used * 10u > block_period * 9u) {
+#endif
         calm_blocks = 0;
         if (++over_count >= 2) {
             over_count = 0;
@@ -112,7 +120,7 @@ FM1_AUDIO_CODE int vsc_fm1_render(int32_t *out)
     return 0;
 }
 /* Render time as a share of one block (0..100+), and its peak since the last read. */
-unsigned vsc_fm1_cpu(unsigned *peak)
+CTRL unsigned vsc_fm1_cpu(unsigned *peak)
 {
     /* (control task) as a share of the measured block period */
     uint32_t period = block_period ? block_period : 1u;
@@ -123,7 +131,7 @@ unsigned vsc_fm1_cpu(unsigned *peak)
 
 /* (control task) each part's share of a block: T1..T4, SPACE, then the rest (inputs,
  * sequencer, master) */
-void vsc_fm1_parts(uint8_t *pct)
+CTRL void vsc_fm1_parts(uint8_t *pct)
 {
     uint32_t period = block_period ? block_period : 1u, sum = 0;
     for (unsigned i = 0; i < VSC_PARTS; ++i) {
@@ -147,7 +155,7 @@ static volatile uint8_t bank_ok;
 
 /* samples.c calls this after it binds a verified bank (data mapped from
  * flash), and with data NULL when the bank goes away. */
-void vsc_fm1_bank_entry(unsigned slot, const uint8_t *data, uint32_t frames, const char *name)
+CTRL void vsc_fm1_bank_entry(unsigned slot, const uint8_t *data, uint32_t frames, const char *name)
 {
     if (slot >= VSC_BANK_SLOTS) return;
     bank_ok = 0;
@@ -156,8 +164,6 @@ void vsc_fm1_bank_entry(unsigned slot, const uint8_t *data, uint32_t frames, con
     for (unsigned i = 0; i < 15; ++i) bank[slot].name[i] = name && data ? name[i] : 0;
     bank[slot].name[15] = 0;
     for (unsigned i = 0; i < VSC_CACHE; ++i) cache[i].slot = -1;
-    /* a new bank: MATERIAL redraws each sample's shape */
-    for (unsigned t = 0; t < VSC_TRACKS; ++t) vsc_meter.overview_slot[t] = 255;
     bank_ok = 1;
 }
 FM1_AUDIO_CODE unsigned vsc_bank_frames(unsigned slot) { return slot < VSC_BANK_SLOTS && bank_ok ? bank[slot].frames : 0; }
@@ -184,7 +190,7 @@ FM1_AUDIO_CODE const int16_t *vsc_bank_chunk(unsigned slot, unsigned chunk)
 /* ---------------------------------------------------------------- MIDI */
 /* Routing task: queue notes and clock for the audio context. Channels 1-4
  * play tracks 1-4. */
-void vsc_fm1_midi(unsigned source, const uint8_t *m, size_t n)
+CTRL void vsc_fm1_midi(unsigned source, const uint8_t *m, size_t n)
 {
     vsc_midi_in(source, m, (unsigned)n, fm1_millis());
 }
@@ -196,7 +202,7 @@ void vsc_fm1_midi(unsigned source, const uint8_t *m, size_t n)
 static uint32_t slot_offset(unsigned slot) { return VSC_STORE_OFFSET + slot * SLOT_BYTES; }
 _Static_assert(sizeof(struct vsc_project) <= SLOT_BYTES, "a project must fit its slot");
 
-int vsc_fm1_storage_ok(void)
+CTRL int vsc_fm1_storage_ok(void)
 {
     if (fm1_flash_size() < GROOVE_FLASH_BYTES) return 0;
     /* A bank written by the stock firmware may run into our area. */
@@ -205,18 +211,18 @@ int vsc_fm1_storage_ok(void)
     if (header[0] == 0x53314d46u && header[2] > VSC_SAMPLE_LIMIT) return 0;
     return 1;
 }
-int vsc_fm1_slot_info(unsigned slot, char name[12])
+CTRL int vsc_fm1_slot_info(unsigned slot, char name[12])
 {
     uint32_t head[4];
     if (fm1_flash_read(slot_offset(slot), head, sizeof head)) return 0;
-    /* this format, or 0.2.x's (format 4: loading upgrades it) */
-    if (head[0] != VSC_MAGIC || (head[2] != sizeof(struct vsc_project) && !(head[1] == 4u && head[2] == vsc_project_v4_bytes()))) return 0;
+    /* this format only: 0.x projects were made for the old engine */
+    if (head[0] != VSC_MAGIC || head[1] != VSC_FORMAT || head[2] != sizeof(struct vsc_project)) return 0;
     if (fm1_flash_read(slot_offset(slot) + 16u, name, 12)) return 0;
     return 1;
 }
 /* Saving writes flash, which silences audio briefly: only while stopped.
  * No staging copy: RAM is short, so the live project is stamped and written. */
-int vsc_fm1_save(unsigned slot)
+CTRL int vsc_fm1_save(unsigned slot)
 {
     if (slot >= VSC_PROJECTS || !vsc_fm1_storage_ok()) return -1;
     if (vsc_meter.playing) return -2;
@@ -232,13 +238,12 @@ int vsc_fm1_save(unsigned slot)
     return 0;
 }
 /* Loading checks the stored project's CRC straight from flash, then copies it. */
-int vsc_fm1_load(unsigned slot)
+CTRL int vsc_fm1_load(unsigned slot)
 {
     if (slot >= VSC_PROJECTS) return -1;
     uint32_t base = slot_offset(slot), head[4];
     if (fm1_flash_read(base, head, sizeof head)) return -3;
-    int old = head[0] == VSC_MAGIC && head[1] == 4u && head[2] == vsc_project_v4_bytes();   /* 0.2.x: upgraded below */
-    if (!old && (head[0] != VSC_MAGIC || head[1] != VSC_FORMAT || head[2] != sizeof(struct vsc_project))) return -4;
+    if (head[0] != VSC_MAGIC || head[1] != VSC_FORMAT || head[2] != sizeof(struct vsc_project)) return -4;
     uint8_t buf[256];
     uint32_t c = 0xffffffffu, at = offsetof(struct vsc_project, name), end = head[2];
     while (at < end) {
@@ -254,7 +259,6 @@ int vsc_fm1_load(unsigned slot)
     vsc_event(EV_STOP, 0, 0, 0);
     vsc_event(EV_PANIC, 0, 0, 0);
     if (fm1_flash_read(base, &vsc, end)) return -3;
-    if (old && vsc_project_upgrade(&vsc, 0)) return -4;   /* its CRC was checked above */
     vsc_learn_release();
     return 0;
 }
@@ -264,7 +268,7 @@ int vsc_fm1_load(unsigned slot)
 #define BOOT_AT (DEVICE_OFFSET + FM1_FLASH_SECTOR_BYTES - 16u)   /* the start guard: the sector's last 16 bytes */
 _Static_assert(sizeof(struct vsc_device) <= FM1_FLASH_SECTOR_BYTES - 16u, "device settings fit one sector, before the start guard");
 _Static_assert(8u * SLOT_BYTES + FM1_FLASH_SECTOR_BYTES <= VSC_STORE_BYTES, "the settings sector is inside the store");
-void vsc_fm1_device_load(void)
+CTRL void vsc_fm1_device_load(void)
 {
     if (!vsc_fm1_storage_ok() || fm1_flash_read(DEVICE_OFFSET, &vsc_dev, sizeof vsc_dev) || !vsc_device_valid(&vsc_dev))
         vsc_device_defaults();
@@ -274,7 +278,7 @@ void vsc_fm1_device_load(void)
  * few seconds erases the sector again (rewriting the settings). So the count is the
  * starts since the last good one. Returns that count before this start, or -1 if the
  * flash can't be used (then there is no guard). */
-int vsc_fm1_boot_begin(void)
+CTRL int vsc_fm1_boot_begin(void)
 {
     uint8_t b[16];
     if (!vsc_fm1_storage_ok() || fm1_flash_read(BOOT_AT, b, sizeof b)) return -1;
@@ -289,11 +293,112 @@ int vsc_fm1_boot_begin(void)
 }
 /* a good start: clear the count (erases the sector and writes the settings back) */
 int vsc_fm1_boot_good(void) { return vsc_fm1_device_save(); }
-int vsc_fm1_device_save(void)
+CTRL int vsc_fm1_device_save(void)
 {
     if (!vsc_fm1_storage_ok()) return -1;
     vsc_device_seal();
     if (fm1_flash_erase(DEVICE_OFFSET)) return -3;
     if (fm1_flash_write(DEVICE_OFFSET, &vsc_dev, sizeof vsc_dev)) return -3;
     return 0;
+}
+
+/* ------------------------------------------------------------- the reel
+ * KEEP writes a capture to flash as a splice of the reel. The reel lives in the stock
+ * firmware's project sectors 0..14 (the stock settings sector, 15, and its staging
+ * sector, 16, are left alone, so the SDK's own project code reads only what it wrote
+ * or nothing it recognises). Sector 0 is the index: a header, then one 16-byte entry
+ * a splice, each committed by a last word written after its audio. Every splice starts
+ * on a sector, and a sector is erased just before it is written, so a KEEP cut short
+ * (power lost) leaves an uncommitted entry that is simply ignored. Clearing erases the
+ * index; the audio sectors are erased again as new splices reach them. The audio
+ * interrupt reads the reel mapped, and never while it is being written. */
+#define REEL_SECTORS 15u
+#define REEL_DATA FM1_FLASH_SECTOR_BYTES
+#define REEL_DATA_BYTES ((REEL_SECTORS - 1u) * FM1_FLASH_SECTOR_BYTES)
+#define REEL_ENTRIES_AT 64u
+#define REEL_VERSION 1u
+struct reel_head { uint32_t magic, version, data, bytes; };
+struct reel_entry { uint32_t at, frames; uint8_t rate, pad[3]; uint32_t commit; };
+_Static_assert(sizeof(struct reel_entry) == 16, "reel entry layout");
+_Static_assert(REEL_ENTRIES_AT + VSC_SPLICES * sizeof(struct reel_entry) <= FM1_FLASH_SECTOR_BYTES, "the index fits its sector");
+_Static_assert(REEL_SECTORS * FM1_FLASH_SECTOR_BYTES <= GROOVE_SAMPLE_OFFSET - 2u * FM1_FLASH_SECTOR_BYTES, "the reel stays below the stock settings and staging sectors");
+static struct vsc_reel reel;
+static const uint8_t *reel_map;
+static uint8_t reel_made;              /* the index sector holds our header */
+static volatile uint8_t reel_ready;    /* 0 while the reel is being written */
+FM1_AUDIO_CODE const struct vsc_reel *vsc_reel_index(void) { return reel_ready && reel.count ? &reel : 0; }
+FM1_AUDIO_CODE const uint8_t *vsc_reel_data(void) { return reel_ready && reel.count ? reel_map : 0; }
+CTRL static uint32_t reel_end(void)   /* the next splice's start: a sector after the last */
+{
+    if (!reel.count) return 0;
+    uint32_t e = reel.s[reel.count - 1].at + reel.s[reel.count - 1].frames;
+    return (e + FM1_FLASH_SECTOR_BYTES - 1u) & ~(FM1_FLASH_SECTOR_BYTES - 1u);
+}
+CTRL unsigned vsc_fm1_reel_free(void)
+{
+    return (unsigned)((uint64_t)(REEL_DATA_BYTES - reel_end()) * 100u / REEL_DATA_BYTES);
+}
+CTRL void vsc_fm1_reel_load(void)
+{
+    reel_ready = 0;
+    reel.magic = VSC_REEL_MAGIC; reel.count = 0; reel_made = 0;
+    if (!reel_map) reel_map = fm1_flash_map(REEL_DATA, REEL_DATA_BYTES);
+    struct reel_head h;
+    if (!vsc_fm1_storage_ok() || !reel_map || fm1_flash_read(0, &h, sizeof h)) return;
+    if (h.magic != VSC_REEL_MAGIC || h.version != REEL_VERSION || h.data != REEL_DATA || h.bytes != REEL_DATA_BYTES) return;
+    reel_made = 1;
+    uint32_t next = 0;
+    for (unsigned i = 0; i < VSC_SPLICES; ++i) {
+        struct reel_entry e;
+        if (fm1_flash_read(REEL_ENTRIES_AT + i * sizeof e, &e, sizeof e) || e.commit != 0u) break;
+        if (e.at != next || !e.frames || e.frames > VSC_CAP_FRAMES || e.rate > RATE_LO || e.at + e.frames > REEL_DATA_BYTES) break;
+        reel.s[i].at = e.at; reel.s[i].frames = e.frames; reel.s[i].rate = e.rate;
+        reel.count = i + 1u;
+        next = reel_end();
+    }
+    reel_ready = 1;
+}
+/* 0 kept; -1 no flash; -2 nothing captured (or still recording); -5 the first KEEP:
+ * the reel would replace whatever the stock firmware kept there (ask first); -6 full;
+ * -3 a flash error (the reel is read back as it is) */
+CTRL int vsc_fm1_reel_keep(unsigned t, int confirmed)
+{
+    if (t >= VSC_TRACKS || !vsc_fm1_storage_ok() || !reel_map) return -1;
+    uint32_t frames = vsc_meter.src_len[t];
+    if (vsc.t[t][P_SRC] != SRC_CAPTURE || vsc_meter.cap_state[t] != 2 || !frames || frames > VSC_CAP_FRAMES) return -2;
+    if (!reel_made && !confirmed) return -5;
+    uint32_t at = reel_end();
+    if (reel.count >= VSC_SPLICES || at + frames > REEL_DATA_BYTES) return -6;
+    const uint8_t *cap = vsc_capture(t);
+    int r = 0;
+    reel_ready = 0;
+    if (!reel_made) {
+        struct reel_head h = {VSC_REEL_MAGIC, REEL_VERSION, REEL_DATA, REEL_DATA_BYTES};
+        r = fm1_flash_erase(0);
+        if (!r) r = fm1_flash_write(0, &h, sizeof h);
+    }
+    for (uint32_t o = at; !r && o < at + frames; o += FM1_FLASH_SECTOR_BYTES)
+        r = fm1_flash_erase(REEL_DATA + o);
+    uint8_t chunk[256];
+    for (uint32_t o = 0; !r && o < frames; o += sizeof chunk) {
+        uint32_t n = frames - o < sizeof chunk ? frames - o : sizeof chunk;
+        vsc_memcpy(chunk, cap + o, n);   /* the flash input must not change while it is written */
+        r = fm1_flash_write(REEL_DATA + at + o, chunk, n);
+    }
+    struct reel_entry e = {at, frames, vsc.t[t][P_RATE], {0, 0, 0}, 0xffffffffu};
+    uint32_t ea = REEL_ENTRIES_AT + reel.count * sizeof e;
+    if (!r) r = fm1_flash_write(ea, &e, sizeof e);
+    if (!r) { uint32_t commit = 0; r = fm1_flash_write(ea + offsetof(struct reel_entry, commit), &commit, sizeof commit); }
+    (void)fm1_flash_invalidate(0, REEL_SECTORS * FM1_FLASH_SECTOR_BYTES);
+    vsc_fm1_reel_load();
+    return r ? -3 : 0;
+}
+CTRL int vsc_fm1_reel_clear(void)
+{
+    if (!vsc_fm1_storage_ok()) return -1;
+    reel_ready = 0;
+    int r = fm1_flash_erase(0);
+    (void)fm1_flash_invalidate(0, FM1_FLASH_SECTOR_BYTES);
+    vsc_fm1_reel_load();
+    return r ? -3 : 0;
 }

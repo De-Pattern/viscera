@@ -58,12 +58,39 @@ W_EXPORT(bank_commit) int w_bank_commit(unsigned slot, unsigned frames)
     return 0;
 }
 
+/* ---- the reel: in the page's memory (the FM-1 keeps it in flash), sector-aligned
+ * splices as there, so the reel fills up as it would on the instrument ---- */
+#define REEL_BYTES (14u * 4096u)
+static uint8_t reel_pcm[REEL_BYTES];
+static struct vsc_reel reel = {VSC_REEL_MAGIC, 0, {{0, 0, 0, {0, 0, 0}}}};
+const struct vsc_reel *vsc_reel_index(void) { return reel.count ? &reel : 0; }
+const uint8_t *vsc_reel_data(void) { return reel.count ? reel_pcm : 0; }
+static uint32_t reel_end(void)
+{
+    if (!reel.count) return 0;
+    uint32_t e = reel.s[reel.count - 1].at + reel.s[reel.count - 1].frames;
+    return (e + 4095u) & ~4095u;
+}
+static void reel_status(void) { vsc_host.reel_free = (uint8_t)((REEL_BYTES - reel_end()) * 100u / REEL_BYTES); }
+static void reel_keep(unsigned t)
+{
+    uint32_t frames = vsc_meter.src_len[t], at = reel_end();
+    if (t >= VSC_TRACKS || vsc.t[t][P_SRC] != SRC_CAPTURE || vsc_meter.cap_state[t] != 2 || !frames || frames > VSC_CAP_FRAMES) { vsc_ui_notice("KEEP: LET THE CAPTURE PLAY FIRST", 1300); return; }
+    if (reel.count >= VSC_SPLICES || at + frames > REEL_BYTES) { vsc_ui_notice("THE REEL IS FULL (SETTINGS)", 1300); return; }
+    memset(reel_pcm + at, 0xff, ((frames + 4095u) & ~4095u) < REEL_BYTES - at ? ((frames + 4095u) & ~4095u) : REEL_BYTES - at);
+    memcpy(reel_pcm + at, vsc_capture(t), frames);
+    reel.s[reel.count].at = at; reel.s[reel.count].frames = frames; reel.s[reel.count].rate = vsc.t[t][P_RATE];
+    ++reel.count;
+    reel_status();
+}
+W_EXPORT(reel_count) unsigned w_reel_count(void) { return reel.count; }
+
 /* ---- audio ---- */
 static float in_bt[VSC_BLOCK * 2], out_buf[VSC_BLOCK * 2];
 static uint8_t have_input;
 W_EXPORT(input_buffer) float *w_input(void) { return in_bt; }
 W_EXPORT(output_buffer) float *w_output(void) { return out_buf; }
-W_EXPORT(init) void w_init(void) { vsc_init(); vsc_project_defaults(&vsc); vsc_ui_init(); vsc_host.cpu = 255; }
+W_EXPORT(init) void w_init(void) { vsc_init(); vsc_project_defaults(&vsc); vsc_ui_init(); vsc_host.cpu = 255; reel_status(); }
 /* has_input: the page's live input (standing in for Bluetooth/USB audio) */
 W_EXPORT(render) void w_render(int has_input)
 {
@@ -92,6 +119,9 @@ W_EXPORT(control) unsigned w_control(unsigned keys, unsigned buttons, int e0, in
     ui.enc[0] = (int16_t)e0; ui.enc[1] = (int16_t)e1; ui.enc[2] = (int16_t)e2; ui.enc[3] = (int16_t)e3;
     ui.enc[4] = (int16_t)e4; ui.enc[5] = (int16_t)e5; ui.enc[6] = (int16_t)e6;
     host_req = vsc_ui_update(&ui, &host_arg);
+    /* the reel is handled here; the page sees only what it has to do */
+    if (host_req == HOST_KEEP) { reel_keep(host_arg); host_req = HOST_NONE; }
+    else if (host_req == HOST_REEL_CLEAR) { reel.count = 0; reel_status(); host_req = HOST_NONE; }
     return host_req;
 }
 W_EXPORT(host_arg) unsigned w_host_arg(void) { return host_arg; }
@@ -114,9 +144,6 @@ W_EXPORT(project_seal) void w_project_seal(unsigned slot)
     vsc.crc = vsc_crc32(&vsc.name, sizeof vsc - offsetof(struct vsc_project, name));
 }
 W_EXPORT(project_check) int w_project_check(void) { return vsc_project_valid(&vsc); }
-/* a 0.2.x project (format 4) copied in at the start of the project: upgraded in place */
-W_EXPORT(project_upgrade) int w_project_upgrade(void) { return vsc_project_upgrade(&vsc, 1) == 0 && vsc_project_valid(&vsc); }
-W_EXPORT(project_v4_bytes) unsigned w_project_v4_bytes(void) { return vsc_project_v4_bytes(); }
 W_EXPORT(stop_all) void w_stop_all(void) { vsc_event(EV_STOP, 0, 0, 0); vsc_event(EV_PANIC, 0, 0, 0); }
 W_EXPORT(slot_info) void w_slot_info(unsigned slot, unsigned used, const char *name)
 {

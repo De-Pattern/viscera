@@ -28,4 +28,9 @@ int vsc_fm1_device_save(void);
 /* The start guard: starts since the last good one (-1: no flash), and marking a good one. */
 int vsc_fm1_boot_begin(void);
 int vsc_fm1_boot_good(void);
+/* The reel (control task): read its index, KEEP a track's capture, erase it, room left (%). */
+void vsc_fm1_reel_load(void);
+int vsc_fm1_reel_keep(unsigned track, int confirmed);
+int vsc_fm1_reel_clear(void);
+unsigned vsc_fm1_reel_free(void);
 #endif

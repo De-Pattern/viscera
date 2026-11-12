@@ -184,11 +184,11 @@ enum { RM_IDLE, RM_PENDING, RM_DUB, RM_ROBOT, RM_DONE };   /* what a held REC is
 void vsc_ui_notice(const char *t, uint32_t ms) { notice = t; notice_until = now_ms + ms; }
 
 /* ------------------------------------------------------------- robots
- * Hold REC on a putty page and turn a knob: the turn is recorded (up to two seconds)
+ * Hold REC on a putty page and turn a knob: the turn is recorded (up to about two seconds)
  * and, on letting go, loops on its own, relative to where the knob is. Four a track;
  * a fifth replaces the oldest. Not kept in projects. */
-#define ROB_PTS 64
-#define ROB_MS 30
+#define ROB_PTS 48
+#define ROB_MS 40
 struct robot { uint8_t param, n, base, age; uint32_t t0; int8_t pts[ROB_PTS]; };
 static struct robot rob[VSC_TRACKS][VSC_ROBOTS];
 static int rob_rec = -1;               /* the slot being recorded on this track, -1 none */
@@ -601,6 +601,9 @@ void vsc_ui_init(void)
 {
     notice = "VISCERA PUTTY " VSC_VERSION; notice_until = 1500;
     for (unsigned t = 0; t < VSC_TRACKS; ++t) for (unsigned r = 0; r < VSC_ROBOTS; ++r) vsc_robot_param[t][r] = 255;
+#ifdef VSC_BENCH
+    { void vsc_bench_setup(void); vsc_bench_setup(); }
+#endif
 }
 
 /* store the track's sound in the chosen slot; the FM-1 writes it to flash at once.
@@ -1228,7 +1231,7 @@ static void draw_shards(void)
     text(VSC_SCREEN_W - 4 - text_w(tn[vsc.t[t][P_TRIG] & 3], 1), VIS_Y + 2, tn[vsc.t[t][P_TRIG] & 3], C_DIM, 1);
 }
 /* SPECTRA: the spectrum through time, 64 columns of 48 bands at 4 bits */
-#define SPEC_COLS 64
+#define SPEC_COLS 48
 static uint8_t spec_hist[SPEC_COLS][24]; static unsigned spec_w; static uint8_t spec_track = 255;
 static uint16_t spec_pal[16];
 static unsigned spec_lv(unsigned v)   /* 0..255 -> 0..15, about 3 dB a step */
@@ -1665,26 +1668,20 @@ static void draw_vis(void)
         static const char *const sn[3] = {"CAPTURES", "PLAYS THE REEL", "PLAYS LIVE"};
         copy_n(b + 8, sn[vsc.t[track][P_SRC] % 3], 20);
         text(6, VIS_Y + 72, b, C_FG, 1);
-        text(6, VIS_Y + 86, "REC ON HANDS, SHARDS OR SPECTRA", C_DIM, 1);
-        text(6, VIS_Y + 98, "CATCHES THE INPUT.", C_DIM, 1);
-        text(6, VIS_Y + 114, "SAMPLES: THE INSTALL PAGE, USB", C_LINE, 1);
+        text(6, VIS_Y + 88, "REC ON A PUTTY PAGE CATCHES IT", C_DIM, 1);
         break;
     } else if (row == SET_CLOCK) {
         text(6, VY(4), "CLOCK", C_DIM, 1);
         text(80, VY(4), vsc_meter.ext_clock ? "MIDI CLOCK ARRIVING" : "NO MIDI CLOCK", vsc_meter.ext_clock ? C_FG : C_LINE, 1);
         text(6, VY(20), "FOLLOWING", C_DIM, 1);
         text(80, VY(20), vsc.g[G_CLOCK] == CLOCK_INT || (vsc.g[G_CLOCK] == CLOCK_AUTO && !vsc_meter.ext_clock) ? "INTERNAL" : "MIDI", C_FG, 1);
-        text(6, VY(44), "MIDI IN FROM THE JACK, USB AND", C_DIM, 1);
-        text(6, VY(56), "BLUETOOTH. CH 1-4: TRACKS 1-4,", C_DIM, 1);
-        text(6, VY(68), "CH 16: SPACE, MIX AND MACROS.", C_DIM, 1);
-        text(6, VY(80), "PROGRAM CHANGE: SCENES.", C_DIM, 1);
+        text(6, VY(44), "CH 1-4: A-D  CH 16: GLOBAL", C_DIM, 1);
+        text(6, VY(56), "PROGRAM CHANGE: SCENES", C_DIM, 1);
         break;
     } else if (row == SET_PANEL) {
         /* PANEL: the FM-1's own settings, the version and the load */
         text(6, VY(4), "VISCERA " VSC_VERSION, C_FG, 1);
-        text(6, VY(18), "THESE SETTINGS BELONG TO THE FM-1:", C_DIM, 1);
-        text(6, VY(30), "KEPT THROUGH POWER-OFF AND LOADS.", C_DIM, 1);
-        text(6, VY(50), "KNOB CC: CC 110-113 TURN KNOB 1-4", C_DIM, 1);
+        text(6, VY(18), "KNOB CC: CC 110-113 TURN KNOB 1-4", C_DIM, 1);
         if (vsc_host.cpu == 255) { text(6, VY(100), "CPU: SHOWN ON THE FM-1", C_DIM, 1); break; }   /* the emulator */
         char b[16] = "CPU "; num(b + 4, vsc_host.cpu); unsigned l = (unsigned)vsc_strlen(b); b[l] = '%'; b[l + 1] = 0;
         text(6, VY(100), b, vsc_host.cpu > 85 ? C_WARN : C_FG, 1);

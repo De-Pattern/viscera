@@ -15,7 +15,7 @@
 /* Buffers (bytes or frames). They come out of the heap M-VAVE's library starts USB,
  * Bluetooth and MIDI from: with too little (0.2.2/0.2.3 had 68 KB) that start-up fails
  * and the FM-1 never starts (no screen, no USB). tools/build_fm1.py checks the heap. */
-#define VSC_CAP_FRAMES    16000    /* per track capture, 8-bit mu-law (0.36 s HI, 0.73 s MID, 1.45 s LO) */
+#define VSC_CAP_FRAMES    15000    /* per track capture, 8-bit mu-law (0.34 s HI, 0.68 s MID, 1.36 s LO) */
 #define VSC_GRAINS        8        /* shards per track */
 #define VSC_DELAY_FRAMES  8192     /* int16 mono (0.19 s, 0.37 s in long mode) */
 #define VSC_FFT           512      /* SPECTRA's frame */

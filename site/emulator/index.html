@@ -75,6 +75,8 @@ nav a:hover{color:var(--ink)}
 .tray{border-radius:12px;background:#151413;box-shadow:inset 0 2px 6px rgba(0,0,0,.8),0 1px 0 rgba(255,255,255,.05);padding:10px;display:grid;gap:8px}
 .lefthand .tray{grid-column:1/-1;grid-template-columns:1fr 1fr;padding:8px;width:100%}
 /* buttons as in the PUTTY drawings: soft charcoal keys with white names; REC is the lavender one */
+.devpick{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px}
+.devpick select{flex:1;min-width:0;background:transparent;color:inherit;border:1px solid currentColor;border-radius:0;padding:4px 6px;font:inherit}
 .btn{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;height:46px;padding:0;border:1px solid #0c0c0e;border-radius:7px;cursor:pointer;
   background:linear-gradient(180deg,#3a393e,#28272b 60%,#232226);box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 3px 4px rgba(0,0,0,.6);color:#efecf3;min-width:0}
 .btn .l{font:600 10px/1 var(--sans);letter-spacing:.09em}
@@ -168,7 +170,7 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
       <p class="eyebrow">Emulator · PUTTY</p>
       <h1>Play it before<br>you flash it.</h1>
     </div>
-    <p>The same code the FM-1 runs, compiled for the browser: the engine, the screen and the controls. An audio file or your microphone stands in for Bluetooth and USB audio in.</p>
+    <p>The same code the FM-1 runs, compiled for the browser: the engine, the screen and the controls. A demo loop, an audio file, your computer's audio or a microphone stands in for Bluetooth and USB audio in.</p>
   </div>
 
   <div class="stage">
@@ -191,12 +193,18 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
       <div class="panel">
         <h3>Live input (Bluetooth / USB)</h3>
         <div class="seg" role="group" aria-label="Live input">
-          <button id="in-none" aria-pressed="true">None</button>
+          <button id="in-none" aria-pressed="false">None</button>
+          <button id="in-demo" aria-pressed="true">Demo</button>
           <button id="in-file" aria-pressed="false">File</button>
+          <button id="in-pc" aria-pressed="false" title="Share a browser tab's audio, or (Chrome or Edge on Windows) the whole computer's">PC audio</button>
           <button id="in-mic" aria-pressed="false">Mic</button>
         </div>
+        <label class="devpick" for="in-dev">Input device
+          <select id="in-dev"><option value="">Default</option></select>
+        </label>
         <input type="file" id="in-file-pick" accept="audio/*" hidden>
-        <p id="in-name" style="margin:8px 0 0;font-size:12px">A catches it: tap REC on HANDS, tap again. B catches what A plays.</p>
+        <p id="in-name" style="margin:8px 0 0;font-size:12px">A demo loop plays in. Tap REC on HANDS, tap again: A catches it. B catches what A plays.</p>
+        <p class="hint" style="margin:6px 0 0;font-size:11px;color:var(--dim,#8a857c)">PC audio: in the share dialog pick a tab (or Entire screen on Windows) and turn on “Share audio”. Input device: a virtual cable (BlackHole on a Mac, VB-Cable on Windows) brings in a DAW or any app.</p>
       </div>
       <div class="panel">
         <h3>Sample bank</h3>

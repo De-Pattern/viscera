@@ -239,21 +239,110 @@
   }
 
   /* ---------- live input ---------- */
+  const KINDS = ['none', 'demo', 'file', 'pc', 'mic'];
   function setInput(kind) {
-    ['none', 'file', 'mic'].forEach(k => $('in-' + k).setAttribute('aria-pressed', String(k === kind)));
+    KINDS.forEach(k => $('in-' + k).setAttribute('aria-pressed', String(k === kind)));
     inputKind = kind; hostStatus();
   }
   async function useSource(make, label) {
-    if (!ctx) { note('Switch the FM-1 on first.'); return; }
+    if (!ctx) { note('Switch the FM-1 on first.'); return false; }
     try {
       const s = await make();
-      if (source) { try { source.disconnect(); } catch {} if (source.mediaStream) source.mediaStream.getTracks().forEach(t => t.stop()); }
+      if (source) {
+        try { source.disconnect(); } catch {}
+        try { if (source.stop) source.stop(); } catch {}
+        if (source.mediaStream) source.mediaStream.getTracks().forEach(t => t.stop());
+        if (source.mediaElement) source.mediaElement.pause();
+      }
       source = s; if (s) s.connect(node);
       $('in-name').textContent = label;
-    } catch { note('That input is not available here.'); setInput('none'); }
+      return true;
+    } catch (e) { note(e && e.userMessage ? e.userMessage : 'That input is not available here.'); setInput('none'); $('in-name').textContent = 'No live input.'; return false; }
+  }
+  const CATCH = ' Tap REC on HANDS, tap again: A catches it.';
+
+  /* the demo: made here, at the FM-1's default 110 BPM, four bars of drums, bass and a chord that
+     moves, so there is always something worth catching (no file, nothing to set up) */
+  let demoBuf = null;
+  function demoLoop() {
+    if (demoBuf) return demoBuf;
+    const sr = ctx.sampleRate, n = Math.round(sr * 16 * 60 / 110), L = new Float32Array(n), R = new Float32Array(n);
+    let seed = 7; const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296) * 2 - 1;
+    const beat = sr * 60 / 110, step = beat / 4;
+    const add = (at, len, f, pan = 0) => { for (let i = 0; i < len && at + i < n; i++) { const v = f(i / sr, i); L[at + i] += v * (1 - pan) ; R[at + i] += v * (1 + pan); } };
+    const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+    for (let s = 0; s < 64; s++) {
+      const at = Math.round(s * step), bar = s >> 4, pos = s & 15;
+      if (pos === 0 || pos === 6 || pos === 10 || (bar === 3 && pos === 14))                         // kick
+        add(at, sr * 0.35, t => 0.8 * Math.exp(-t * 9) * Math.sin(2 * Math.PI * (45 * t + 90 * (1 - Math.exp(-t * 35)) / 35)));
+      if (pos === 4 || pos === 12)                                                                   // snare
+        add(at, sr * 0.25, t => Math.exp(-t * 18) * (0.35 * rnd() + 0.25 * Math.sin(2 * Math.PI * 185 * t)), 0.1);
+      if (pos % 2 === 1 || (bar & 1 && pos % 4 === 2))                                               // hats
+        add(at, sr * 0.06, t => 0.16 * Math.exp(-t * 70) * rnd(), pos % 4 === 1 ? 0.4 : -0.4);
+      const bassNotes = [36, 36, 43, 41], bn = bassNotes[bar];                                      // bass
+      if (pos % 4 === 0 || pos === 7 || pos === 14)
+        add(at, step * (pos === 7 ? 1 : 2.6), t => 0.28 * Math.exp(-t * 3) * Math.tanh(2.5 * Math.sin(2 * Math.PI * mtof(bn + (pos === 14 ? 12 : 0)) * t)));
+    }
+    const chords = [[60, 63, 67, 70], [60, 63, 67, 72], [62, 67, 70, 74], [60, 65, 68, 72]];          // pad
+    chords.forEach((c, bar) => add(Math.round(bar * 4 * beat), Math.round(4 * beat), t => {
+      const env = Math.min(1, t * 6) * Math.exp(-t * 0.5);
+      return env * 0.05 * c.reduce((a, m, k) => a + Math.sin(2 * Math.PI * mtof(m) * t * (1 + 0.002 * (k - 1.5))), 0);
+    }, 0.2));
+    const bells = [79, 82, 77, 74, 75, 79, 84, 82];                                                    // bells
+    bells.forEach((m, k) => add(Math.round((k * 4 + 2.5) * beat / 1), Math.round(sr * 1.2), t => 0.12 * Math.exp(-t * 4) * Math.sin(2 * Math.PI * mtof(m) * t) * (1 + 0.5 * Math.sin(2 * Math.PI * mtof(m) * 3.01 * t)), k & 1 ? 0.5 : -0.5));
+    let pk = 0; for (let i = 0; i < n; i++) pk = Math.max(pk, Math.abs(L[i]), Math.abs(R[i]));
+    const g = 0.8 / pk;
+    demoBuf = ctx.createBuffer(2, n, sr);
+    demoBuf.getChannelData(0).set(L.map(v => v * g)); demoBuf.getChannelData(1).set(R.map(v => v * g));
+    return demoBuf;
+  }
+  function useDemo() {
+    setInput('demo');
+    return useSource(async () => { const b = ctx.createBufferSource(); b.buffer = demoLoop(); b.loop = true; b.start(); return b; },
+      'Demo loop: drums, bass, chords and bells, 110 BPM (the FM-1\'s tempo).' + CATCH);
   }
   $('in-none').addEventListener('click', () => { setInput('none'); useSource(async () => null, 'No live input.'); });
-  $('in-mic').addEventListener('click', () => { setInput('mic'); useSource(async () => ctx.createMediaStreamSource(await navigator.mediaDevices.getUserMedia({audio: {echoCancellation: false, noiseSuppression: false}})), 'Microphone. A catches it: tap REC on HANDS.'); });
+  $('in-demo').addEventListener('click', useDemo);
+
+  /* microphone, or any input device: a virtual cable brings in a DAW or any app */
+  async function useMic() {
+    setInput('mic');
+    const id = $('in-dev').value;
+    const ok = await useSource(async () => ctx.createMediaStreamSource(await navigator.mediaDevices.getUserMedia({audio: {
+      deviceId: id ? {exact: id} : undefined, echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2}})),
+      ($('in-dev').selectedOptions[0]?.textContent || 'Microphone') + '.' + CATCH);
+    if (ok) listDevices();
+  }
+  async function listDevices() {
+    try {
+      const sel = $('in-dev'), cur = sel.value;
+      const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput');
+      sel.innerHTML = '<option value="">Default</option>' + devs.filter(d => d.deviceId && d.deviceId !== 'default')
+        .map((d, i) => `<option value="${d.deviceId}">${(d.label || 'Input ' + (i + 1)).replace(/[<>&]/g, '')}</option>`).join('');
+      if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+    } catch {}
+  }
+  $('in-mic').addEventListener('click', useMic);
+  $('in-dev').addEventListener('focus', listDevices);
+  $('in-dev').addEventListener('change', useMic);
+  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) navigator.mediaDevices.addEventListener('devicechange', listDevices);
+
+  /* the computer's own audio, through the screen-share prompt: a tab anywhere, the whole
+     computer in Chrome or Edge on Windows */
+  $('in-pc').addEventListener('click', async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) { note('This browser cannot share audio. Try Chrome or Edge, or a virtual cable as the input device.'); return; }
+    setInput('pc');
+    await useSource(async () => {
+      const st = await navigator.mediaDevices.getDisplayMedia({video: true, audio: {echoCancellation: false, noiseSuppression: false, autoGainControl: false},
+        systemAudio: 'include', restrictOwnAudio: true, selfBrowserSurface: 'exclude', surfaceSwitching: 'include'});
+      st.getVideoTracks().forEach(t => t.stop());
+      const tracks = st.getAudioTracks();
+      if (!tracks.length) { const e = new Error('no audio'); e.userMessage = 'No audio was shared: share again and turn on "Share audio" (a tab, or Entire screen on Windows).'; throw e; }
+      tracks[0].addEventListener('ended', () => { if (inputKind === 'pc') { setInput('none'); $('in-name').textContent = 'Sharing stopped. No live input.'; } });
+      return ctx.createMediaStreamSource(new MediaStream(tracks));
+    }, 'Computer audio (shared).' + CATCH + ' (Sharing the whole computer can feed the FM-1 back into itself: headphones help.)');
+  });
+
   $('in-file').addEventListener('click', () => $('in-file-pick').click());
   $('in-file-pick').addEventListener('change', e => {
     const f = e.target.files[0]; e.target.value = '';
@@ -262,7 +351,7 @@
     useSource(async () => {
       const a = new Audio(URL.createObjectURL(f)); a.loop = true; await a.play();
       return ctx.createMediaElementSource(a);
-    }, f.name + ', looping. A catches it: tap REC on HANDS.');
+    }, f.name + ', looping.' + CATCH);
   });
 
   /* ---------- power ---------- */
@@ -293,7 +382,8 @@
       (function loop() { if (!pending && node) { pending = true; node.port.postMessage({type: 'paint'}); } setTimeout(loop, 33); })();
       setInterval(send, 50);       /* keeps held-button timings (like a long REC) moving */
       midiIn();
-      note('Viscera is on. Press PLAY, or play the keys.');
+      await useDemo();
+      note('Viscera is on, with a demo loop playing in. Tap REC to catch it.');
     } catch (e) {
       $('power-on').disabled = false;
       note('Could not start audio in this browser: ' + (e && e.message ? e.message : e));

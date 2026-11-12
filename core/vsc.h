@@ -11,17 +11,16 @@
  * Every parameter is a uint8_t from 0 to its max. Continuous parameters run
  * 0..127 and can be modulated; enums cannot. */
 enum vsc_tparam {
-    /* MATERIAL: PLAY (from the flash bank), LOOP (tape), KEYS (polyphonic), THRU */
-    P_MODE, P_SLOT, P_START, P_LEN, P_SPEED, P_PITCH,
-    P_LOOPM, P_INPUT, P_DUB, P_SIZE, P_QUAL, P_GAIN,
-    P_ATK, P_DEC, P_SUS, P_REL, P_GLIDE, P_VELO,
-    /* GRAIN */
-    P_GMIX, P_GSIZE, P_GDENS, P_GPITCH, P_GSPRAY, P_GSHAPE,
-    P_GTIME, P_GREV, P_GFREEZE, P_GDETUNE, P_GQUANT, P_GFDBK, P_GWMODE,
-    /* FILTER: RESON (the resonator bank) or a classic filter */
-    P_FTYPE, P_FCUT, P_FRES, P_FSPREAD, P_FSCALE, P_FMIX, P_FWMODE,
-    P_KDECAY, P_KPITCH, P_KSLOPE, P_KTONE, P_KSCALE, P_KWAVES,
-    P_KWRATE, P_KNOISE, P_KNRATE, P_KTILT, P_KDETUN, P_KDMODE,
+    /* SOURCE: what the putty holds. CAPTURE (a loop REC grabs), REEL (kept captures in
+     * flash, or a sample-bank slot), THRU (the input, live, through a ring) */
+    P_SRC, P_INPUT, P_RATE, P_SOS, P_BOUNCE, P_REEL, P_SPLICE, P_GAIN, P_KEYS,
+    /* HANDS: the playhead every mode shares */
+    P_STRETCH, P_PITCH, P_POS, P_SIZE, P_REV, P_GRAIN, P_JITTER, P_FREEZE,
+    /* SHARDS: fragments of the window */
+    P_SHAPE, P_DENS, P_SPRAY, P_TRIG, P_SSIZE, P_SPREAD, P_SREV, P_STEREO,
+    /* SPECTRA: a phase vocoder at the playhead */
+    P_BLUR, P_SHIFT, P_CROSS, P_GATE, P_STILT, P_HOLD, P_SPHASE,
+    P_ENGINE,          /* HANDS, SHARDS or SPECTRA: set by the page last shown */
     /* COLOR: noise -> drive -> crush -> compress, then tilt */
     P_DRIVE, P_COMP, P_CRUSH, P_CMODE, P_TILT, P_XOVER,
     P_NOISE, P_NDECAY, P_NTONE, P_NTYPE, P_CMIX, P_CWMODE,
@@ -32,9 +31,6 @@ enum vsc_tparam {
     /* SEQUENCER: STEPS or CAROM, and CAROM's physics */
     P_SEQM = P_MOD0 + 40, P_RSPEED, P_RGRAV, P_RLOSS, P_RSPREAD, P_RQUANT,
     P_RCOUNT, P_RWALLS, P_RJITTER, P_RGATE,
-    /* DISSECT (format 5), kept at the end so every earlier index stays put: GRAIN's
-     * trigger, RESON's excitation by the input's hits and its pitch following */
-    P_GTRIG, P_KEXCITE, P_KFOLLOW,
     VSC_NP
 };
 #define VSC_MOD_PARAMS 10
@@ -49,18 +45,18 @@ enum vsc_gparam {
     G_ASRC, G_ASENS, G_AFOCUS, G_AHITS,
     VSC_NG
 };
-enum { MODE_PLAY, MODE_LOOP, MODE_KEYS, MODE_THRU };
+enum { SRC_CAPTURE, SRC_REEL, SRC_THRU };
 enum { IN_BT, IN_USB, IN_BOTH, IN_T1, IN_T2, IN_T3, IN_T4, IN_MAIN, IN_COUNT };
-enum { FT_LP, FT_BP, FT_HP, FT_PEAKS, FT_RING, FT_OFF, FT_REBUILD };
-enum { RING_SUSTAIN, RING_CHOKE };
-#define VSC_RING_BANDS 10
+enum { RATE_HI, RATE_MID, RATE_LO };          /* every frame, every 2nd, every 4th */
+enum { BOUNCE_OFF, BOUNCE_IN, BOUNCE_PING };  /* capture the partner; and pass it back and forth */
+enum { KEYS_OFF, KEYS_PITCH, KEYS_PLAY, KEYS_SLICE };
+enum { ENG_HANDS, ENG_SHARDS, ENG_SPECTRA };
+enum { TRIG_FREE, TRIG_HIT, TRIG_NOTE, TRIG_CLOCK };
+#define VSC_PARTNER(t) ((t) ^ 1u)              /* pairs: A+B, C+D */
 enum { MT_WAVE, MT_RANDOM, MT_FOLLOW, MT_ADSR };
 /* FOLLOW's INPUT: audio (0..7), then what DISSECT's listener hears (8..13) */
 enum { FIN_TRACK, FIN_MATER, FIN_T1, FIN_T2, FIN_T3, FIN_T4, FIN_MAIN, FIN_INPUT,
        FIN_LOW, FIN_MID, FIN_HIGH, FIN_HITS, FIN_PITCH, FIN_BRIGHT, FIN_COUNT };
-enum { GTRIG_FREE, GTRIG_HITS, GTRIG_NOTES };         /* what starts grains */
-#define GQUANT_TUNE 4                                 /* GRAIN QUANT: land on the note */
-#define KSCALE_RATIOS 8                               /* RESON SCALE from here: HARM, MEMBR, BAR */
 enum { AFOCUS_FULL, AFOCUS_LOW, AFOCUS_MID, AFOCUS_HIGH };
 enum { AHITS_OFF, AHITS_BALLS, AHITS_STEPS };       /* hits launch CAROM balls, or clock STEPS */
 enum { WET_MIX, WET_SEND };
@@ -71,6 +67,7 @@ enum { SEQ_STEPS, SEQ_CAROM };
 #define VSC_PF_ENUM    1
 #define VSC_PF_BIPOLAR 2
 #define VSC_PF_GLOBAL  4
+#define VSC_PF_UNIT    8   /* continuous, shown as 0.00 .. 1.00 */
 struct vsc_pinfo {
     char name[7];
     uint8_t max, def, flags;
@@ -97,7 +94,10 @@ unsigned vsc_mod_dest(unsigned i);
 void vsc_mod_dest_name(unsigned code, char out[10]);
 
 /* ---- Project data (saved and recalled as one block) -------------------- */
-struct vsc_step { uint8_t on, note, vel, lp[2], lv[2], pad; };
+/* A step: its note (PITCH from C4), how strongly, two parameter locks, SLICE (0: the
+ * playhead runs on; 1..16: jumps to that sixteenth of the window), LEN (gate, 1..16
+ * sixteenths of a step... in 1/8 steps) and PROB (0..100 %). */
+struct vsc_step { uint8_t on, note, vel, lp[2], lv[2], slice, len, prob, pad[2]; };
 /* A modulation route: param < VSC_NP is a track parameter, VSC_GDEST + g a global one,
  * 255 an empty route. */
 struct vsc_route { uint8_t src, param; int8_t depth; uint8_t flags; };   /* flags bit 0: bipolar */
@@ -113,9 +113,7 @@ static inline unsigned vsc_src_code(unsigned t, unsigned from_track, unsigned mo
 struct vsc_learn { uint8_t ch, cc, track, param; };
 #define VSC_LEARN 16
 #define VSC_GDEST 128
-#define VSC_FORMAT 5   /* project layout version: bump when the parameters change */
-#define VSC_NP_V4 (VSC_NP - 3)   /* format 4 (0.2.x): without the DISSECT parameters */
-#define VSC_NG_V4 (VSC_NG - 4)
+#define VSC_FORMAT 6   /* project layout version: bump when the parameters change (6: PUTTY, 1.0) */
 struct vsc_mroute { uint8_t track, param; int8_t depth; uint8_t pad; };
 struct vsc_scene { uint8_t used, pad[3]; uint8_t t[VSC_TRACKS][VSC_NP]; uint8_t macro[VSC_MACROS]; };
 struct vsc_project {
@@ -133,12 +131,11 @@ struct vsc_project {
 /* Settings that belong to the FM-1, not to a project: kept through power-off and
  * whatever project loads. The platform stores them when vsc_dev_changed moves. */
 enum { BACKLIGHT_OFF, BACKLIGHT_LOW, BACKLIGHT_MID, BACKLIGHT_HIGH };
-/* A sound: one track's devices and modulators (MATERIAL..COLOR and the four mods,
- * with their routes), without its mix or sequence. Saved under SAVE -> SOUNDS. */
+/* A sound: one track's devices and modulators (SOURCE..COLOR and the four mods, with
+ * their routes), without its mix or sequence. Saved under SAVE -> SOUNDS. */
 #define VSC_SOUNDS 16
 #define VSC_SOUND_NP (P_LEVEL + 40)
-/* ext: GTRIG, KEXCITE, KFOLLOW, in what were pad bytes (0 in older sounds: their defaults) */
-struct vsc_sound { uint8_t used, ext[3]; uint8_t p[VSC_SOUND_NP]; struct vsc_route route[VSC_MOD_ROUTES]; };
+struct vsc_sound { uint8_t used, pad[3]; uint8_t p[VSC_SOUND_NP]; struct vsc_route route[VSC_MOD_ROUTES]; };
 struct vsc_device {
     uint32_t magic, version, bytes, crc;
     uint8_t backlight, knob_cc, metro, pad;
@@ -151,7 +148,8 @@ int vsc_sound_recall(unsigned slot, unsigned track);
 extern struct vsc_device vsc_dev;
 extern volatile uint32_t vsc_dev_changed;   /* bumped on every change */
 /* CPU: the platform's clock (both unset: no readout), and the guard's relief level.
- * Relief 1: SPACE's reverb rests. Relief 2: also half of RESON's bands and of the grains. */
+ * Relief 1: SPACE's reverb rests. Relief 2: also half the shards, and SPECTRA makes a
+ * frame every other block. */
 #define VSC_PARTS (VSC_TRACKS + 1)
 extern uint32_t (*vsc_clock_now)(void);
 extern uint32_t (*vsc_clock_since)(uint32_t since);
@@ -162,6 +160,7 @@ void vsc_device_seal(void);
 /* Learned controls let go and wait to be picked up again (after a project or scene change). */
 void vsc_learn_release(void);
 #define VSC_MAGIC 0x31435356u /* "VSC1" */
+#define VSC_DEV_VERSION 3        /* device settings layout (3: 1.0's sounds) */
 
 /* ---- Platform services (implemented per target) ----------------------- */
 /* Sample bank: number of frames in a slot (0 = empty), its name, and one
@@ -182,8 +181,15 @@ void vsc_render(const struct vsc_inputs *in, float *out);
 /* Events from control or MIDI into the audio context (lock-free queue). */
 enum { EV_NOTE_ON, EV_NOTE_OFF, EV_PLAY, EV_STOP, EV_REC, EV_CLOCK, EV_START, EV_CONT,
        EV_PANIC, EV_LOOP_CLEAR, EV_BALL, EV_BALL_CLEAR, EV_CC, EV_PC, EV_ACTION };
+/* EV_REC a: */
+enum { REC_TAP, REC_DUB_ON, REC_DUB_OFF };
 /* EV_ACTION a: */
 enum { ACT_SPACE_FREEZE, ACT_SPACE_CLEAR, ACT_MOD_TRIG, ACT_TAPE_REWIND, ACT_TAPE_REVERSE };
+/* Robots: a recorded knob gesture per slot, looping; the UI plays them into this
+ * (offsets in parameter units, added like a route; 0 when idle). */
+#define VSC_ROBOTS 4
+extern volatile float vsc_robot_off[VSC_TRACKS][VSC_ROBOTS];
+extern volatile uint8_t vsc_robot_param[VSC_TRACKS][VSC_ROBOTS];   /* 255: none */
 /* MIDI learn: the UI arms it with a parameter (track, code); the next CC to arrive
  * takes it. vsc_learn_seen counts completed learns, for the UI's notice. */
 extern volatile uint8_t vsc_learn_armed, vsc_learn_track, vsc_learn_param;
@@ -197,26 +203,29 @@ void vsc_midi_in(unsigned port, const uint8_t *m, unsigned n, uint32_t now_ms);
 /* ---- State shared with the UI ----------------------------------------- */
 struct vsc_meter {
     float peak[VSC_TRACKS], main_peak, cpu;
-    uint32_t pos_play[VSC_TRACKS];   /* material read position in source frames */
-    uint32_t pos_len[VSC_TRACKS];    /* source length in frames */
-    uint32_t grain_write[VSC_TRACKS];
-    uint16_t grain_pos[VSC_TRACKS][VSC_GRAINS]; /* 0..65535 position in ring, 0xffff idle */
-    uint8_t grain_amp[VSC_TRACKS][VSC_GRAINS];
+    /* the putty: its source's length and capacity (frames), the window, the playhead
+     * (0..65535 of the source), capture state, and the source's rate (Hz) */
+    uint32_t src_len[VSC_TRACKS], src_cap[VSC_TRACKS];
+    uint16_t win_a[VSC_TRACKS], win_b[VSC_TRACKS], head[VSC_TRACKS], rec_head[VSC_TRACKS];
+    uint8_t cap_state[VSC_TRACKS];   /* 0 empty, 1 recording, 2 playing, 3 overdub */
+    float src_rate[VSC_TRACKS];
+    /* SHARDS: where each shard is (0..65535 of the source, 0xffff idle) and how far along */
+    uint16_t shard_pos[VSC_TRACKS][VSC_GRAINS];
+    uint8_t shard_amp[VSC_TRACKS][VSC_GRAINS];
+    /* SPECTRA: the last frame's spectrum, 48 bands, 0..255 */
+    uint8_t spec[VSC_TRACKS][48];
+    uint8_t spectra_on[VSC_TRACKS];  /* 1: it has a vocoder; 0 in SPECTRA: none free (HANDS plays) */
     float mod_value[VSC_TRACKS][VSC_MODS];
     float mod_phase[VSC_TRACKS][VSC_MODS];   /* WAVE/RANDOM: where in the cycle (0..1) */
-    uint8_t loop_state[VSC_TRACKS];  /* 0 empty, 1 recording, 2 playing, 3 overdub */
     uint8_t step[VSC_TRACKS];
     /* CAROM: ball positions 0..255, a flash that fades after each wall hit */
     uint8_t ball_x[VSC_TRACKS][VSC_BALLS], ball_y[VSC_TRACKS][VSC_BALLS], ball_hit[VSC_TRACKS][VSC_BALLS];
     uint8_t ball_on[VSC_TRACKS][VSC_BALLS];
-    uint8_t playing, ext_clock, bt_in, usb_in, space_frozen, reverse[VSC_TRACKS];
+    uint8_t playing, ext_clock, bt_in, usb_in, space_frozen;
     float in_peak[2][2];             /* Bluetooth and USB audio in, left/right, with a short fall */
     uint32_t part_ticks[VSC_PARTS];  /* the last block's time per part: T1..T4, SPACE (platform clock ticks) */
-    uint8_t overview[VSC_TRACKS][240];   /* PLAY/KEYS: the sample's shape, 0..60 per column, filled by the audio side */
-    uint8_t overview_slot[VSC_TRACKS];   /* which slot it shows (255: none yet) */
+    uint8_t overview[VSC_TRACKS][240];   /* the source's shape, 0..60 per column, filled by the audio side */
     float tempo;                     /* the tempo in use: internal, or measured from MIDI clock */
-    /* RING: each band's place on the screen's frequency axis (0..239) and its level */
-    uint8_t ring_x[VSC_TRACKS][VSC_RING_BANDS], ring_amp[VSC_TRACKS][VSC_RING_BANDS];
     /* DISSECT's listener: band levels and brightness 0..1, the pitch (Hz, 0 when none
      * is heard) and how sure it is, the partials' levels, and a count of hits */
     float ana_low, ana_mid, ana_high, ana_bright, ana_pitch, ana_conf, ana_hit;
@@ -231,11 +240,19 @@ extern struct vsc_meter vsc_meter;
 extern uint8_t vsc_lock[VSC_TRACKS][VSC_NP]; /* 255 = no lock */
 extern uint8_t vsc_scope[128];               /* last main output block's level (0..255), for the UI */
 
-/* Loop memory, for the UI's overview (8-bit mu-law). */
-const uint8_t *vsc_loop_memory(unsigned track, uint32_t *frames, uint32_t *capacity);
-const uint8_t *vsc_grain_ring(unsigned track);
-uint32_t vsc_loop_base(unsigned track);   /* track's offset into the loop memory */
 float vsc_ulaw(uint8_t v);
+/* ---- Captures and reels ------------------------------------------------
+ * Each track's capture: VSC_CAP_FRAMES of 8-bit mu-law in RAM. */
+const uint8_t *vsc_capture(unsigned track);
+/* The reel: up to VSC_SPLICES kept captures in flash (the platform stores them). A
+ * splice is a run of mu-law bytes at a rate; vsc_reel_data is the mapped reel (NULL:
+ * no reel). The engine reads it from the audio context. */
+#define VSC_SPLICES 16
+struct vsc_splice { uint32_t at, frames; uint8_t rate, pad[3]; };
+struct vsc_reel { uint32_t magic, count; struct vsc_splice s[VSC_SPLICES]; };
+#define VSC_REEL_MAGIC 0x4c454552u   /* 'REEL' */
+const struct vsc_reel *vsc_reel_index(void);   /* NULL: no reel */
+const uint8_t *vsc_reel_data(void);
 
 /* ---- Control helpers --------------------------------------------------- */
 void vsc_project_defaults(struct vsc_project *p);
@@ -244,11 +261,6 @@ void vsc_scene_store(unsigned scene);
 void vsc_scene_recall(unsigned scene);
 uint32_t vsc_crc32(const void *data, size_t bytes);
 int vsc_project_valid(const struct vsc_project *p);
-/* A format 4 project (0.2.x) whose raw bytes sit at the start of p (and whose CRC the
- * caller has checked, or 0 to check it here): rewritten in place as the current format.
- * Returns 0 when done, -1 when p doesn't hold one. */
-int vsc_project_upgrade(struct vsc_project *p, int check_crc);
-unsigned vsc_project_v4_bytes(void);
 /* Sets or clears a modulation route; depth -127..127, 0 removes it. param is a
  * track parameter, or VSC_GDEST + a global one. */
 int vsc_mod_dest_valid(unsigned code);   /* can a route move it? */
@@ -275,7 +287,8 @@ struct vsc_ui_input {
 };
 /* Host actions the UI asks the platform to perform. */
 enum { HOST_NONE, HOST_SAVE, HOST_LOAD, HOST_BT_AUDIO, HOST_BT_MIDI, HOST_BLE_ROLE,
-       HOST_BLE_SCAN, HOST_BLE_CONNECT, HOST_BLE_FORGET, HOST_BLE_DISCONNECT, HOST_DEVICE_SAVE };
+       HOST_BLE_SCAN, HOST_BLE_CONNECT, HOST_BLE_FORGET, HOST_BLE_DISCONNECT, HOST_DEVICE_SAVE,
+       HOST_KEEP, HOST_REEL_CLEAR };   /* KEEP: arg = track whose capture goes to the reel */
 struct vsc_host_status {
     uint8_t bt_audio, bt_midi, bt_audio_connected, bt_audio_playing, usb_connected;
     uint8_t ble_role, ble_state, ble_count;
@@ -286,6 +299,7 @@ struct vsc_host_status {
     uint8_t slot_used[VSC_PROJECTS];
     char slot_name[VSC_PROJECTS][12];
     uint8_t storage_ok, battery;
+    uint8_t reel_free;               /* percent of the reel left */
 };
 extern struct vsc_host_status vsc_host;
 void vsc_ui_init(void);

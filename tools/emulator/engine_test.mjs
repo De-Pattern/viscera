@@ -366,12 +366,57 @@ x.set_param(0, P.P_STRETCH, 50);
   home();
 }
 
-// 19. projects: this format loads; anything else is refused
+// 19. projects: this format loads; 1.0's (format 6) comes in with RESON at its defaults;
+// anything else is refused
 { const p = new Uint8Array(mem(), x.project(), x.project_bytes()), keep = p.slice();
   x.project_seal(0); ok(x.project_check() === 1, 'a sealed project checks');
   const dv = new DataView(mem(), x.project(), 16); dv.setUint32(4, 4, true);
   ok(x.project_check() !== 1, 'a 0.x project (format 4) is refused');
+  p.set(keep);
+  // make a 1.0 project from this one: everything but RESON's globals, which came last
+  const n6 = x.project6_bytes(), at = x.project_reson_at(), gap = x.project_bytes() - n6, old = new Uint8Array(n6);
+  ok(gap === x.ng() - G.G_BTRACK, 'RESON adds its globals only: ' + gap);
+  x.set_global(G.G_TARGET, 3); x.set_param(2, P.P_LEVEL, 77); x.project_seal(0);
+  const cur = p.slice();
+  old.set(cur.subarray(0, at)); old.set(cur.subarray(at + gap), at);
+  const ov = new DataView(old.buffer); ov.setUint32(4, 6, true); ov.setUint32(8, n6, true);
+  // its CRC, as 1.0 sealed it: over everything after the crc field
+  let c = 0xffffffff; for (let i = 16; i < n6; i++) { c ^= old[i]; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1)); }
+  ov.setUint32(12, ~c >>> 0, true);
+  x.set_global(G.G_BMIX, 1); x.set_param(2, P.P_LEVEL, 0);
+  p.fill(0); p.set(old);
+  ok(x.project_upgrade() === 1 && x.project_check() === 1, 'a 1.0 project loads');
+  ok(x.get_param(2, P.P_LEVEL) === 77 && x.get_global(G.G_TARGET) === 3, 'a 1.0 project keeps its settings');
+  ok(x.get_global(G.G_BMIX) === 83 && x.get_global(G.G_BMODE) === 4, 'a 1.0 project gets RESON at its defaults: ' + x.get_global(G.G_BMIX));
+  old[40] ^= 1; p.fill(0); p.set(old);
+  ok(x.project_upgrade() !== 1, 'a damaged 1.0 project is refused');
   p.set(keep); }
+
+// 19b. RESON: every mode, modulator and trigger on a track that plays; pings; particles
+{ for (let t = 0; t < 4; t++) x.set_param(t, P.P_MUTE, t === 0 ? 0 : 1);
+  x.set_param(0, P.P_SRC, SRC.THRU); x.set_param(0, P.P_INPUT, 0);
+  const dry = run(150);
+  x.set_global(G.G_BTRACK, 1);
+  for (let m = 1; m <= 4; m++) { x.set_global(G.G_BMODE, m); sound(run(150), 'RESON mode ' + m); }
+  for (let v = 0; v < 6; v++) { x.set_global(G.G_BVMOD, v); sound(run(120), 'RESON modulator ' + v); }
+  x.set_global(G.G_BVMOD, 0);
+  const p0 = x.reson_pings(); x.set_global(G.G_BTRIG, 2); run(350); ok(x.reson_pings() > p0, 'RESON pings on the hits: ' + (x.reson_pings() - p0));
+  for (const q of [1, 2, 3, 4]) { x.set_global(G.G_BQUANT, q); clean(run(120), 'RESON quantised ' + q); }
+  x.set_global(G.G_BQUANT, 0);
+  x.set_global(G.G_BDUST, 100); x.set_global(G.G_BDROP, 127); x.set_global(G.G_BMIGR, 90); x.set_global(G.G_BFDBK, 127); x.set_global(G.G_BLIQ, 127);
+  r = run(400); clean(r, 'RESON with everything up'); ok(x.reson_drops() >= 0, 'droplets');
+  let lit = 0; for (let b = 0; b < 8; b++) lit += x.reson_level(b) > 0 ? 1 : 0; ok(lit >= 4, 'RESON bands light: ' + lit);
+  x.set_global(G.G_BMIX, 127); x.set_global(G.G_BMODE, 3); x.set_global(G.G_BTRIG, 0); x.set_global(G.G_BDUST, 0); x.set_global(G.G_BDROP, 0); x.set_global(G.G_BFDBK, 0);
+  run(400, false); const q0 = run(60, false); ok(q0.rms < 1e-3, 'PING with nothing to ping is quiet: ' + q0.rms);
+  // the page: REC pings, the views draw, pads pick a band
+  press(B.ENV); press(B.ENV);
+  const p1 = x.reson_pings(); press(B.REC); run(20); ok(x.reson_pings() > p1, 'REC pings on the RESON page');
+  for (let v = 0; v < 7; v++) { for (let k = 2; k < 6; k++) { enc(k, 1); enc(k, -1); } paintCheck('RESON view ' + v); enc(0, 1); }
+  enc(0, -20); enc(0, 1); for (let k = 0; k < 8; k++) { ctl(1 << k); ctl(); }   // BAND: the pads pick
+  x.set_global(G.G_BTRACK, 0); clean(run(100), 'RESON off');
+  for (let g = G.G_BTRACK; g < x.ng(); g++) x.set_global(g, 0);
+  x.set_global(G.G_BMIX, 83); x.set_global(G.G_BMODE, 4);
+  home(); }
 
 // 20. long run with everything moving: no NaN, no runaway
 for (let t = 0; t < 4; t++) { x.set_param(t, P.P_SRC, SRC.CAPTURE); x.set_param(t, P.P_MUTE, 0); x.set_param(t, P.P_LEVEL, 110); x.set_param(t, P.P_SEND, 100); x.set_param(t, P.P_SOS, 127); }

@@ -93,7 +93,7 @@ FM1_AUDIO_CODE int vsc_fm1_render(int32_t *out)
     render_ticks = used;
     if (used > render_peak_ticks) render_peak_ticks = used;
     /* CPU guard, in steps as Ravel's: above 90% of a block two blocks running, ease
-     * (relief 1: SPACE's reverb rests; 2: also half of RESON's bands and of the new
+     * (relief 1: SPACE's reverb rests; 2: also RESON's analysis bank and half of the new
      * grains). Still over at relief 2 for three such pairs: rest for about a second
      * (the audio interrupt must never starve the USB and control tasks, which carry
      * the update protocol). Below 60% for about 3 s: one step back. (No division
@@ -216,7 +216,7 @@ CTRL int vsc_fm1_slot_info(unsigned slot, char name[12])
     uint32_t head[4];
     if (fm1_flash_read(slot_offset(slot), head, sizeof head)) return 0;
     /* this format only: 0.x projects were made for the old engine */
-    if (head[0] != VSC_MAGIC || head[1] != VSC_FORMAT || head[2] != sizeof(struct vsc_project)) return 0;
+    if (head[0] != VSC_MAGIC || !((head[1] == VSC_FORMAT && head[2] == sizeof(struct vsc_project)) || (head[1] == 6u && head[2] == VSC_PROJECT6_BYTES))) return 0;
     if (fm1_flash_read(slot_offset(slot) + 16u, name, 12)) return 0;
     return 1;
 }
@@ -243,7 +243,8 @@ CTRL int vsc_fm1_load(unsigned slot)
     if (slot >= VSC_PROJECTS) return -1;
     uint32_t base = slot_offset(slot), head[4];
     if (fm1_flash_read(base, head, sizeof head)) return -3;
-    if (head[0] != VSC_MAGIC || head[1] != VSC_FORMAT || head[2] != sizeof(struct vsc_project)) return -4;
+    int old = head[1] == 6u && head[2] == VSC_PROJECT6_BYTES;   /* 1.0's: RESON comes in at its defaults */
+    if (head[0] != VSC_MAGIC || !(old || (head[1] == VSC_FORMAT && head[2] == sizeof(struct vsc_project)))) return -4;
     uint8_t buf[256];
     uint32_t c = 0xffffffffu, at = offsetof(struct vsc_project, name), end = head[2];
     while (at < end) {
@@ -259,6 +260,7 @@ CTRL int vsc_fm1_load(unsigned slot)
     vsc_event(EV_STOP, 0, 0, 0);
     vsc_event(EV_PANIC, 0, 0, 0);
     if (fm1_flash_read(base, &vsc, end)) return -3;
+    if (old) (void)vsc_project_upgrade6(&vsc);
     vsc_learn_release();
     return 0;
 }

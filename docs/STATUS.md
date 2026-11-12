@@ -38,6 +38,12 @@ Safe mode: hold OCT- and OCT+ while switching on. Viscera starts with sound and 
 3. Check: the screen draws; keys play T1; the MASTER knob works; Bluetooth audio from a phone reaches a THRU track; USB audio from a computer does too; saving a project while stopped; the sample bank plays on a PLAY track.
 4. If the sound crackles, see "If the FM-1 runs out of CPU" below.
 
+Budget at 1.1.0 (RESON): app image 453,896 of 453,921 bytes (25 to spare); heap 119,212 bytes. To fit, the engine's control maths (exp2, log2, square roots, the SVF tuning, the random numbers at control sites and other helpers) are no longer inlined, the UI and parameter table are built with LTO, the parameter table names its lists by number, the RESON drawing and hints are lean, and the capture at MID is 0.65 s (14,400 bytes, from 15,000).
+
+CPU at 1.1.0 in fm1-emu at the FM-1's timing (guard off): two SPECTRA (one crossing), dense SHARDS, HANDS and SPACE: 88 % (1.0.0: 84 %); HANDS and SHARDS: 57 % (54 %): the helpers that are no longer inlined cost about 3 points. RESON adds 16 points as it starts (LIQUID MEMORY, HYBRID, SELF) and 21 at its heaviest (HYBRID with OSC, dust, droplets, feedback). With the two SPECTRA and RESON at its heaviest, 107 %: the guard steps in.
+
+The FM-1's second core isn't available: the SDK has no API for it, and M-VAVE's library runs its own work there through internal functions it doesn't export. Using it would mean taking their library apart, which this project doesn't do.
+
 ## Next
 
 - Browser emulator (wasm build of `core/` with the same UI).

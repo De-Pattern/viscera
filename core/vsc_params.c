@@ -21,15 +21,24 @@ static const char *const n_fin[] = {"TRACK", "SOURCE", "A", "B", "C", "D", "MAIN
                                     "LOW", "MID", "HIGH", "HITS", "PITCH", "BRIGHT"};
 static const char *const n_afocus[] = {"FULL", "LOW", "MID", "HIGH"};
 static const char *const n_ahits[] = {"OFF", "BALLS", "STEPS"};
+static const char *const n_btrack[] = {"OFF", "A", "B", "C", "D"};
+static const char *const n_bmode[] = {"OFF", "FILTER", "VOCODE", "PING", "HYBRID"};
+static const char *const n_bvmod[] = {"SELF", "INPUT", "PARTNR", "OSC", "NOISE", "OUTPUT"};
+static const char *const n_btrig[] = {"OFF", "HIGH", "FULL", "LOW", "HITS", "NOTES"};
+static const char *const n_bquant[] = {"OFF", "1/32", "1/16", "1/8", "1/4"};
 static const char *const n_dtime[] = {"1/32", "1/16T", "1/16", "1/8T", "1/16D", "1/8", "1/4T", "1/8D", "1/4"};
 static const char *const n_clock[] = {"AUTO", "INT", "MIDI"};
 static const char *const n_seqm[] = {"STEPS", "CAROM"};
 static const char *const n_rquant[] = {"FREE", "1/16", "1/8"};
 static const char *const n_rwalls[] = {"OCTAVE", "SAME", "5TH"};
+/* the enum labels, by number: a parameter keeps one byte for its list, not a pointer */
+enum { NL_NONE, NL_n_src, NL_n_input, NL_n_rate, NL_n_off_on, NL_n_bounce, NL_n_keys, NL_n_trig, NL_n_engine, NL_n_wmode, NL_n_cmode, NL_n_xover, NL_n_ntype, NL_n_mtype, NL_n_wshape, NL_n_sync, NL_n_fin, NL_n_afocus, NL_n_ahits, NL_n_btrack, NL_n_bmode, NL_n_bvmod, NL_n_btrig, NL_n_bquant, NL_n_dtime, NL_n_clock, NL_n_seqm, NL_n_rquant, NL_n_rwalls };
+static const char *const *const name_lists[] = {0, n_src, n_input, n_rate, n_off_on, n_bounce, n_keys, n_trig, n_engine, n_wmode, n_cmode, n_xover, n_ntype, n_mtype, n_wshape, n_sync, n_fin, n_afocus, n_ahits, n_btrack, n_bmode, n_bvmod, n_btrig, n_bquant, n_dtime, n_clock, n_seqm, n_rquant, n_rwalls};
+#define NAMES(i) name_lists[i]
 
 #define C(n, d) {n, 127, d, 0, 0}
 #define B(n, d) {n, 127, d, VSC_PF_BIPOLAR, 0}
-#define E(n, list, d) {n, sizeof list / sizeof list[0] - 1, d, VSC_PF_ENUM, list}
+#define E(n, list, d) {n, sizeof list / sizeof list[0] - 1, d, VSC_PF_ENUM, NL_##list}
 #define U(n, d) {n, 127, d, VSC_PF_UNIT, 0}          /* shown as 0.00 .. 1.00 */
 #define X {"", 0, 0, VSC_PF_ENUM, 0}
 #define MODSLOT E("TYPE", n_mtype, 0), X, X, X, X, X, X, X, X, X
@@ -81,6 +90,16 @@ static const struct vsc_pinfo ginfo[VSC_NG] = {
     C("COMP", 0),
     C("M1", 0), C("M2", 0), C("M3", 0), C("M4", 0), C("M5", 0), C("M6", 0), C("M7", 0), C("M8", 0),
     E("SOURCE", n_input, IN_BOTH), C("SENS", 80), E("FOCUS", n_afocus, 0), E("HITS", n_ahits, 0),
+    /* RESON, as LIQUID MEMORY: bands 2 and 7 (400 Hz, 3.2 kHz) up, the rest far down;
+     * band 2 rings about 180 ms, band 7 about 70 ms */
+    E("TRACK", n_btrack, 0), E("MODE", n_bmode, BM_HYBRID), C("RESO", 66), C("MIX", 83), C("WIDTH", 76),
+    C("GAIN 1", 38), C("GAIN 2", 110), C("GAIN 3", 38), C("GAIN 4", 30), C("GAIN 5", 30), C("GAIN 6", 34), C("GAIN 7", 103), C("GAIN 8", 30),
+    B("FREQ 1", 64), B("FREQ 2", 64), B("FREQ 3", 64), B("FREQ 4", 64), B("FREQ 5", 64), B("FREQ 6", 64), B("FREQ 7", 64), B("FREQ 8", 64),
+    B("DECAY1", 78), B("DECAY2", 64), B("DECAY3", 50), B("DECAY4", 41), B("DECAY5", 35), B("DECAY6", 26), B("DECAY7", 20), B("DECAY8", 11),
+    B("SHIFT", 64), C("LIQUID", 44), C("FDBK", 10), C("SPECTR", 64),
+    E("MODSRC", n_bvmod, BV_SELF), C("OSC", 40), C("ATTACK", 18), C("RELEAS", 54), C("DEPTH", 72),
+    E("TRIG", n_btrig, BT_HIGH), C("SENS", 90), E("QUANT", n_bquant, 0), C("HARD", 89),
+    C("DENS", 0), C("COHES", 80), C("DROPS", 0), C("MIGR", 20),
 };
 static const uint8_t mod_default_type[4] = {MT_WAVE, MT_RANDOM, MT_FOLLOW, MT_ADSR};
 
@@ -123,11 +142,38 @@ static void put_str(char *o, const char *s)
     while (s[i] && i < 7) { o[i] = s[i]; ++i; }
     o[i] = 0;
 }
+/* a number with a sign if asked, and a unit after it: "+7ST", "-12DB" */
+static void put_unit(char *o, int v, int sign, const char *unit)
+{
+    int i = 0;
+    if (sign && v >= 0) o[i++] = '+';
+    put_int(o + i, v);
+    i = (int)vsc_strlen(o);
+    while (*unit && i < 7) o[i++] = *unit++;
+    o[i] = 0;
+}
+/* RESON's bands as the knobs have them (the engine adds its liquid motion) */
+static const float rb_base[VSC_RBANDS] = {200.f, 400.f, 800.f, 1200.f, 1600.f, 2400.f, 3200.f, 4800.f};
+static float pexp2(float x)   /* 2^x, near enough for a label */
+{
+    float r = 1.f; while (x >= 1.f) { r *= 2.f; x -= 1.f; } while (x < 0.f) { r *= 0.5f; x += 1.f; }
+    return r * (1.f + x * (0.6951786f + x * (0.2261598f + x * 0.0782371f)));
+}
+float vsc_reson_hz(unsigned b)
+{
+    b &= 7u;
+    return rb_base[b] * pexp2(((float)vsc.g[G_BSHIFT] + (float)vsc.g[G_BF0 + b] - 128.f) * (1.f / 64.f));
+}
+float vsc_reson_sec(unsigned b)
+{
+    b &= 7u;
+    return 0.01f * pexp2((float)vsc.g[G_BRESO] * (8.f / 127.f) + ((float)vsc.g[G_BD0 + b] - 64.f) * (1.f / 32.f));
+}
 void vsc_param_label(const struct vsc_pinfo *info, unsigned p, unsigned v, char out[8], int global)
 {
     out[0] = 0;
     if (!info->name[0]) return;
-    if (info->names) { put_str(out, info->names[v > info->max ? info->max : v]); return; }
+    if (info->names) { put_str(out, NAMES(info->names)[v > info->max ? info->max : v]); return; }
     if (info->flags & VSC_PF_UNIT) {   /* 0.00 .. 1.00 */
         int c = ((int)v * 100 + 63) / 127, i = 0;
         out[i++] = (char)('0' + c / 100); out[i++] = '.';
@@ -138,10 +184,7 @@ void vsc_param_label(const struct vsc_pinfo *info, unsigned p, unsigned v, char 
         if (p == P_REEL) { if (!v) { put_str(out, "KEPT"); return; } out[0] = 'S'; put_int(out + 1, (int)v); return; }
         if (p == P_SPLICE) { if (!v) { put_str(out, "ALL"); return; } put_int(out, (int)v); return; }
         if (p == P_PITCH || p == P_SHIFT) {   /* +7ST */
-            int st = (int)v - 24, i = 0;
-            if (st >= 0) out[i++] = '+';
-            put_int(out + i, st);
-            i = (int)vsc_strlen(out); out[i++] = 'S'; out[i++] = 'T'; out[i] = 0; return;
+            put_unit(out, (int)v - 24, 1, "ST"); return;
         }
         if (p == P_STRETCH) {   /* 0.25X .. 8.00X, the top: frozen */
             if (v >= 127) { put_str(out, "FREEZE"); return; }
@@ -159,6 +202,20 @@ void vsc_param_label(const struct vsc_pinfo *info, unsigned p, unsigned v, char 
         if (p > P_MOD0 && p < P_MOD0 + 4 * VSC_MOD_PARAMS && (p - P_MOD0) % VSC_MOD_PARAMS == 5 && !info->names && info->max == 15) { put_int(out, (int)v + 1); return; }
     } else if (p == G_TARGET) { out[0] = 'S'; out[1] = 'C'; put_int(out + 2, (int)v + 1); return; }
     else if (p == G_MSEL) { out[0] = 'M'; put_int(out + 1, (int)v + 1); return; }
+    else if (p >= G_BG0 && p <= G_BG7) {   /* -60 .. +6 dB, 0: off */
+        if (!v) { put_str(out, "OFF"); return; }
+        put_unit(out, -60 + ((int)v * 66 + 63) / 127, 0, "DB"); return;
+    } else if (p == G_BSHIFT) {           /* +-12 semitones */
+        put_unit(out, ((int)v - 64) * 12 / 64, 1, "ST"); return;
+    } else if (p >= G_BF0 && p <= G_BF7) { /* the band's frequency, with the bank's shift */
+        int hz = (int)(vsc_reson_hz(p - G_BF0) + 0.5f);
+        put_unit(out, hz, 0, hz < 10000 ? "HZ" : ""); return;
+    } else if (p == G_BRESO || (p >= G_BD0 && p <= G_BD7)) {   /* the decay: of band 2, or of this band */
+        float ms = vsc_reson_sec(p == G_BRESO ? 1u : p - G_BD0) * 1000.f;
+        if (ms < 1000.f) put_unit(out, (int)(ms + 0.5f), 0, "MS");
+        else { int c = (int)(ms / 10.f + 0.5f); if (c > 999) c = 999; out[0] = (char)('0' + c / 100); out[1] = '.'; out[2] = (char)('0' + (c / 10) % 10); out[3] = 'S'; out[4] = 0; }
+        return;
+    }
     if (info->flags & VSC_PF_BIPOLAR) { put_int(out, (int)v - (int)(info->max + 1) / 2); return; }
     put_int(out, (int)v);
 }
@@ -225,6 +282,18 @@ int vsc_project_valid(const struct vsc_project *p)
     return vsc_crc32(body, sizeof *p - offsetof(struct vsc_project, name)) == want;
 }
 
+int vsc_project_upgrade6(struct vsc_project *p)
+{
+    if (p->magic != VSC_MAGIC || p->version != 6u || p->bytes != VSC_PROJECT6_BYTES) return -1;
+    /* everything after the old globals moves up to make room for RESON's */
+    uint8_t *b = (uint8_t *)p;
+    size_t from = offsetof(struct vsc_project, g) + VSC_NG_6, gap = VSC_NG - VSC_NG_6, n = VSC_PROJECT6_BYTES - from;
+    while (n--) b[from + gap + n] = b[from + n];
+    for (unsigned g = VSC_NG_6; g < VSC_NG; ++g) p->g[g] = ginfo[g].def;
+    p->version = VSC_FORMAT; p->bytes = sizeof *p;
+    p->crc = vsc_crc32(&p->name, sizeof *p - offsetof(struct vsc_project, name));
+    return 0;
+}
 void vsc_scene_store(unsigned s)
 {
     if (s >= VSC_SCENES) return;

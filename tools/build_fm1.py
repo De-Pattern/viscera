@@ -90,7 +90,7 @@ def main():
         i, src = i_src
         obj = os.path.join(out, 'obj', f'{i}_' + re.sub(r'[^a-zA-Z0-9._-]', '_', src) + '.obj')
         opts = list(flags)
-        if src in ('app/screen.c', 'app/transfer.c', 'app/midi_router.c', 'app/viscera/vsc_ui.c', 'app/viscera/vsc_params.c'):
+        if src in ('app/screen.c', 'app/transfer.c', 'app/midi_router.c'):
             opts.append('-fno-lto')
         if src == 'app/board/panel.c':
             opts += ['-fno-lto', '-fno-pic']
@@ -99,6 +99,8 @@ def main():
             opts.append('-Oz')
         if src == 'app/screen.c':
             opts.append('-fno-inline-functions')
+        if src == 'app/viscera/vsc_engine.c':
+            opts += ['-fno-lto', '-fno-unroll-loops']
         run([os.path.join(bin_, 'clang')] + opts + ['-c', os.path.join(tree, src), '-o', obj])
         return obj
     with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as ex:
@@ -190,6 +192,9 @@ def main():
         image += open(binf, 'rb').read()
         os.remove(binf)
     fwsc = os.path.join(build, 'viscera.fwsc')
+    limit = fm1_package.FLASH_LIMIT - fm1_package.USER_SIZE - fm1_package.BT_SIZE - fm1_package.MINIMUM_VM - fm1_package.AREA - fm1_package.APP_DATA - 383 - 64
+    if len(image) > limit and not os.environ.get('VSC_ALLOW_BIG'):
+        sys.exit(f'app image {len(image)} bytes is over the {limit} the FM-1 layout leaves: {len(image) - limit} bytes too many')
     layout = fm1_package.create(image, os.path.join(sdk, 'tools', 'pack'), fwsc, USER_BYTES, product)
     meta = {'schema': 1, 'kind': 'open', 'product': product, 'build_id': build_id, 'family': FAMILY,
             'bytes': os.path.getsize(fwsc), 'sha256': sha256(fwsc),

@@ -144,6 +144,16 @@ W_EXPORT(project_seal) void w_project_seal(unsigned slot)
     vsc.crc = vsc_crc32(&vsc.name, sizeof vsc - offsetof(struct vsc_project, name));
 }
 W_EXPORT(project_check) int w_project_check(void) { return vsc_project_valid(&vsc); }
+/* a 1.0 project (format 6): RESON's globals come in at their defaults. The page copies
+ * its bytes in (they are fewer); its own CRC is checked before it changes. */
+W_EXPORT(project6_bytes) unsigned w_project6_bytes(void) { return VSC_PROJECT6_BYTES; }
+W_EXPORT(project_reson_at) unsigned w_project_reson_at(void) { return (unsigned)offsetof(struct vsc_project, g) + VSC_NG_6; }   /* (for the test) */
+W_EXPORT(project_upgrade) int w_project_upgrade(void)
+{
+    if (vsc.magic != VSC_MAGIC || vsc.version != 6u || vsc.bytes != VSC_PROJECT6_BYTES) return 0;
+    if (vsc_crc32(&vsc.name, VSC_PROJECT6_BYTES - offsetof(struct vsc_project, name)) != vsc.crc) return 0;
+    return vsc_project_upgrade6(&vsc) == 0 && vsc_project_valid(&vsc);
+}
 W_EXPORT(stop_all) void w_stop_all(void) { vsc_event(EV_STOP, 0, 0, 0); vsc_event(EV_PANIC, 0, 0, 0); }
 W_EXPORT(slot_info) void w_slot_info(unsigned slot, unsigned used, const char *name)
 {
@@ -182,6 +192,9 @@ W_EXPORT(np) unsigned w_np(void) { return VSC_NP; }
 W_EXPORT(ng) unsigned w_ng(void) { return VSC_NG; }
 /* DISSECT's listener, for the tests */
 W_EXPORT(ana_hits) unsigned w_ana_hits(void) { return vsc_meter.ana_hits; }
+W_EXPORT(reson_pings) unsigned w_reson_pings(void) { return vsc_meter.rb_pings; }
+W_EXPORT(reson_level) unsigned w_reson_level(unsigned b) { return b < VSC_RBANDS ? vsc_meter.rb_level[b] : 0; }
+W_EXPORT(reson_drops) unsigned w_reson_drops(void) { return vsc_meter.rb_drops; }
 W_EXPORT(ana_pitch) float w_ana_pitch(void) { return vsc_meter.ana_pitch; }
 W_EXPORT(ana_conf) float w_ana_conf(void) { return vsc_meter.ana_conf; }
 W_EXPORT(ana_harm) float w_ana_harm(unsigned h) { return h < 8 ? vsc_meter.ana_harm[h] : 0.f; }

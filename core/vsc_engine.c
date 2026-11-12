@@ -14,7 +14,7 @@ VSC_INL float clampf(float x, float lo, float hi) { return x < lo ? lo : x > hi 
 VSC_INL float absf(float x) { return x < 0.f ? -x : x; }
 VSC_INL int floori(float x) { int i = (int)x; return (float)i > x ? i - 1 : i; }
 /* 2^x, about 1e-4 relative error over the audio range. */
-VSC_INL float exp2a(float x)
+static VSC_HOT_SMALL float exp2a(float x)
 {
     x = clampf(x, -60.f, 30.f);
     int i = floori(x);
@@ -25,14 +25,14 @@ VSC_INL float exp2a(float x)
     v.u += (uint32_t)i << 23;
     return v.f;
 }
-VSC_INL float tanha(float x)
+static VSC_HOT_SMALL float tanha(float x)
 {
     x = clampf(x, -3.f, 3.f);
     float x2 = x * x;
     return x * (27.f + x2) / (27.f + 9.f * x2);
 }
 /* sin(2*pi*p) for p in [0,1). */
-VSC_INL float sin01(float p)
+static VSC_HOT_SMALL float sin01(float p)
 {
     float x = p < 0.5f ? p * 4.f - 1.f : 3.f - p * 4.f; /* triangle -1..1 */
     return x * (1.5f - 0.5f * x * x);
@@ -45,9 +45,10 @@ VSC_INL float cos2pi(float p)
     float x2 = x * x;
     return flip * (1.f + x2 * (-0.5f + x2 * (1.f / 24.f + x2 * (-1.f / 720.f + x2 * (1.f / 40320.f)))));
 }
+static VSC_HOT_SMALL float cos2pi_c(float p) { return cos2pi(p); }
 VSC_INL float tanpre(float x) { float x2 = x * x; return x * (15.f - x2) / (15.f - 6.f * x2); }
 /* log2(x) for x > 0, about 2e-4 absolute error */
-VSC_INL float log2a(float x)
+static VSC_HOT_SMALL float log2a(float x)
 {
     union { float f; uint32_t u; } v; v.f = x;
     float e = (float)(int)((v.u >> 23) & 255u) - 127.f;
@@ -55,7 +56,7 @@ VSC_INL float log2a(float x)
     float m = v.f;
     return e + ((((-0.07915816f * m + 0.62887362f) * m - 2.08121416f) * m + 4.02854794f) * m - 2.49684606f);
 }
-VSC_INL float sqrta(float x)
+static VSC_HOT_SMALL float sqrta(float x)
 {
     if (x <= 0.f) return 0.f;
     union { float f; uint32_t u; } v; v.f = x;
@@ -68,11 +69,12 @@ VSC_INL float sqrta(float x)
 static uint32_t rng = 0x9e3779b9u;
 VSC_INL uint32_t rnd(void) { rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; return rng; }
 VSC_INL float rndu(void) { return (float)(rnd() >> 8) * (1.f / 16777216.f); }
-VSC_INL float rndb(void) { return rndu() * 2.f - 1.f; }
+static VSC_HOT_SMALL float rndb(void) { return rndu() * 2.f - 1.f; }
+static VSC_HOT_SMALL float rndc(void) { return rndu(); }   /* the same, called: for code that runs now and then */
 
 /* mu-law, 8-bit. Decode table is built at init into RAM. */
 static float ulaw_table[256];
-VSC_INL uint8_t ulaw_enc(float x)
+static VSC_HOT_SMALL uint8_t ulaw_enc(float x)
 {
     int s = (int)(clampf(x, -1.f, 1.f) * 32767.f);
     int sign = 0;
@@ -187,6 +189,7 @@ static uint32_t ext_last;         /* frames since the last MIDI clock */
 static uint32_t ext_prev_at;      /* frame of the previous clock */
 static float ext_interval;        /* smoothed frames per MIDI clock */
 static float tempo_now = 110.f;   /* the tempo everything follows this block */
+static float rs_req;              /* RESON: a ping asked for by a note or REC (its velocity) */
 static uint8_t from_midi;         /* the event being handled came from MIDI */
 static uint8_t mod_enum[4][VSC_MOD_PARAMS];
 static uint8_t vsc_tparam_max[VSC_NP], vsc_gparam_max[VSC_NG];   /* RAM copies for the audio context */
@@ -202,7 +205,7 @@ static uint32_t frame_counter;
  * runs through), a splice of the reel, or a sample-bank slot. Positions are in the
  * source's own frames, as floats (exact to 2^24, far past any source here). */
 struct srcv { const uint8_t *u8; float len, rate; int slot; uint32_t w; uint8_t ring; };
-VSC_INL float rate_hz(unsigned r) { return r == RATE_HI ? 44100.f : r == RATE_MID ? 22050.f : 11025.f; }
+static VSC_HOT_SMALL float rate_hz(unsigned r) { return r == RATE_HI ? 44100.f : r == RATE_MID ? 22050.f : 11025.f; }
 static VSC_HOT int src_view(unsigned t, struct srcv *s)
 {
     struct track *k = &tr[t];
@@ -232,7 +235,7 @@ static VSC_HOT int src_view(unsigned t, struct srcv *s)
     s->len = (float)k->cap_len;
     return 1;
 }
-VSC_INL float bank_at(struct reader *r, int slot, uint32_t frame)
+static VSC_HOT_SMALL float bank_at(struct reader *r, int slot, uint32_t frame)
 {
     int c = (int)(frame / VSC_CHUNK);
     if (c != r->chunk || slot != r->slot) {
@@ -275,6 +278,7 @@ static VSC_HOT_SMALL void note_on(unsigned t, unsigned note, unsigned vel)
     for (unsigned m = 0; m < VSC_MODS; ++m)
         if ((vsc.t[t][P_MOD(m, 0)] & 3) == MT_ADSR) { k->ms[m].stage = 1; k->ms[m].sp = 0.f; k->ms[m].from = k->ms[m].env; }
     k->note_hit = 1;
+    if (vsc.g[G_BTRIG] == BT_NOTES && vsc.g[G_BTRACK] == t + 1u) rs_req = 0.3f + (float)vel * (0.7f / 127.f);
     unsigned keys = vsc.t[t][P_KEYS];
     if (keys == KEYS_PITCH || keys == KEYS_PLAY) k->note_semis = (float)note - 60.f;
     if (keys == KEYS_PLAY) { k->ph = 0.f; k->hcount = 0; }
@@ -432,7 +436,7 @@ static struct {
 } ana;
 volatile uint8_t vsc_ana_view;
 /* the listener's pitch now, as a note (0 when none is heard) */
-VSC_INL float ana_note_now(void) { return ana.voiced ? ana.note : 0.f; }
+static VSC_HOT_SMALL float ana_note_now(void) { return ana.voiced ? ana.note : 0.f; }
 static VSC_HOT_SMALL void ana_pitch_end(void)
 {
     /* the dip YIN found (or the deepest), refined between its neighbours */
@@ -457,7 +461,7 @@ static VSC_HOT_SMALL void ana_pitch_end(void)
     for (unsigned h = 0; h < ANA_PART; ++h) {
         float f = hz * (float)(h + 1u);
         if (f > 5000.f) { vsc_meter.ana_harm[h] = 0.f; continue; }
-        float c = 2.f * cos2pi(f * (1.f / 11025.f)), s1 = 0.f, s2 = 0.f;
+        float c = 2.f * cos2pi_c(f * (1.f / 11025.f)), s1 = 0.f, s2 = 0.f;
         for (unsigned j = 0; j < ANA_W; ++j) {
             int w = j < ANA_W / 2u ? (int)j : (int)(ANA_W - j);
             float x = (float)(ana.ring[(ana.ws + j) & (ANA_RING - 1u)] * w);
@@ -585,6 +589,7 @@ static VSC_HOT_SMALL void ana_block(const struct vsc_inputs *in, int wanted)
 static VSC_HOT_SMALL int ana_wanted(void)
 {
     if (vsc_ana_view || vsc.g[G_AHITS] != AHITS_OFF) return 1;
+    if (vsc.g[G_BTRACK] && vsc.g[G_BMODE] && vsc.g[G_BTRIG] == BT_HITS) return 1;
     for (unsigned t = 0; t < VSC_TRACKS; ++t) {
         const uint8_t *b = vsc.t[t];
         if (b[P_ENGINE] == ENG_SHARDS && b[P_TRIG] == TRIG_HIT) return 1;
@@ -600,13 +605,13 @@ static VSC_HOT_SMALL int ana_wanted(void)
  * the tempo in STRAIGHT, TRIPLET or DOTTED divisions, and restart with PLAY. */
 static VSC_HOTDATA const float div_cycle[10] = {32.f, 16.f, 8.f, 4.f, 2.f, 1.f, 0.5f, 0.25f, 0.125f, 0.0625f};
 static VSC_HOTDATA const float sync_mul[4] = {1.f, 1.f, 2.f / 3.f, 1.5f};
-VSC_INL float mod_rate(float r, unsigned sync)
+static VSC_HOT_SMALL float mod_rate(float r, unsigned sync)
 {
     if (!sync) return 0.02f * exp2a(r * 10.f);                        /* 0.02 .. 20 Hz */
     unsigned d = (unsigned)(r * 9.99f);
     return tempo_now * (1.f / 60.f) / (div_cycle[d] * sync_mul[sync & 3]);
 }
-VSC_INL float curve_to(float x, float c)   /* c -1..1: log .. linear .. exp */
+static VSC_HOT_SMALL float curve_to(float x, float c)   /* c -1..1: log .. linear .. exp */
 {
     if (c > 0.f) return x + (x * x * x - x) * c;
     return x + ((1.f - (1.f - x) * (1.f - x) * (1.f - x)) - x) * -c;
@@ -630,7 +635,7 @@ static VSC_HOT void run_mods(unsigned t, unsigned off, unsigned frames)
         case MT_WAVE: {
             s->ph += mod_rate(e[1], b[P_MOD(m, 9)]) * dt;
             int wrapped = s->ph >= 1.f;
-            if (wrapped) { s->ph -= (float)floori(s->ph); s->held = rndu(); }
+            if (wrapped) { s->ph -= (float)floori(s->ph); s->held = rndc(); }
             float p = s->ph + e[3]; if (p >= 1.f) p -= 1.f;
             float sk = clampf(e[5], 0.02f, 0.98f);                       /* SKEW */
             p = p < sk ? p / sk * 0.5f : 0.5f + (p - sk) / (1.f - sk) * 0.5f;
@@ -659,7 +664,7 @@ static VSC_HOT void run_mods(unsigned t, unsigned off, unsigned frames)
             if (s->ph >= 1.f) {
                 s->ph -= (float)floori(s->ph);
                 s->idx = (uint8_t)((s->idx + 1) % len);
-                if (rndu() < e[6] || s->steps[s->idx] == 0) s->steps[s->idx] = (uint8_t)(1u + (rnd() >> 24) % 255u);   /* VARIATION */
+                if (rndc() < e[6] || s->steps[s->idx] == 0) s->steps[s->idx] = (uint8_t)(1u + (rnd() >> 24) % 255u);   /* VARIATION */
             }
             unsigned at = (s->idx + (unsigned)(e[3] * (float)len)) % len;       /* PHASE */
             float target = (float)s->steps[at] * (1.f / 255.f);
@@ -753,14 +758,14 @@ static VSC_HOT void run_mods(unsigned t, unsigned off, unsigned frames)
  *    bins only, TILT leans the spectrum, PHASE scatters phases, CROSS takes the
  *    partner's magnitudes (its playhead, its source) for this one's phases. */
 VSC_INL float hann01(float ph) { return 0.5f - 0.5f * cos2pi(ph <= 0.5f ? ph : 1.f - ph); }
-VSC_INL float playhead_speed(struct track *k, unsigned t, float rr)
+static VSC_HOT_SMALL float playhead_speed(struct track *k, unsigned t, float rr)
 {
     float v = k->e[P_STRETCH] * 127.f;
     if (v >= 126.5f || vsc.t[t][P_FREEZE]) return 0.f;
     float sp = rr * exp2a((50.f - v) * 0.04f);     /* 50: 1.00X; 0: 0.25X; 125: 8X */
     return vsc.t[t][P_REV] ? -sp : sp;
 }
-VSC_INL float wrapw(float x, float w)
+static VSC_HOT_SMALL float wrapw(float x, float w)
 {
     if (x >= w || x < 0.f) x -= w * (float)floori(x / w);
     return x;
@@ -857,8 +862,8 @@ static VSC_HOT void hands(unsigned t, const struct srcv *s, float a, float wl, f
 }
 
 /* ---- SHARDS */
-VSC_INL float expo(float ph, float sharp) { return ph < 0.01f ? ph * 100.f : exp2a(-(ph - 0.01f) * sharp); }
-VSC_INL float shard_env(float ph, float shape)
+static VSC_HOT_SMALL float expo(float ph, float sharp) { return ph < 0.01f ? ph * 100.f : exp2a(-(ph - 0.01f) * sharp); }
+static VSC_HOT_SMALL float shard_env(float ph, float shape)
 {
     if (shape < 0.3333f) { float u = shape * 3.f; return hann01(ph) * (1.f - u) + expo(1.f - ph, 6.f) * u; }   /* smooth -> swell */
     if (shape < 0.6667f) { float u = (shape - 0.3333f) * 3.f; return expo(1.f - ph, 6.f) * (1.f - u) + expo(ph, 6.f) * u; }   /* swell -> expodec */
@@ -880,7 +885,7 @@ static VSC_HOT void shards(unsigned t, const struct srcv *s, float a, float wl, 
     unsigned trig = vsc.t[t][P_TRIG];
     unsigned burst = 1u + (unsigned)(dens * 5.99f);
     if ((trig == TRIG_HIT && ana.hit[sub < ANA_SUBS ? sub : 0] > 0.f) || (trig == TRIG_NOTE && k->note_hit)) { k->burst = (uint8_t)burst; k->bwait = 0; }
-    if (trig == TRIG_CLOCK && k->clock_hit && rndu() < 0.2f + dens * 0.8f) { k->burst = 1; k->bwait = 0; }
+    if (trig == TRIG_CLOCK && k->clock_hit && rndc() < 0.2f + dens * 0.8f) { k->burst = 1; k->bwait = 0; }
     k->note_hit = 0; k->clock_hit = 0;
     unsigned slots = vsc_relief >= 2 ? VSC_GRAINS / 2 : VSC_GRAINS;
     float inv_len = 64.f / (float)len;
@@ -904,14 +909,14 @@ static VSC_HOT void shards(unsigned t, const struct srcv *s, float a, float wl, 
                 struct grain *g = &k->g[gi];
                 if (g->active) continue;
                 float semis = semis0 + rndb() * spread;
-                if (shatter > 0.f && rndu() < shatter * 0.5f) semis += rndu() < 0.5f ? 12.f : 24.f;
+                if (shatter > 0.f && rndc() < shatter * 0.5f) semis += rndc() < 0.5f ? 12.f : 24.f;
                 float inc = exp2a(semis * (1.f / 12.f)) * rr;
                 g->pos = a + k->ph + rndb() * spray;
-                g->inc = rndu() < srev ? -inc : inc;
+                g->inc = rndc() < srev ? -inc : inc;
                 g->len = len; g->t = 0; g->active = 1;
                 float pan = 0.5f + rndb() * ster;
                 g->pl = 1.f - pan; g->pr = pan;
-                g->amp = 0.75f + 0.25f * rndu();
+                g->amp = 0.75f + 0.25f * rndc();
                 break;
             }
         float l = 0.f, r = 0.f;
@@ -944,7 +949,7 @@ VSC_INL float c512(unsigned i)
 }
 VSC_INL float s512(unsigned i) { return c512(i + 3u * FN / 4u); }
 /* the sine window, sin(pi i / 512), from the same quarter table */
-VSC_INL float swin(unsigned i)
+static VSC_HOT_SMALL float swin(unsigned i)
 {
     unsigned u = i < FN / 2 ? FN / 2 - i : i - FN / 2;   /* sin(pi i/512) = cos(pi u/512) */
     return (u & 1u) ? 0.5f * (cosq[u >> 1] + cosq[(u >> 1) + 1u]) : cosq[u >> 1];
@@ -1010,7 +1015,7 @@ static VSC_HOT void irfft(float *b)
     cfft(b, 1);
     for (unsigned i = 0; i < FN; ++i) b[i] *= 1.f / (float)FH;
 }
-VSC_INL float rsqrta(float x)
+static VSC_HOT_SMALL float rsqrta(float x)
 {
     union { float f; uint32_t u; } v; v.f = x;
     v.u = 0x5f3759dfu - (v.u >> 1);
@@ -1161,11 +1166,290 @@ static VSC_HOT void spectra(unsigned t, const struct srcv *s, float a, float wl,
     for (unsigned i = 0; i < n; ++i) x[i] = (float)vo->ola[at + i] * (1.f / OLA_ONE);
 }
 
-VSC_INL float svf_g(float hz)
+static VSC_HOT_SMALL float svf_g(float hz)
 {
     hz = clampf(hz, 16.f, 0.45f * (float)VSC_SR);
     return tanpre(3.14159265f * hz / (float)VSC_SR);
 }
+/* ---------------------------------------------------------------- RESON
+ * One resonant filterbank of eight bands, put on one track after its PUTTY. Each band
+ * is a TPT state-variable bandpass whose damping comes from its decay time, so the
+ * same bank filters (FILTER), carries a vocoder's band envelopes (VOCODE), rings from
+ * short bursts of excitation (PING) or does all at once (HYBRID). Everything that
+ * costs a transcendental (tuning, decays, the liquid motion) runs once a sub-block;
+ * a sample costs the bank, the envelopes and the detector. Off, it costs nothing. */
+static VSC_HOTDATA const float rb_hz[VSC_RBANDS] = {200.f, 400.f, 800.f, 1200.f, 1600.f, 2400.f, 3200.f, 4800.f};
+/* LIQUID: two slow random walks, read by each band with its own weight, so the bands
+ * move together but not alike (band 7 more than band 2, some against the others) */
+static VSC_HOTDATA const float rb_w1[VSC_RBANDS] = {0.5f, 0.45f, 0.6f, 0.7f, 0.8f, 0.9f, 1.f, 1.1f};
+static VSC_HOTDATA const float rb_w2[VSC_RBANDS] = {0.3f, -0.6f, 0.5f, -0.4f, 0.7f, -0.5f, 0.9f, -0.8f};
+#define RS_RING 1024u                   /* the droplets' memory: 23 ms of the wet sound, mu-law */
+#define RS_DROPS 3
+struct rdrop { float pos, inc, amp, du; uint16_t len, t; uint8_t dest, on; };
+static struct {
+    /* each band is a bandpass biquad, the bilinear transform of k s / (s^2 + k s + 1)
+     * (the same curve as a TPT SVF's bandpass times k, at about half the arithmetic):
+     * y = b0 (x - x[-2]) - d1 y[-1] - d2 y[-2] */
+    float cy1[VSC_RBANDS], cy2[VSC_RBANDS];   /* the bank the sound goes through (Q up to 8, as Grains) */
+    float ry1[VSC_RBANDS], ry2[VSC_RBANDS], rx1[VSC_RBANDS], rx2[VSC_RBANDS];   /* the bank that rings */
+    float my1[VSC_RBANDS], my2[VSC_RBANDS];   /* the analysis bank, for another modulator */
+    float cd1[VSC_RBANDS], cd2[VSC_RBANDS], cb0[VSC_RBANDS], ab0[VSC_RBANDS];   /* (cb0 has the make-up and the mode's share) */
+    float rd1[VSC_RBANDS], rd2[VSC_RBANDS], rb0[VSC_RBANDS];
+    float cx1, cx2, mx1, mx2;                 /* the two shared inputs' history */
+    float pn[VSC_RBANDS];                     /* what a unit impulse needs to ring a band at 1 */
+    float gain[VSC_RBANDS], gstep[VSC_RBANDS], gg[VSC_RBANDS];   /* gg: the gain in use, with the vocoder's */
+    float env[VSC_RBANDS], oenv[VSC_RBANDS];  /* the modulator's band envelopes; the output's */
+    float pw[VSC_RBANDS], inj[VSC_RBANDS];    /* where a ping goes; what reaches each band next sample */
+    float exc, exc_dec;                       /* the exciter: a decaying burst */
+    float lq[2], lqt[2], lqs[2];              /* LIQUID's walks: value, target, step */
+    float hp, lp, ef, es, act;                /* the detector */
+    float osc, fb, dc;                        /* the oscillator's phase; feedback and its DC blocker */
+    float pend;                               /* a quantised ping waiting for the grid */
+    float grid;                               /* frames into the current grid slot, when stopped */
+    int qidx;
+    uint16_t refr, rw;
+    uint8_t armed, track;
+    struct rdrop d[RS_DROPS];
+    uint8_t ring[RS_RING];
+} rs;   /* zeroed; vsc_init marks it unplaced */
+
+/* once a sub-block: tuning, decays, gains, the liquid motion, the grid */
+/* the control code's square root, once (not inlined: it runs a few times a sub-block) */
+static VSC_HOT_SMALL float rsqrt_(float x) { return sqrta(x); }
+#define rexp2 exp2a
+#define rlog2 log2a
+#define RS_CONT(mode) ((mode) == BM_PING ? 0.f : (mode) == BM_HYBRID ? 0.5f : 1.f)   /* the sound's share through the bank */
+static VSC_HOT_SMALL void reson_control(unsigned n)
+{
+    const float cont = RS_CONT(vsc.g[G_BMODE]);
+    const float liq = gv[G_BLIQ] * (1.f / 127.f);
+    for (unsigned w = 0; w < 2; ++w) {
+        if (absf(rs.lq[w] - rs.lqt[w]) < absf(rs.lqs[w]) * 1.5f || rs.lqs[w] == 0.f) {
+            rs.lqt[w] = rndc() * 2.f - 1.f;
+            rs.lqs[w] = (rs.lqt[w] - rs.lq[w]) * (float)n / ((0.35f + rndc() * (w ? 1.6f : 0.9f)) * (float)VSC_SR);
+        }
+        rs.lq[w] += rs.lqs[w];
+    }
+    const float shift = gv[G_BSHIFT] - 64.f, t0 = gv[G_BRESO] * (8.f / 127.f);
+    const float kw = rexp2(-gv[G_BWIDTH] * (5.f / 127.f));   /* the continuous bands: Q 1 .. 32 */
+    for (unsigned b = 0; b < VSC_RBANDS; ++b) {
+        float mv = liq * (rb_w1[b] * rs.lq[0] + rb_w2[b] * rs.lq[1]);
+        float f = rb_hz[b] * rexp2((shift + gv[G_BF0 + b] - 64.f) * (1.f / 64.f)) * (1.f + 0.03f * mv);
+        float T = 0.01f * rexp2(t0 + (gv[G_BD0 + b] - 64.f) * (1.f / 32.f)) * (1.f + 0.3f * liq * rb_w2[b] * rs.lq[1]);
+        float g = svf_g(f), g2 = g * g, kk = 2.2f / (f * T);         /* T60 = 6.91 / (pi f k) */
+        kk = clampf(kk, 0.004f, 1.6f);
+        float ia = 1.f / (1.f + g * kk + g2);
+        rs.rd1[b] = 2.f * (g2 - 1.f) * ia; rs.rd2[b] = (1.f - g * kk + g2) * ia; rs.rb0[b] = g * kk * ia;
+        /* a narrow band passes little of a broad sound: bring it up (as the bandwidth
+         * shrinks, by its square root); an impulse rings a band at about w/fs */
+        rs.pn[b] = 2.5f * (float)VSC_SR / (6.2831853f * f * kk);
+        /* the sound itself goes through a band no narrower than Q 8, made up as Grains
+         * does (x4 at Q 8, less when wider): a 2 s ring would leave a broad sound thin */
+        float kc = kk > kw ? kk : kw, ic = 1.f / (1.f + g * kc + g2);
+        rs.cd1[b] = 2.f * (g2 - 1.f) * ic; rs.cd2[b] = (1.f - g * kc + g2) * ic; rs.ab0[b] = g * kc * ic;
+        rs.cb0[b] = rs.ab0[b] * cont * 8.f * rsqrt_(0.125f / kc);
+        float v = gv[G_BG0 + b];
+        float lin = v < 0.5f ? 0.f : rexp2((-60.f + v * (66.f / 127.f) + 3.f * liq * rb_w1[b] * rs.lq[0]) * 0.1660964f);
+        rs.gstep[b] = (lin - rs.gain[b]) * (1.f / (float)n);
+    }
+}
+/* a ping: a burst into every band, weighted by its gain and (SPECTR) by where the
+ * modulator's energy is now */
+static VSC_HOT_SMALL void reson_ping(float vel)
+{
+    float spec = gv[G_BSPEC] * (1.f / 127.f), mx = 1e-6f;
+    for (unsigned b = 0; b < VSC_RBANDS; ++b) if (rs.env[b] > mx) mx = rs.env[b];
+    float ex = 1.f + 3.f * spec;
+    for (unsigned b = 0; b < VSC_RBANDS; ++b) {
+        float w = rexp2(ex * rlog2(rs.env[b] / mx + 1e-4f));
+        rs.pw[b] = (1.f - spec + spec * w) * rs.pn[b];
+    }
+    float hard = gv[G_BHARD] * (1.f / 127.f), tau = (0.004f - 0.0037f * hard) * (float)VSC_SR;   /* 4 ms soft .. 0.3 ms hard */
+    rs.exc_dec = rexp2(-1.4427f / tau);
+    rs.exc += vel * 0.7f / tau;   /* the burst's area: the same ring, soft or hard */
+    ++vsc_meter.rb_pings;
+}
+static VSC_HOT_SMALL void reson(unsigned t, unsigned off, unsigned n, unsigned sub)
+{
+    struct track *k = &tr[t];
+    float *x = k->out + off;
+    const unsigned mode = vsc.g[G_BMODE], vm = vsc.g[G_BVMOD], trig = vsc.g[G_BTRIG];
+    if (rs.track != t) {   /* moved to this track: start clean */
+        vsc_memset(&rs, 0, offsetof(__typeof__(rs), ring)); vsc_memset(rs.ring, 0xff, RS_RING);
+        rs.track = (uint8_t)t; rs.armed = 1;
+    }
+    reson_control(n);
+    const float cont = RS_CONT(mode);
+    const int voc = mode == BM_VOCODE || mode == BM_HYBRID;
+    const float depth = gv[G_BDEPTH] * (1.f / 127.f), wet = gv[G_BMIX] * (1.f / 127.f);
+    const float sa_ = gv[G_BATK] * (1.f / 127.f), sr_ = gv[G_BREL] * (1.f / 127.f);
+    /* the envelopes and the gains move every fourth sample (RS_EV): a band's sound is
+     * filtered every sample, what it is multiplied by needs less */
+#define RS_EV 4u
+    const float att = 1.f - rexp2(-1.4427f * (float)RS_EV / ((0.0005f + 0.05f * sa_ * sa_) * (float)VSC_SR));   /* 0.5 .. 50 ms */
+    const float rel = 1.f - rexp2(-1.4427f * (float)RS_EV / ((0.005f + 0.6f * sr_ * sr_) * (float)VSC_SR));     /* 5 .. 600 ms */
+    const float fdbk = gv[G_BFDBK] * (0.85f / 127.f);
+    /* the modulator: also what PING's detector hears */
+    const float *mod = x;
+    float mbuf[VSC_SUB];
+    if (vm == BV_INPUT) mod = k->in + off;
+    else if (vm == BV_PARTNER) mod = tr[VSC_PARTNER(t)].out + off;   /* this block's if rendered, else the last */
+    else if (vm == BV_OSC || vm == BV_NOISE) {
+        float dust = gv[G_BDUST] * (1.f / 127.f), shape = gv[G_BOSC] * (4.f / 127.f);   /* 0..4 */
+        float inc = 110.f * exp2a(k->note_semis * (1.f / 12.f)) * (1.f / (float)VSC_SR);
+        for (unsigned i = 0; i < n; ++i) {
+            float v;
+            if (vm == BV_NOISE) {   /* dense noise down to lone specks of dust */
+                float r = rndu() * 2.f - 1.f;
+                v = dust > 0.7f ? r : (rndu() < dust * dust * 0.3f ? r * 3.f : 0.f);
+            } else {                /* SINE > SAW > PULSE, morphing */
+                rs.osc += inc; if (rs.osc >= 1.f) rs.osc -= 1.f;
+                float ph = rs.osc, q = ph < 0.25f ? ph + 0.75f : ph - 0.25f;   /* sin 2 pi ph = cos 2 pi (ph - 1/4) */
+                float sn = cos2pi_c(q <= 0.5f ? q : 1.f - q), saw = 2.f * ph - 1.f, pul = ph < 0.3f ? 1.f : -1.f;
+                v = (shape < 2.f ? sn + (saw - sn) * shape * 0.5f : saw + (pul - saw) * (shape - 2.f) * 0.5f) * 0.5f;
+            }
+            mbuf[i] = v;
+        }
+        mod = mbuf;
+    }
+    /* eased by the guard (relief 2): the band itself is the modulator, no analysis bank */
+    const int other = vsc_relief < 2 && (vm == BV_INPUT || vm == BV_PARTNER || vm == BV_OSC || vm == BV_NOISE);
+    /* the detector's band: HIGH above ~3 kHz, LOW below ~200 Hz */
+    const float hpk = 0.35f, lpk = 0.03f;
+    const float sens = gv[G_BSENS] * (1.f / 127.f), th = 0.25f * exp2a(-sens * 9.f);
+    const float fa = 1.f / (0.001f * (float)VSC_SR), fr = 1.f / (0.015f * (float)VSC_SR), sa = 1.f / (0.06f * (float)VSC_SR), sr = 1.f / (0.3f * (float)VSC_SR);
+    /* the particles: dust, which COHES gathers around the hits; droplets of the wet sound */
+    const float dust = gv[G_BDUST] * (1.f / 127.f), cohes = gv[G_BCOHES] * (1.f / 127.f);
+    const float drop = gv[G_BDROP] * (1.f / 127.f), migr = gv[G_BMIGR] * (1.f / 127.f);
+    const float dust_p = vm == BV_NOISE ? 0.f : dust * dust * (300.f / (float)VSC_SR);
+    unsigned live = 0;
+    float pk = 0.f, opk[VSC_RBANDS];
+    /* the bands with gain: a silent band costs nothing. Eased by the guard (relief 2):
+     * only the bands within 12 dB of the loudest */
+    unsigned on = 0;
+    float gmin = 1e-6f;
+    if (vsc_relief >= 2) for (unsigned b = 0; b < VSC_RBANDS; ++b) if (rs.gain[b] * 0.25f > gmin) gmin = rs.gain[b] * 0.25f;
+    for (unsigned b = 0; b < VSC_RBANDS; ++b) {
+        opk[b] = 0.f;
+        if (rs.gain[b] > gmin || rs.gstep[b] > 0.f) on |= 1u << b;
+        else { rs.gain[b] += rs.gstep[b] * (float)n; rs.oenv[b] *= 0.9f; }
+    }
+    const float vd8 = voc ? depth * 8.f : 0.f, vd3 = voc ? depth * 3.f : 0.f, vbase = voc ? 1.f - depth : 1.f;   /* the vocoder: 1 - depth + depth clamp(8 env, 0, 3) */
+    const unsigned self = !other && vm != BV_OUTPUT;
+    for (unsigned i = 0; i < n; ++i) {
+        float in = x[i], m = mod[i];
+        /* detector: fast against slow envelope of the chosen band; a ping on the rise */
+        rs.lp += (m - rs.lp) * lpk; rs.hp += (m - rs.hp) * hpk;
+        float d = trig == BT_HIGH ? m - rs.hp : trig == BT_LOW ? rs.lp : m;
+        float a = absf(d);
+        rs.ef += (a - rs.ef) * (a > rs.ef ? fa : fr);
+        rs.es += (a - rs.es) * (a > rs.es ? sa : sr);
+        float nov = rs.ef - 1.8f * rs.es, tha = th + 0.4f * rs.es;   /* a rise well over what was there: not a steady sound */
+        rs.act += ((nov > th ? 1.f : 0.f) - rs.act) * 0.0005f;
+        if (rs.refr) --rs.refr;
+        if (trig >= BT_HIGH && trig <= BT_LOW) {
+            if (nov > tha && rs.armed && !rs.refr) {
+                float vel = clampf(nov / th * 0.2f, 0.15f, 1.f);
+                if (vsc.g[G_BQUANT]) rs.pend = vel > rs.pend ? vel : rs.pend; else reson_ping(vel);
+                rs.armed = 0; rs.refr = (uint16_t)(0.04f * VSC_SR);
+            } else if (nov < tha * 0.5f) rs.armed = 1;
+        }
+        /* dust: specks into one band each; COHES ties them to the hits */
+        if (dust_p > 0.f && rndu() < dust_p * (1.f - cohes + cohes * 6.f * rs.act)) {
+            unsigned b = rnd() & 7u;
+            rs.inj[b] += (rndc() * 2.f - 1.f) * rs.pn[b] * (0.15f + 2.f * rs.ef);
+        }
+        rs.exc *= rs.exc_dec;
+        const float e = rs.exc, fb = rs.fb * fdbk;
+        /* each band a bandpass biquad; the two shared inputs' x - x[-2] once */
+        const float dc_ = in - rs.cx2, dm = m - rs.mx2;
+        rs.cx2 = rs.cx1; rs.cx1 = in; rs.mx2 = rs.mx1; rs.mx1 = m;
+        float y = 0.f;
+        const int upd = (i & (RS_EV - 1u)) == 0;
+        for (unsigned b = 0; b < VSC_RBANDS; ++b) {
+            if (!(on >> b & 1u)) continue;
+            float vc = 0.f;
+            if (cont > 0.f) { vc = rs.cb0[b] * dc_ - rs.cd1[b] * rs.cy1[b] - rs.cd2[b] * rs.cy2[b]; rs.cy2[b] = rs.cy1[b]; rs.cy1[b] = vc; }
+            float u = e * rs.pw[b] + rs.inj[b] + fb;
+            float vr = rs.rb0[b] * (u - rs.rx2[b]) - rs.rd1[b] * rs.ry1[b] - rs.rd2[b] * rs.ry2[b];
+            rs.rx2[b] = rs.rx1[b]; rs.rx1[b] = u; rs.ry2[b] = rs.ry1[b]; rs.ry1[b] = vr;
+            rs.inj[b] = 0.f;
+            float sb = vc + vr, em = 0.f;
+            if (other) {
+                float vm_ = rs.ab0[b] * dm - rs.cd1[b] * rs.my1[b] - rs.cd2[b] * rs.my2[b];
+                rs.my2[b] = rs.my1[b]; rs.my1[b] = vm_; em = absf(vm_);
+            }
+            float gg;
+            if (upd) {
+                float en = other ? em : self ? absf(sb) : rs.oenv[b];   /* OUTPUT: the band's own level, a sub-block late */
+                float env = rs.env[b];
+                env += (en - env) * (en > env ? att : rel); rs.env[b] = env;
+                float g = rs.gain[b], ve = env * vd8; rs.gain[b] = g + rs.gstep[b] * (float)RS_EV;
+                gg = g * (vbase + (ve < vd3 ? ve : vd3));   /* (the gain, unless it vocodes) */
+                rs.gg[b] = gg;
+                float ao = absf(sb * gg); if (ao > opk[b]) opk[b] = ao;
+            } else gg = rs.gg[b];
+            y += sb * gg;
+        }
+        /* feedback: the wet sound, DC-blocked and held soft, back into the bank */
+        rs.dc += (y - rs.dc) * 0.001f;
+        float fy = y - rs.dc;
+        rs.fb = fy / (1.f + absf(fy));
+        /* droplets: grains of the wet sound; MIGR sends them into another band instead */
+        rs.ring[rs.rw] = ulaw_enc(clampf(y, -1.f, 1.f)); rs.rw = (uint16_t)((rs.rw + 1u) & (RS_RING - 1u));
+        float dsum = 0.f;
+        if (drop > 0.f) {
+            for (unsigned j = 0; j < RS_DROPS; ++j) {
+                struct rdrop *q = &rs.d[j];
+                if (!q->on) {
+                    if (rndu() < drop * (0.4f + cohes * 6.f * rs.act) * (60.f / (float)VSC_SR)) {
+                        q->on = 1; q->t = 0; q->len = (uint16_t)((0.004f + rndc() * 0.014f) * VSC_SR);   /* 4 .. 18 ms: inside the ring */
+                        q->du = 1.f / (float)q->len;
+                        q->pos = (float)((rs.rw + RS_RING - q->len - 64u - (rnd() & 511u)) & (RS_RING - 1u));
+                        q->inc = 1.f + (rndc() - 0.5f) * 0.02f; q->amp = 0.7f + rndc() * 0.6f;
+                        q->dest = (uint8_t)(rnd() & 7u); if (rs.gain[q->dest] < 1e-3f) q->dest = (uint8_t)((q->dest + 5u) & 7u);
+                    }
+                    continue;
+                }
+                ++live;
+                unsigned ip = (unsigned)q->pos & (RS_RING - 1u);
+                float uu = (float)q->t * q->du, w = 4.f * uu * (1.f - uu);
+                float v = ulaw_table[rs.ring[ip]] * w * q->amp;
+                dsum += v;
+                rs.inj[q->dest] += v * migr * 3.f;
+                q->pos += q->inc; if (q->pos >= (float)RS_RING) q->pos -= (float)RS_RING;
+                if (++q->t >= q->len) q->on = 0;
+            }
+        }
+        float o = in * (1.f - wet) + (y + dsum * drop * (1.f - migr)) * wet;
+        if (!(o == o)) { vsc_memset(&rs, 0, offsetof(__typeof__(rs), ring)); rs.track = (uint8_t)t; o = 0.f; }   /* never let a NaN live */
+        x[i] = o;
+        float ay = absf(y); if (ay > pk) pk = ay;
+    }
+    /* the output's level, a sub-block at a time: fast up, slow down */
+    for (unsigned b = 0; b < VSC_RBANDS; ++b) if (on >> b & 1u) rs.oenv[b] += (opk[b] - rs.oenv[b]) * (opk[b] > rs.oenv[b] ? 0.27f : 0.016f);
+    /* quantised pings wait for the grid: the steps' when playing, the tempo's when not */
+    if (vsc.g[G_BQUANT]) {
+        static VSC_HOTDATA const float div[5] = {1.f, 0.5f, 1.f, 2.f, 4.f};   /* in sixteenths */
+        float d16 = div[vsc.g[G_BQUANT] < 5 ? vsc.g[G_BQUANT] : 4], stepf = 15.f / tempo_now * (float)VSC_SR;
+        int boundary = 0;
+        if (seq_running) {
+            int idx = floori(((float)seq_step + seq_phase / stepf) / d16);
+            boundary = idx != rs.qidx; rs.qidx = idx;
+        } else {
+            rs.grid += (float)n;
+            float slot = d16 * stepf;
+            while (rs.grid >= slot) { rs.grid -= slot; boundary = 1; }
+        }
+        if (boundary && rs.pend > 0.f) { reson_ping(rs.pend); rs.pend = 0.f; }
+    } else if (rs.pend > 0.f) { reson_ping(rs.pend); rs.pend = 0.f; }
+    if (rs_req > 0.f) { reson_ping(rs_req); rs_req = 0.f; }
+    if (trig == BT_HITS && ana.hit[sub < ANA_SUBS ? sub : 0] > 0.f) reson_ping(0.4f + 0.6f * clampf(ana.hit[sub < ANA_SUBS ? sub : 0], 0.f, 1.f));
+    for (unsigned b = 0; b < VSC_RBANDS; ++b) { float l = rs.oenv[b] * 600.f; vsc_meter.rb_level[b] = (uint8_t)(l > 255.f ? 255.f : l); }
+    vsc_meter.rb_drops = (uint8_t)live;
+    if (pk > VSC_WAKE_LEVEL || dust > 0.f) k->awake = VSC_WAKE_HOLD;   /* rings on after its source stops */
+}
+
 /* ---- the putty, per sub-block */
 static VSC_HOT void putty(unsigned t, unsigned off, unsigned n, unsigned sub)
 {
@@ -1403,7 +1687,7 @@ static VSC_HOT_SMALL void ball_launch(unsigned t, struct ball *b, unsigned k, fl
 {
     /* the golden angle spaces successive launches; SPREAD fans them out */
     float spread = tr[t].e[P_RSPREAD];
-    float ph = (float)k * 0.381966f * spread + 0.125f + rndu() * spread * 0.08f;
+    float ph = (float)k * 0.381966f * spread + 0.125f + rndc() * spread * 0.08f;
     ph -= (float)floori(ph);
     float c = sin01(ph + 0.25f), sn = sin01(ph);
     b->x = clampf(x, 0.02f, 0.98f); b->y = clampf(y, 0.02f, 0.98f);
@@ -1714,6 +1998,7 @@ static VSC_HOT_SMALL void handle(uint32_t e)
     case EV_ACTION:
         switch (a) {
         case ACT_SPACE_FREEZE: space_frozen ^= 1; vsc_meter.space_frozen = space_frozen; break;
+        case ACT_RESON_PING: rs_req = 1.f; break;
         case ACT_SPACE_CLEAR:
             vsc_memset(delay_line, 0xff, sizeof delay_line); vsc_memset(rv_buf, 0, sizeof rv_buf);
             space_frozen = 0; vsc_meter.space_frozen = 0; break;
@@ -1739,7 +2024,7 @@ static VSC_HOT_SMALL void drain(struct queue *q)
 }
 
 /* -------------------------------------------------------------- render */
-void vsc_init(void)
+__attribute__((minsize)) void vsc_init(void)
 {
     ulaw_build();
     vsc_device_defaults();
@@ -1758,7 +2043,7 @@ void vsc_init(void)
     }
     for (unsigned v = 0; v < VSC_VOCODERS; ++v) voc[v].track = -1;
     for (unsigned i = 0; i <= FN / 4; ++i) {   /* cos 0 .. pi/2, by the cosine series (cos2pi is accurate to 1e-6 here) */
-        cosq[i] = cos2pi((float)i * (1.f / (float)FN));
+        cosq[i] = cos2pi_c((float)i * (1.f / (float)FN));
     }
     for (unsigned k = 0; k < FH; ++k) {   /* 48 bands over 256 bins, finer low */
         float b = (float)k; unsigned q = 0;
@@ -1768,6 +2053,7 @@ void vsc_init(void)
     for (unsigned i = 0; i < 32; ++i) { rnd_unit[2 * i] = c512(i * 16u + 5u); rnd_unit[2 * i + 1] = s512(i * 16u + 5u); }
     vsc_memset(delay_line, 0xff, sizeof delay_line);
     vsc_memset(rv_buf, 0, sizeof rv_buf);
+    rs.track = 255;
 #ifdef VSC_BENCH
     for (unsigned t = 0; t < VSC_TRACKS; ++t)   /* (the benchmark's material, before the audio starts) */
         for (unsigned i = 0; i < VSC_CAP_FRAMES; ++i) capture[t][i] = ulaw_enc(0.4f * (float)((int)(rnd() >> 24) - 128) * (1.f / 128.f) * (float)((i >> 6) & 7) * 0.14f);
@@ -1798,7 +2084,7 @@ static VSC_HOT void input_for(unsigned t, const struct vsc_inputs *in)
  * SHARDS, HANDS), SPACE on */
 void vsc_bench_setup(void)
 {
-#if VSC_BENCH == 2
+#if VSC_BENCH == 2 || VSC_BENCH >= 5
     static const uint8_t eng[VSC_TRACKS] = {ENG_HANDS, ENG_HANDS, ENG_SHARDS, ENG_HANDS};
 #elif VSC_BENCH == 3
     static const uint8_t eng[VSC_TRACKS] = {ENG_SPECTRA, ENG_HANDS, ENG_SHARDS, ENG_HANDS};
@@ -1812,6 +2098,12 @@ void vsc_bench_setup(void)
     }
     vsc.t[1][P_CROSS] = 64; vsc.t[0][P_BLUR] = 40; vsc.t[2][P_DENS] = 127; vsc.t[2][P_SSIZE] = 127;
     vsc.g[G_RLEVEL] = 100; vsc.g[G_DLEVEL] = 100;
+#if VSC_BENCH == 6   /* and RESON as it starts (LIQUID MEMORY) */
+    vsc.g[G_BTRACK] = 4;
+#elif VSC_BENCH >= 4   /* and RESON at its heaviest: HYBRID, dust, droplets migrating, feedback */
+    vsc.g[G_BTRACK] = 4; vsc.g[G_BMODE] = BM_HYBRID; vsc.g[G_BTRIG] = BT_FULL; vsc.g[G_BDUST] = 90;
+    vsc.g[G_BDROP] = 100; vsc.g[G_BMIGR] = 60; vsc.g[G_BFDBK] = 60; vsc.g[G_BVMOD] = BV_OSC;
+#endif
 }
 #endif
 VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
@@ -1866,6 +2158,10 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
                 if (vsc.t[t][P_SEQM] == SEQ_CAROM && !vsc.t[t][P_MUTE]) { ball_add(t, note, (unsigned)(40.f + hit * 87.f)); ball_seeded[t] = 1; }
         }
         sequencer(VSC_SUB, sub);
+        /* RESON's track: 255 when it is off */
+        const unsigned rs_on = vsc.g[G_BTRACK] && vsc.g[G_BMODE] ? vsc.g[G_BTRACK] - 1u : 255u;
+        vsc_meter.rb_track = (uint8_t)rs_on;
+        if (rs_on == 255u) rs.track = 255;
         for (unsigned t = 0; t < VSC_TRACKS; ++t) {
             struct track *k = &tr[t];
             uint32_t t0 = vsc_clock_now ? vsc_clock_now() : 0;
@@ -1877,7 +2173,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
              * it) doesn't wake, and sleeps after its hold. */
             int quiet = (vsc.t[t][P_MUTE] || (k->e[P_LEVEL] <= 0.f && k->e[P_SEND] <= 0.f)) && !heard[t];
             unsigned src = vsc.t[t][P_SRC];
-            int has = src != SRC_CAPTURE || k->cap_state != 0;
+            int has = src != SRC_CAPTURE || k->cap_state != 0 || rs_on == t;
             if (!quiet && (has || vsc.t[t][P_NOISE])) k->awake = VSC_WAKE_HOLD;
 #ifdef VSC_NO_SLEEP
             k->awake = VSC_WAKE_HOLD;             /* measuring: every track always awake */
@@ -1891,6 +2187,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
                 continue;
             }
             putty(t, off, VSC_SUB, sub);
+            if (rs_on == t) reson(t, off, VSC_SUB, sub);
             color(t, off, VSC_SUB);
             djfilter(t, off, VSC_SUB);
             { float pk = 0.f;

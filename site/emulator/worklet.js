@@ -50,10 +50,12 @@ class Viscera extends AudioWorkletProcessor {
     } else if (m.type === 'load') {
       const p = new Uint8Array(this.mem(), x.project(), x.project_bytes());
       const keep = p.slice();
-      // 0.x projects (another size or format) were made for the old engine: they don't load
-      if (m.bytes.length !== p.length) { this.port.postMessage({type: 'loaded', ok: false}); return; }
-      x.stop_all(); p.set(m.bytes);
-      const ok = x.project_check() === 1;
+      // 0.x projects (another size or format) were made for the old engine: they don't load;
+      // 1.0's (format 6, fewer bytes) come in with RESON at its defaults
+      const old = m.bytes.length === x.project6_bytes();
+      if (m.bytes.length !== p.length && !old) { this.port.postMessage({type: 'loaded', ok: false}); return; }
+      x.stop_all(); p.fill(0); p.set(m.bytes);
+      const ok = old ? x.project_upgrade() === 1 : x.project_check() === 1;
       if (!ok) p.set(keep);
       this.port.postMessage({type: 'loaded', ok});
     } else if (m.type === 'device-load') {

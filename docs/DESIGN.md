@@ -17,9 +17,10 @@ Viscera keeps M-VAVE's platform library and its storage/transfer code, so the wo
 
 ```
 inputs: BT, USB, both ──┐
-the partner's output ───┼─▶ per track: SOURCE ─▶ PUTTY ─▶ COLOR ─▶ level/pan ─┬─▶ master
-the reel, the bank ─────┘   (capture,     (HANDS,                              └─▶ SPACE send (delay + reverb)
-                             reel, thru)   SHARDS, SPECTRA)
+the partner's output ───┼─▶ per track: SOURCE ─▶ PUTTY ─▶ (RESON) ─▶ COLOR ─▶ level/pan ─┬─▶ master
+the reel, the bank ─────┘   (capture,     (HANDS,     one track             └─▶ SPACE send (delay + reverb)
+                             reel, thru)   SHARDS,     at a time
+                                           SPECTRA)
 ```
 
 Four tracks, A to D, in two pairs: **A+B** and **C+D**. A pair bounces, crosses and moves together.
@@ -30,7 +31,7 @@ Four tracks, A to D, in two pairs: **A+B** and **C+D**. A pair bounces, crosses 
 | --- | --- |
 | SOURCE | CAPTURE (a buffer in RAM), REEL (the reel or a bank sample) or THRU (the input, live, through a short ring) |
 | INPUT | BT, USB, BT+USB (default), another track, or the main mix |
-| RATE | HI 44.1 kHz (0.34 s), MID 22 kHz (0.68 s, default) or LO 11 kHz (1.36 s): each capture is 15,000 bytes of 8-bit µ-law |
+| RATE | HI 44.1 kHz (0.33 s), MID 22 kHz (0.65 s, default) or LO 11 kHz (1.31 s): each capture is 14,400 bytes of 8-bit µ-law |
 | SOS | how much of the old an overdub keeps |
 | BOUNCE | OFF; IN: the track captures its partner's output; PING: when one ends a capture, the other takes it back, as long, so the sound passes between them |
 | REEL / SPLICE | KEPT (the reel) or a bank slot S1–S16; ALL or one splice |
@@ -51,6 +52,29 @@ The page is the mode: opening HANDS, SHARDS or SPECTRA puts the track into it. E
 **Robots.** Hold REC on a putty page and turn a knob: the turn is recorded (up to about two seconds) and, when REC is let go, loops around the knob on its own. Four a track; a fifth replaces the oldest. A robot shows as a lavender mark in its knob's cell, with a tick where it has the parameter now. Robots aren't kept in projects.
 
 **Two hands.** Hold OCT− and turn a knob: both tracks of the pair move together. Hold OCT+: they move apart. The octave only changes when an OCT button is let go without a knob turned. Both held: TEMP.
+
+### RESON: a resonant filterbank (ENV, after COLOR)
+
+Eight resonant bands at Grains' frequencies (200, 400, 800, 1200, 1600, 2400, 3200 and 4800 Hz), on one track at a time, after its PUTTY and before its COLOR. Opening the page puts it on the open track (TRACK on SETUP moves it, 0 turns it off); ENV toggles COLOR and RESON. Off, it costs nothing.
+
+Each band is two bandpass biquads with the same centre: one the sound goes through (no narrower than WIDTH, made up in level as Grains does, ×4 at Q 8), one that rings with a decay of its own (RESO, and DECAY per band, 10 ms to several seconds). Both are the bilinear transform of k s / (s² + k s + 1), the curve of a TPT state-variable bandpass, at about half its arithmetic. Tuning, decay and gains are worked out once per 32 samples; the envelopes and gains move every fourth sample; a band with no gain isn't run.
+
+| View | Knobs |
+| --- | --- |
+| BANK | PROFILE (LIQ MEM, GLASS, THROAT, DUST, RADIO, DROPS), WIDTH, RESO, MIX |
+| BAND | BAND (or pads 1–8), GAIN (dB, 0: off), FREQ (±1 octave), DECAY |
+| VOCODE | MODSRC (SELF, INPUT, PARTNR, OSC, NOISE, OUTPUT), ATTACK, RELEAS, DEPTH |
+| PING | TRIG (OFF, HIGH, FULL, LOW, HITS, NOTES), QUANT (OFF, 1/32 … 1/4), HARD, DENS |
+| MOTION | LIQUID, FDBK, SHIFT (±12 semitones, all bands), SPECTR |
+| PARTICLES | COHES, DROPS, MIGR, OSC (sine → saw → pulse) |
+| SETUP | MODE (OFF, FILTER, VOCODE, PING, HYBRID), SENS, TRACK |
+
+- **FILTER**: the sound through the bank. **VOCODE**: each band's gain follows the modulator's level in that band (SELF: the band itself; INPUT: the track's input; PARTNR: the other track of the pair; OSC and NOISE: a source of its own, the carrier being the track; OUTPUT: the band's own output, a little late). **PING**: only the ringing bank, excited by bursts. **HYBRID** (default): half of each, vocoded.
+- **Pings**: a transient detector on the modulator (a fast against a slow envelope of its HIGH, FULL or LOW band, with an adaptive threshold from SENS, hysteresis and 40 ms of refractory time), the listener's HITS, NOTES (keys, steps, CAROM on RESON's track) or REC on the page. QUANT holds a ping for the grid: the steps' when playing, the tempo's when not. HARD sets the burst from 4 ms (soft) to 0.3 ms (hard); SPECTR weights it towards the bands where the modulator has energy now.
+- **LIQUID**: two slow random walks move each band's tuning (±3 %), decay and gain (±3 dB) a little, each band by its own weights. **FDBK** returns the wet sound, DC-blocked and soft-limited, into the ringing bank.
+- **Particles**: DENS throws dust (specks into one band each); COHES ties them to the detector's activity. DROPS plays up to three micrograins (4–18 ms, Hann-like, ±1 % speed) from a 23 ms ring of the wet sound; MIGR sends them into another band instead of out.
+- The screen: eight bars glowing with each band's output over faint stacks of their gains, a reflection under the line, the band being edited in a lavender pill; BAND opens a window on its curve, VOCODE shows carrier and modulator, PING throws sparks off the bars.
+- Under the CPU guard's second step RESON runs only the bands within 12 dB of the loudest, and SELF in place of an analysis bank.
 
 ### COLOR and SPACE
 
@@ -124,10 +148,11 @@ The FM-1 has about 511 KB of RAM, and the platform library takes roughly 200 KB 
 
 | Buffer | Default | Notes |
 | --- | --- | --- |
-| Captures | 4 × 15,000 B µ-law | 0.34 s HI, 0.68 s MID, 1.36 s LO |
+| Captures | 4 × 14,400 B µ-law | 0.33 s HI, 0.65 s MID, 1.31 s LO |
 | Vocoders | 2 × 5 KB, plus 6 KB shared | 16-bit phases and overlap-add |
 | Delay | 8 KB µ-law | 0.19 s, double in LONG mode at half rate |
 | Reverb | about 7 KB | |
+| RESON | about 1.6 KB, plus a 1 KB µ-law ring | one instance; its state and the droplets' ring |
 | Bank chunk cache | 8 × 640 B | decoded SEA chunks for REEL S1–S16 |
 
 All of these sizes are compile-time settings in `core/vsc_config.h`. The first hardware build should print the link map's free heap; the buffers can grow from there.

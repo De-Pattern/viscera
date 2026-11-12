@@ -129,18 +129,29 @@ def main():
             struct.pack_into('<I', elf.d, shoff + elf.index('.rela' + host_name) * shentsize + 20, 0)   # sh_size = 0
         off, size = elf.sh[host][4], elf.sh[host][5]
         elf.d[off:off + size] = (stub * (size // len(stub) + 1))[:size]
+        # and the host section shrinks to the stub: the rest of the render it held is gone
+        # (only if nothing else in it points past the stub)
+        keep = (len(stub) + 3) & ~3
+        if all(not (sh == host and v >= keep) or n in RENDERS for (_, n, v, _, _, sh) in elf.symbols()):
+            shoff, = struct.unpack_from('<I', elf.d, 32)
+            shentsize, = struct.unpack_from('<H', elf.d, 46)
+            struct.pack_into('<I', elf.d, shoff + host * shentsize + 20, keep)   # sh_size
+            shrunk = size - keep
+        else:
+            shrunk = 0
         moved = []
         for at, name, value, sz, info, shndx in elf.symbols():
             if name in RENDERS and (info & 15) == 2:
                 struct.pack_into('<I', elf.d, at + 4, 0)          # st_value = 0
                 struct.pack_into('<H', elf.d, at + 14, host)      # st_shndx = host
+                if shrunk: struct.pack_into('<I', elf.d, at + 8, len(stub))   # st_size
                 moved.append(name)
         engine = set()
         open(obj, 'wb').write(elf.d)
         if os.path.exists(a.out):
             os.remove(a.out)
         run([os.path.join(tc, 'ar'), 'rcs', os.path.abspath(a.out), members[0]], cwd=tmp)
-        report = {'host': host_name, 'stub_bytes': len(stub), 'functions': len(moved)}
+        report = {'host': host_name, 'stub_bytes': len(stub), 'functions': len(moved), 'shrunk': shrunk}
         print('engines stubbed:', json.dumps(report))
         if a.report:
             json.dump(dict(report, moved=sorted(moved)), open(a.report, 'w'), indent=1)

@@ -19,7 +19,7 @@ Viscera catches sound coming in over Bluetooth (a phone or tablet) or USB (a com
 - **SHARDS**: up to eight grains with expodec, reverse-expodec and shattering windows, free, on the hits the listener hears, on notes or on the clock.
 - **SPECTRA**: a phase vocoder: blur, shift, gate, hold, and CROSS, one track's spectrum on its partner's phases.
 
-Four tracks in two pairs, each SOURCE → PUTTY → COLOR into a shared SPACE bus (delay and reverb), with four modulators per track, robots (a knob gesture recorded while REC is held, looping on its own), macros, scenes that morph, and STEPS (each step a SLICE, PITCH, LEN and PROB) or CAROM. Captures can be kept on a reel in flash.
+Four tracks in two pairs, each SOURCE → PUTTY → COLOR into a shared SPACE bus, with RESON (an eight-band resonant filterbank that filters, vocodes, rings from the sound's transients and throws particles) on one of them (delay and reverb), with four modulators per track, robots (a knob gesture recorded while REC is held, looping on its own), macros, scenes that morph, and STEPS (each step a SLICE, PITCH, LEN and PROB) or CAROM. Captures can be kept on a reel in flash.
 
 It's built on M-VAVE's official FM1 Open SDK (V14), so Bluetooth, USB audio and MIDI keep working, and samples uploaded with M-VAVE's workbench still play.
 

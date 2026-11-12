@@ -43,9 +43,28 @@ enum vsc_gparam {
     /* DISSECT: the shared listener's source, sensitivity, the band its hits come from,
      * and what the hits drive */
     G_ASRC, G_ASENS, G_AFOCUS, G_AHITS,
+    /* RESON: one resonant filterbank, on one track (after its PUTTY, before COLOR): the
+     * track (OFF, A-D; opening the page puts it on the open track), mode, the decay
+     * scale, wet, the continuous bands' width; per band its gain, tuning (+-12 st) and
+     * decay (x1/4..x4); the whole bank's shift, liquid motion, feedback and spectral
+     * excitation; the vocoder's modulator (also what PING listens to), its
+     * oscillator's shape, attack, release and depth; PING's trigger, sensitivity,
+     * quantise and hardness; the particles: dust, cohesion, droplets and migration */
+    G_BTRACK, G_BMODE, G_BRESO, G_BMIX, G_BWIDTH,
+    G_BG0, G_BG1, G_BG2, G_BG3, G_BG4, G_BG5, G_BG6, G_BG7,
+    G_BF0, G_BF1, G_BF2, G_BF3, G_BF4, G_BF5, G_BF6, G_BF7,
+    G_BD0, G_BD1, G_BD2, G_BD3, G_BD4, G_BD5, G_BD6, G_BD7,
+    G_BSHIFT, G_BLIQ, G_BFDBK, G_BSPEC,
+    G_BVMOD, G_BOSC, G_BATK, G_BREL, G_BDEPTH,
+    G_BTRIG, G_BSENS, G_BQUANT, G_BHARD,
+    G_BDUST, G_BCOHES, G_BDROP, G_BMIGR,
     VSC_NG
 };
 enum { SRC_CAPTURE, SRC_REEL, SRC_THRU };
+enum { BM_OFF, BM_FILTER, BM_VOCODE, BM_PING, BM_HYBRID };            /* RESON modes */
+enum { BV_SELF, BV_INPUT, BV_PARTNER, BV_OSC, BV_NOISE, BV_OUTPUT };    /* its modulator */
+enum { BT_OFF, BT_HIGH, BT_FULL, BT_LOW, BT_HITS, BT_NOTES };           /* what pings it */
+#define VSC_RBANDS 8
 enum { IN_BT, IN_USB, IN_BOTH, IN_T1, IN_T2, IN_T3, IN_T4, IN_MAIN, IN_COUNT };
 enum { RATE_HI, RATE_MID, RATE_LO };          /* every frame, every 2nd, every 4th */
 enum { BOUNCE_OFF, BOUNCE_IN, BOUNCE_PING };  /* capture the partner; and pass it back and forth */
@@ -71,7 +90,7 @@ enum { SEQ_STEPS, SEQ_CAROM };
 struct vsc_pinfo {
     char name[7];
     uint8_t max, def, flags;
-    const char *const *names;  /* enum labels, or NULL */
+    uint8_t names;             /* enum labels: a list number in vsc_params.c, 0 none */
 };
 /* A track parameter's description. Modulator parameters depend on the slot's TYPE. */
 const struct vsc_pinfo *vsc_tparam_info(unsigned track, unsigned p);
@@ -113,7 +132,8 @@ static inline unsigned vsc_src_code(unsigned t, unsigned from_track, unsigned mo
 struct vsc_learn { uint8_t ch, cc, track, param; };
 #define VSC_LEARN 16
 #define VSC_GDEST 128
-#define VSC_FORMAT 6   /* project layout version: bump when the parameters change (6: PUTTY, 1.0) */
+#define VSC_FORMAT 7   /* project layout version: bump when the parameters change (6: PUTTY, 1.0; 7: RESON, 1.1) */
+#define VSC_NG_6 (G_AHITS + 1)   /* format 6's global count: a 6 project loads with RESON at its defaults */
 struct vsc_mroute { uint8_t track, param; int8_t depth; uint8_t pad; };
 struct vsc_scene { uint8_t used, pad[3]; uint8_t t[VSC_TRACKS][VSC_NP]; uint8_t macro[VSC_MACROS]; };
 struct vsc_project {
@@ -184,7 +204,7 @@ enum { EV_NOTE_ON, EV_NOTE_OFF, EV_PLAY, EV_STOP, EV_REC, EV_CLOCK, EV_START, EV
 /* EV_REC a: */
 enum { REC_TAP, REC_DUB_ON, REC_DUB_OFF };
 /* EV_ACTION a: */
-enum { ACT_SPACE_FREEZE, ACT_SPACE_CLEAR, ACT_MOD_TRIG, ACT_TAPE_REWIND, ACT_TAPE_REVERSE };
+enum { ACT_SPACE_FREEZE, ACT_SPACE_CLEAR, ACT_MOD_TRIG, ACT_TAPE_REWIND, ACT_TAPE_REVERSE, ACT_RESON_PING };
 /* Robots: a recorded knob gesture per slot, looping; the UI plays them into this
  * (offsets in knob units, 0..1 full scale, added like a route; 0 when idle). */
 #define VSC_ROBOTS 4
@@ -232,6 +252,10 @@ struct vsc_meter {
     float ana_harm[8];
     uint32_t ana_hits;
     uint8_t ana_on;                  /* the listener ran this block */
+    /* RESON: each band's output level (0..255), the pings so far, droplets alive */
+    uint8_t rb_level[VSC_RBANDS];
+    uint32_t rb_pings;
+    uint8_t rb_drops, rb_track;      /* rb_track: the track it is on now, 255 none */
 };
 /* The UI sets this while it shows DISSECT, so the listener runs even if nothing uses it. */
 extern volatile uint8_t vsc_ana_view;
@@ -261,6 +285,13 @@ void vsc_scene_store(unsigned scene);
 void vsc_scene_recall(unsigned scene);
 uint32_t vsc_crc32(const void *data, size_t bytes);
 int vsc_project_valid(const struct vsc_project *p);
+/* A format 6 project (1.0), its bytes at p, its CRC already checked: moved up to this
+ * format in place (RESON at its defaults). Returns 0, or -1 if it isn't one. */
+int vsc_project_upgrade6(struct vsc_project *p);
+/* RESON's tuning and decays as set now (Hz, seconds), for labels and the screen */
+float vsc_reson_hz(unsigned band);
+float vsc_reson_sec(unsigned band);
+#define VSC_PROJECT6_BYTES (sizeof(struct vsc_project) - (VSC_NG - VSC_NG_6))
 /* Sets or clears a modulation route; depth -127..127, 0 removes it. param is a
  * track parameter, or VSC_GDEST + a global one. */
 int vsc_mod_dest_valid(unsigned code);   /* can a route move it? */

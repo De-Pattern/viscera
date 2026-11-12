@@ -108,11 +108,11 @@ static char letter(unsigned t) { return (char)('A' + (t & 3u)); }
  * track, PRESETS does the page's own job. The putty pages are the track's mode:
  * opening HANDS, SHARDS or SPECTRA puts the track into it. */
 enum { PG_HANDS, PG_SHARDS, PG_SPECTRA, PG_SOURCE, PG_MIX, PG_COLOR, PG_MODS, PG_SPACE, PG_SCENE, PG_SEQ,
-       PG_PROJECT, PG_SETTINGS, PG_SOUND, PG_DISSECT, PG_COUNT };
+       PG_PROJECT, PG_SETTINGS, PG_SOUND, PG_DISSECT, PG_RESON, PG_COUNT };
 static const char *const page_name[PG_COUNT] = {"HANDS", "SHARDS", "SPECTRA", "SOURCE", "MIX", "COLOR", "MODS", "SPACE",
-                                                "PERFORM", "SEQ", "PROJECT", "SETTINGS", "SOUNDS", "DISSECT"};
+                                                "PERFORM", "SEQ", "PROJECT", "SETTINGS", "SOUNDS", "DISSECT", "RESON"};
 #define PUTTY_PAGE(p) ((p) <= PG_SPECTRA)
-enum { S_NONE, S_T, S_G, S_TEMPO, S_STEP, S_TT, S_SET, S_MAT };
+enum { S_NONE, S_T, S_G, S_TEMPO, S_STEP, S_TT, S_SET, S_MAT, S_RBAND, S_RPROF };
 struct slot { uint8_t kind, id, tk; };
 #define T(p) {S_T, p, 0}
 #define G(p) {S_G, p, 0}
@@ -136,6 +136,18 @@ static const struct slot v_mix[6][4] = {TT(P_LEVEL), TT(P_PAN), TT(P_SEND), TT(P
 /* DISSECT: the listener (global), then the track's shards as its hits drive them */
 static const struct slot v_dissect[2][4] = {{G(G_ASRC), G(G_ASENS), G(G_AFOCUS), G(G_AHITS)},
                                             {T(P_TRIG), T(P_DENS), T(P_SSIZE), T(P_SHAPE)}};
+/* RESON: BANK, BAND, VOCODE, PING, MOTION, PARTICLES, SETUP. BAND's GAIN, FREQ and
+ * DECAY are the selected band's (slot_at swaps them in). */
+static const struct slot v_reson[7][4] = {{{S_RPROF, 0, 0}, G(G_BWIDTH), G(G_BRESO), G(G_BMIX)},
+                                          {{S_RBAND, 0, 0}, G(G_BG0), G(G_BF0), G(G_BD0)},
+                                          {G(G_BVMOD), G(G_BATK), G(G_BREL), G(G_BDEPTH)},
+                                          {G(G_BTRIG), G(G_BQUANT), G(G_BHARD), G(G_BDUST)},
+                                          {G(G_BLIQ), G(G_BFDBK), G(G_BSHIFT), G(G_BSPEC)},
+                                          {G(G_BCOHES), G(G_BDROP), G(G_BMIGR), G(G_BOSC)},
+                                          {G(G_BMODE), G(G_BSENS), G(G_BTRACK), N}};
+#define RV_BAND 1
+#define RV_VOC 2
+#define RV_PING 3
 static const struct slot v_color[3][4] = {{T(P_DRIVE), T(P_COMP), T(P_CRUSH), T(P_TILT)},
                                           {T(P_NOISE), T(P_NDECAY), T(P_NTONE), T(P_CMIX)},
                                           {T(P_CMODE), T(P_XOVER), T(P_NTYPE), T(P_CWMODE)}};
@@ -182,6 +194,7 @@ static uint32_t dis_hits_seen;
 enum { RM_IDLE, RM_PENDING, RM_DUB, RM_ROBOT, RM_DONE };   /* what a held REC is doing */
 
 void vsc_ui_notice(const char *t, uint32_t ms) { notice = t; notice_until = now_ms + ms; }
+static void say(const char *a, const char *b, uint32_t ms);
 
 /* ------------------------------------------------------------- robots
  * Hold REC on a putty page and turn a knob: the turn is recorded (up to about two seconds)
@@ -254,12 +267,45 @@ static void robots_play(void)
         }
 }
 
+/* RESON's selected band, and its profiles: each starts from the defaults (LIQUID
+ * MEMORY) and changes what it lists, (parameter, value) pairs */
+static unsigned rb_sel = 1, rb_prof;
+static uint32_t rb_seen, rb_flash_at;
+#define RP(g, v) (uint8_t)((g) - G_BTRACK), (uint8_t)(v)
+static const char *const rprof_name[6] = {"LIQ MEM", "GLASS", "THROAT", "DUST", "RADIO", "DROPS"};
+static const uint8_t rprof[] = {
+    255,
+    RP(G_BG0, 25), RP(G_BG1, 30), RP(G_BG2, 25), RP(G_BG3, 25), RP(G_BG4, 40), RP(G_BG5, 99), RP(G_BG6, 105), RP(G_BG7, 97),
+    RP(G_BRESO, 41), RP(G_BHARD, 120), RP(G_BMIX, 90), RP(G_BWIDTH, 90), RP(G_BLIQ, 30), RP(G_BDUST, 30), RP(G_BCOHES, 90), 255,
+    RP(G_BMODE, BM_VOCODE), RP(G_BG0, 100), RP(G_BG1, 108), RP(G_BG2, 104), RP(G_BG3, 96), RP(G_BG6, 40), RP(G_BVMOD, BV_OUTPUT),
+    RP(G_BDEPTH, 100), RP(G_BATK, 30), RP(G_BREL, 70), RP(G_BRESO, 50), RP(G_BWIDTH, 50), RP(G_BMIX, 85), RP(G_BLIQ, 20), RP(G_BTRIG, BT_OFF), 255,
+    RP(G_BMODE, BM_PING), RP(G_BDUST, 70), RP(G_BCOHES, 40), RP(G_BRESO, 100), RP(G_BG0, 85), RP(G_BG1, 95), RP(G_BG2, 90), RP(G_BG3, 88),
+    RP(G_BG4, 92), RP(G_BG5, 86), RP(G_BG6, 95), RP(G_BG7, 84), RP(G_BDROP, 40), RP(G_BMIGR, 50), RP(G_BMIX, 100), RP(G_BTRIG, BT_FULL), 255,
+    RP(G_BMODE, BM_FILTER), RP(G_BWIDTH, 20), RP(G_BLIQ, 0), RP(G_BG0, 40), RP(G_BG1, 60), RP(G_BG2, 105), RP(G_BG3, 105), RP(G_BG4, 105),
+    RP(G_BG5, 105), RP(G_BG6, 50), RP(G_BG7, 40), RP(G_BMIX, 75), RP(G_BRESO, 30), RP(G_BTRIG, BT_OFF), 255,
+    RP(G_BDROP, 50), RP(G_BMIGR, 20), RP(G_BDUST, 15), RP(G_BCOHES, 100), RP(G_BFDBK, 12), 255,
+};
+static void rprof_apply(unsigned n)
+{
+    const uint8_t *q = rprof;
+    for (unsigned k = 0; k < n; ++k) { while (*q != 255) q += 2; ++q; }
+    for (unsigned g = G_BMODE; g < VSC_NG; ++g) vsc.g[g] = vsc_gparam_info(g)->def;
+    for (; *q != 255; q += 2) vsc.g[G_BTRACK + q[0]] = q[1];
+    rb_prof = n;
+}
+/* RESON goes where its page is opened (the page is the mode, as the putty's) */
+static void reson_here(void)
+{
+    if (vsc.g[G_BTRACK] != track + 1u) { vsc.g[G_BTRACK] = (uint8_t)(track + 1u); say("RESON ON TRACK ", (const char[]){letter(track), 0}, 900); }
+    if (!vsc.g[G_BMODE]) vsc.g[G_BMODE] = BM_HYBRID;
+}
 static unsigned row_count(void)
 {
     switch (page) {
     case PG_HANDS: case PG_SHARDS: case PG_SPECTRA: case PG_SOURCE: case PG_COLOR: case PG_SCENE: return 3;
     case PG_MIX: return 6;
     case PG_DISSECT: case PG_SPACE: return 2;
+    case PG_RESON: return 7;
     case PG_SETTINGS: return 5;
     case PG_MODS: return MOD_VIEWS;
     case PG_SEQ: return 3;
@@ -283,6 +329,7 @@ static struct slot slot_at(unsigned i)
     case PG_SEQ: return vsc.t[track][P_SEQM] == SEQ_CAROM ? v_carom[r][i] : v_steps[r][i];
     case PG_SETTINGS: return v_settings[r][i];
     case PG_DISSECT: return v_dissect[r][i];
+    case PG_RESON: { struct slot sl = v_reson[r][i]; if (r == RV_BAND && sl.kind == S_G) sl.id = (uint8_t)(sl.id + rb_sel); return sl; }
     case PG_MODS: {
         if (r == MATRIX_VIEW) { struct slot s = {S_MAT, (uint8_t)i, 0}; return s; }
         unsigned m = VMOD(r), pg = VPAGE(r), k = pg < 2 ? 1 + pg * 4 + i : (i == 0 ? 9 : 99);
@@ -340,13 +387,15 @@ enum { D_SRC, D_PUTTY, D_COLOR, D_MIX, D_MODS, D_TRACK_DEVICES };
 #define D_PERFORM (D_SPACE + 1)
 #define D_MASTER (D_SPACE + 2)
 #define D_DISSECT (D_SPACE + 3)
-#define D_COUNT (D_SPACE + 4)
+#define D_RESON (D_SPACE + 4)
+#define D_COUNT (D_SPACE + 5)
 static const char *const dev_short[D_TRACK_DEVICES] = {"SOURC", "PUTTY", "COLOR", "MIX", "MODS"};
 static unsigned dev_of(unsigned t, unsigned code)
 {
     if (code >= VSC_GDEST) {
         unsigned g = code - VSC_GDEST;
         if (g == G_DTIME || g == G_DFEED || g == G_DTONE || g == G_DLONG || g == G_DLEVEL || g == G_RSIZE || g == G_RDAMP || g == G_RLEVEL) return D_SPACE;
+        if (g >= G_BTRACK) return D_RESON;
         if (g >= G_ASRC) return D_DISSECT;
         if (g >= G_M0 || g == G_MORPH) return D_PERFORM;
         return D_MASTER;
@@ -380,6 +429,7 @@ static unsigned dest_list(unsigned dev, unsigned list[VSC_NP + VSC_NG])
         if (dev == D_SPACE) n = dest_views(list, n, v_space, ROWS(v_space), 0);
         else if (dev == D_PERFORM) n = dest_views(list, n, v_scene, ROWS(v_scene), 0);
         else if (dev == D_DISSECT) n = dest_views(list, n, v_dissect, 1, 0);
+        else if (dev == D_RESON) n = dest_views(list, n, v_reson, 7, 0);
         else n = dest_views(list, n, &v_mix[5], 1, 0);
         for (unsigned g = 0; g < VSC_NG; ++g) if (dev_of(0, VSC_GDEST + g) == dev) n = dest_add(list, n, VSC_GDEST + g);
         return n;
@@ -417,7 +467,7 @@ static void dest_name(unsigned t, unsigned code, char *out)
 /* the device as "A PUTTY", or SPACE, PERFORM, MASTER */
 static void dev_name(unsigned dev, char *out)
 {
-    if (dev >= D_SPACE) { copy_n(out, dev == D_SPACE ? "SPACE" : dev == D_PERFORM ? "PERFORM" : dev == D_DISSECT ? "DISSECT" : "MASTER", 8); return; }
+    if (dev >= D_SPACE) { copy_n(out, dev == D_SPACE ? "SPACE" : dev == D_PERFORM ? "PERFORM" : dev == D_DISSECT ? "DISSECT" : dev == D_RESON ? "RESON" : "MASTER", 8); return; }
     out[0] = letter(dev / D_TRACK_DEVICES); out[1] = ' ';
     copy_n(out + 2, dev_short[dev % D_TRACK_DEVICES], 5);
 }
@@ -470,6 +520,10 @@ static void slot_text(struct slot s, char name[10], char val[10], float *bar)
         case 2: dest_name(tt, ro->param, val); break;
         default: num(val, ro->depth); *bar = ((float)ro->depth + 127.f) / 254.f; break;
         }
+    } else if (s.kind == S_RBAND) {
+        copy_n(name, "BAND", 7); val[0] = 'B'; val[1] = (char)('1' + rb_sel); val[2] = 0; *bar = (float)rb_sel / 7.f;
+    } else if (s.kind == S_RPROF) {
+        copy_n(name, "PROFILE", 8); copy_n(val, rprof_name[rb_prof % 6], 8);
     } else if (s.kind == S_STEP) {
         const struct vsc_step *st = &vsc.step[track][step_sel];
         copy_n(name, step_names[s.id < 9 ? s.id : 0], 7);
@@ -531,7 +585,7 @@ static void edit_slot(struct slot s, int d, unsigned *req, unsigned *arg)
         if (!ro) {
             /* NEW: turning any knob makes a route, from this track's modulator to its first parameter */
             for (unsigned r = 0; r < VSC_MOD_ROUTES && !ro; ++r) if (vsc.route[track][r].param == 255) ro = &vsc.route[track][r];
-            if (!ro) { vsc_ui_notice("THIS TRACK'S ROUTES ARE FULL", 1200); return; }
+            if (!ro) { vsc_ui_notice("ROUTES FULL", 1200); return; }
             tt = track; ro->src = (uint8_t)vsc_src_code(track, track, mod_sel);
             { unsigned l[VSC_NP + VSC_NG], k = dest_list(track * D_TRACK_DEVICES + D_PUTTY, l); ro->param = (uint8_t)(k ? l[0] : P_STRETCH); }
             ro->depth = 32; ro->flags = 0;
@@ -554,7 +608,7 @@ static void edit_slot(struct slot s, int d, unsigned *req, unsigned *arg)
             unsigned nt = nd >= D_SPACE ? tt : (unsigned)nd / D_TRACK_DEVICES, st = vsc_src_track(tt, ro->src), m = ro->src & 3u;
             struct vsc_route *to = nt == tt ? ro : 0;
             for (unsigned r = 0; r < VSC_MOD_ROUTES && !to; ++r) if (vsc.route[nt][r].param == 255) to = &vsc.route[nt][r];
-            if (!to) { vsc_ui_notice("THAT TRACK'S ROUTES ARE FULL", 1200); return; }
+            if (!to) { vsc_ui_notice("ROUTES FULL", 1200); return; }
             struct vsc_route moved = *ro;
             moved.param = (uint8_t)l[0];
             moved.src = (uint8_t)vsc_src_code(nt, st, m);
@@ -568,6 +622,11 @@ static void edit_slot(struct slot s, int d, unsigned *req, unsigned *arg)
             if (to < 0) { ro->param = 255; ro->depth = 0; ro->flags = 0; vsc_ui_notice("ROUTE REMOVED", 900); return; }
             ro->param = (uint8_t)list[clampi(to, 0, (int)k - 1)];
         } else { int v = clampi(ro->depth + d * 2, -127, 127); ro->depth = (int8_t)(v ? v : (d > 0 ? 1 : -1)); }
+    } else if (s.kind == S_RBAND) {
+        rb_sel = (unsigned)clampi((int)rb_sel + d, 0, VSC_RBANDS - 1);
+    } else if (s.kind == S_RPROF) {
+        rprof_apply((unsigned)clampi((int)rb_prof + d, 0, 5)); reson_here();
+        say("PROFILE ", rprof_name[rb_prof], 1000);
     } else if (s.kind == S_STEP) {
         struct vsc_step *st = &vsc.step[track][step_sel];
         switch (s.id) {
@@ -628,6 +687,7 @@ static void set_track(unsigned t)
     if (t == track) return;
     track = t;
     /* on a putty page the page follows the new track's mode */
+    if (page == PG_RESON) reson_here();
     if (PUTTY_PAGE(page)) { unsigned e = vsc.t[track][P_ENGINE]; unsigned pg = e == ENG_SHARDS ? PG_SHARDS : e == ENG_SPECTRA ? PG_SPECTRA : PG_HANDS;
                             if (pg != page) { page = pg; row = 0; } }
 }
@@ -666,7 +726,11 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
     /* page buttons; pressing the button of the open page goes to its next view */
     if (down & B(BTN_FX)) open_page(PG_SHARDS);
     if (down & B(BTN_SCL)) open_page(PG_SPECTRA);
-    if (down & B(BTN_ENV)) open_page(PG_COLOR);
+    /* ENV: the track's COLOR, then RESON (which comes to this track) */
+    if (down & B(BTN_ENV)) {
+        if (page == PG_COLOR) { page = PG_RESON; row = 0; hint_until = now_ms + 2500; reson_here(); }
+        else { page = PG_COLOR; row = 0; }
+    }
     if (down & B(BTN_SEQ)) open_page(PG_SEQ);
     /* EDIT: the track's SOURCE, then its MIX */
     if (down & B(BTN_EDIT)) { if (page == PG_SOURCE) { if (row + 1 < row_count()) ++row; else { page = PG_MIX; row = 0; } }
@@ -696,8 +760,8 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
             prev_buttons |= B(30);   /* the release ends the envelope */
         } else if (save_held && capture_page()) {
             rec_mode = RM_DONE; used = B(31);
-            if (vsc.t[track][P_SRC] != SRC_CAPTURE || !vsc_meter.src_len[track]) vsc_ui_notice("KEEP: CAPTURE SOMETHING FIRST", 1200);
-            else if (vsc_host.reel_free < 2) vsc_ui_notice("THE REEL IS FULL (SETTINGS)", 1500);
+            if (vsc.t[track][P_SRC] != SRC_CAPTURE || !vsc_meter.src_len[track]) vsc_ui_notice("KEEP: CAPTURE FIRST", 1200);
+            else if (vsc_host.reel_free < 2) vsc_ui_notice("THE REEL IS FULL", 1500);
             else { *arg = track; req = HOST_KEEP; vsc_ui_notice("KEPT ON THE REEL", 1100); }
         }
     }
@@ -706,11 +770,11 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
         if (rec_mode == RM_DUB) vsc_event(EV_REC, track, REC_DUB_OFF, 0);
         if (rob_rec >= 0) rob_rec = -1;
         vsc_event(EV_LOOP_CLEAR, track, 0, 0); robots_clear(track);
-        vsc_ui_notice("CAPTURE AND ROBOTS CLEARED", 1100); rec_mode = RM_DONE;
+        vsc_ui_notice("CLEARED", 1100); rec_mode = RM_DONE;
     } else if ((down & B(BTN_PLAY)) && !(save_held && (page == PG_PROJECT || page == PG_SOUND)) && !rec_held) vsc_event(EV_PLAY, track, 0, 0);
     if (rec_held && rec_mode == RM_PENDING && capture_page() && now_ms - rec_down_at > 450) {
         if (vsc.t[track][P_SRC] == SRC_CAPTURE && vsc_meter.cap_state[track] >= 2) {
-            vsc_event(EV_REC, track, REC_DUB_ON, 0); rec_mode = RM_DUB; vsc_ui_notice("OVERDUB: TURN A KNOB FOR A ROBOT", 1500);
+            vsc_event(EV_REC, track, REC_DUB_ON, 0); rec_mode = RM_DUB; vsc_ui_notice("OVERDUB: KNOB = ROBOT", 1500);
         }
     }
     if (rec_held && rec_mode == RM_PENDING && !capture_page() && now_ms - rec_down_at > 900) {
@@ -751,6 +815,7 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
             }
             else if (page == PG_SPACE) { vsc_event(EV_ACTION, 0, ACT_SPACE_FREEZE, 0); vsc_ui_notice(vsc_meter.space_frozen ? "SPACE FLOWING" : "SPACE FROZEN", 900); }
             else if (page == PG_MIX || page == PG_COLOR) vsc_event(EV_REC, track, REC_TAP, 0);
+            else if (page == PG_RESON) { reson_here(); vsc_event(EV_ACTION, track, ACT_RESON_PING, 0); }
             else if (page == PG_DISSECT) { open_page(PG_SHARDS); vsc.t[track][P_TRIG] = TRIG_HIT; vsc_ui_notice("SHARDS ON THE HITS", 1000); }
         }
     }
@@ -855,6 +920,7 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
             }
             int carom = vsc.t[track][P_SEQM] == SEQ_CAROM;
             if (carom && live_rec) vsc_event(EV_BALL, track, note, 100);
+            if (page == PG_RESON && row == RV_BAND && k < VSC_RBANDS) { rb_sel = k; continue; }
             if (page == PG_SEQ && k < 16 && !carom) {
                 unsigned s = step_page * 16 + k;
                 step_sel = s;
@@ -869,6 +935,7 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
         }
         if (kup & B(k)) {
             if (page == PG_SEQ && k < 16 && vsc.t[track][P_SEQM] == SEQ_STEPS) continue;
+            if (page == PG_RESON && row == RV_BAND && k < VSC_RBANDS) continue;
             vsc_event(EV_NOTE_OFF, track, note, 0);
         }
     }
@@ -901,7 +968,7 @@ static const char *page_title(char *buf)
     default: return page_name[page];
     }
 }
-static int track_page(void) { return page != PG_SPACE && page != PG_SCENE && page != PG_PROJECT && page != PG_SETTINGS && page != PG_DISSECT; }
+static int track_page(void) { return page != PG_RESON && page != PG_SPACE && page != PG_SCENE && page != PG_PROJECT && page != PG_SETTINGS && page != PG_DISSECT; }
 static int recording(void)
 {
     return live_rec || rob_rec >= 0 || vsc_meter.cap_state[track] == 1 || vsc_meter.cap_state[track] == 3;
@@ -932,7 +999,9 @@ static void draw_header(void)
     const char *title = page_title(tb);
     int x = 4;
     uint16_t tc = mapping ? C_MOD[(mapping - 1) & 3] : C_INK;
-    if (track_page()) { b[0] = letter(track); b[1] = ' '; b[2] = '/'; b[3] = ' '; b[4] = 0; x = text(x, 18, b, tc, 2); }
+    if (track_page() || (page == PG_RESON && vsc.g[G_BTRACK])) {
+        b[0] = page == PG_RESON ? letter(vsc.g[G_BTRACK] - 1u) : letter(track); b[1] = ' '; b[2] = '/'; b[3] = ' '; b[4] = 0; x = text(x, 18, b, tc, 2);
+    }
     text(x, 18, title, tc, 2);
     /* right: REC, and the pair's link */
     int xr = VSC_SCREEN_W - 4;
@@ -1055,21 +1124,28 @@ static const char *page_hint(void)
 {
     switch (page) {
     case PG_HANDS: case PG_SHARDS: case PG_SPECTRA:
-        return vsc_meter.src_len[track] ? "HOLD REC: DUB  REC+KNOB: ROBOT" : "TAP REC TO CAPTURE, TAP AGAIN TO END";
-    case PG_SOURCE: return "PRESETS: SOURCE  SAVE+REC: KEEP ON REEL";
+        return vsc_meter.src_len[track] ? "HOLD REC: DUB  REC+KNOB: ROBOT" : "REC: CAPTURE, REC AGAIN: END";
+    case PG_SOURCE: return "PRESETS: SOURCE  SAVE+REC: KEEP";
     case PG_MIX: return "SELECT: PAGE  REC: CAPTURE";
     case PG_SPACE: return "REC: FREEZE  HOLD REC: CLEAR";
-    case PG_DISSECT: return "REC: SHARDS ON THE HITS  SELECT: PAGE";
+    case PG_DISSECT: return "REC: SHARDS ON HITS";
+    case PG_RESON: return row == RV_BAND ? "PADS 1-8: BAND  REC: PING" : "REC: PING  ENV: COLOR";
     case PG_MODS: return row == MATRIX_VIEW ? "PRESETS: ROW  REC: BI/UNI  LFO: MODS"
-                       : (vsc.t[track][P_MOD(VMOD(row), 0)] & 3) == MT_ADSR ? "PRESETS: TYPE  REC: TRIG  LFO+KNOB: MAP"
-                       : "PRESETS: TYPE  HOLD LFO+KNOB: MAP";
+                       : (vsc.t[track][P_MOD(VMOD(row), 0)] & 3) == MT_ADSR ? "PRESETS: TYPE  REC: TRIG"
+                       : "PRESETS: TYPE  LFO+KNOB: MAP";
     case PG_SCENE: return "ARP+PAD: SCENE  ARP+KNOB: MAP MACRO";
     case PG_SEQ: return vsc.t[track][P_SEQM] == SEQ_CAROM ? "PRESETS: STEPS  REC: ADD  HOLD: CLEAR" : "PRESETS: STEP  PADS: ON/OFF  OCT: PAGE";
-    case PG_PROJECT: case PG_SOUND: return "PRESETS: SLOT REC: LOAD SAVE+PLAY: SAVE";
+    case PG_PROJECT: case PG_SOUND: return "REC: LOAD  SAVE+PLAY: SAVE";
     case PG_SETTINGS: return row == 0 ? "PRESETS: DEVICE  REC: SCAN/CONNECT" : row == SET_LEARN ? "SAVE+KNOB: LEARN  REC: CLEAR"
                            : row == SET_INPUT ? "PRESETS: TRACK  REC: OPEN SOURCE" : row == SET_PANEL ? "KEPT THROUGH POWER-OFF" : "SELECT: PAGE";
     default: return "SELECT: PAGE  ALGORITHM: TRACK";
     }
+}
+static const char *rs_msrc(void)   /* RESON's modulator, by its name on the knob */
+{
+    static char b[8];
+    vsc_param_label(vsc_gparam_info(G_BVMOD), G_BVMOD, vsc.g[G_BVMOD], b, 1);
+    return b;
 }
 /* seconds as "0.73S" */
 static void secs(char *o, unsigned t)
@@ -1097,6 +1173,16 @@ static void draw_footer(void)
         return;
     }
     char b[24];
+    if (page == PG_RESON) {   /* what the page is about, in a line */
+        static const char *const what[7] = {" MOD . 8 BANDS . WATERY", "EDIT BAND . ", "CARRIER x MOD . VOCODE", "PING + DUST",
+                                            "MOTION . FEEDBACK", "PARTICLES . DROPLETS", "MODE . SENS"};
+        char l[44]; unsigned r = row % 7;
+        copy_n(l, r == 0 ? rs_msrc() : what[r], 30);
+        unsigned n = (unsigned)vsc_strlen(l);
+        if (r == 0) copy_n(l + n, what[0], 30); else if (r == 1) copy_n(l + n, rprof_name[rb_prof % 6], 20);
+        text(120 - text_w(l, 1) / 2, FOOT_Y, l, C_FG, 1);
+        return;
+    }
     /* the track's input, lit while it has signal */
     unsigned inp = vsc.t[track][P_INPUT];
     if (vsc.t[track][P_BOUNCE] != BOUNCE_OFF) { b[0] = letter(VSC_PARTNER(track)); b[1] = 0; }
@@ -1275,8 +1361,8 @@ static void draw_spectra(void)
         }
     }
     if (!vsc_meter.spectra_on[t] && vsc.t[t][P_ENGINE] == ENG_SPECTRA)
-        text(6, VIS_Y + 50, "TWO TRACKS ALREADY SPECTRA: HANDS", C_WARN, 1);
-    else if (!vsc_meter.src_len[t]) text(120 - text_w("EMPTY: TAP REC", 1) / 2, VIS_Y + 50, "EMPTY: TAP REC", C_DIM, 1);
+        text(6, VIS_Y + 50, "2 SPECTRA ALREADY: HANDS", C_WARN, 1);
+    else if (!vsc_meter.src_len[t]) text(78, VIS_Y + 50, "EMPTY: TAP REC", C_DIM, 1);
     /* where in the source it is */
     int hx = (int)vsc_meter.head[t] * 236 / 65536 + 2;
     hline(2, bot + 2, 236, C_LAVK); rect(hx - 1, bot + 1, 3, 3, C_LAV);
@@ -1361,6 +1447,76 @@ static void draw_source(void)
     }
     if (vsc.t[t][P_BOUNCE] != BOUNCE_OFF) { char c[24] = "CAPTURES "; c[9] = letter(VSC_PARTNER(t)); c[10] = 0; copy_n(c + 10, vsc.t[t][P_BOUNCE] == BOUNCE_PING ? " (PING)" : "'S OUTPUT", 10); text(4, VIS_Y + 112, c, C_LAV, 1); }
 }
+/* RESON: eight bars that glow with what each band puts out (stacked, as the drawings),
+ * their gains as faint stacks behind, a reflection under the water line; the band
+ * being edited in a lavender pill. BAND opens a window on that band's curve; VOCODE
+ * shows the carrier and the modulator meeting; PING throws sparks off the bars. */
+#define RB_X(b) (14 + (int)(b) * 28)
+#define RB_BASE (VIS_Y + 84)
+static uint8_t spark_x[24], spark_y[24], spark_a[24]; static unsigned spark_w;
+static void reson_frame(void)
+{
+    for (unsigned i = 0; i < 24; ++i) if (spark_a[i]) spark_a[i] = spark_a[i] > 14 ? 0 : (uint8_t)(spark_a[i] + 1);
+    if (vsc_meter.rb_pings != rb_seen) {
+        rb_seen = vsc_meter.rb_pings; rb_flash_at = now_ms;
+        for (unsigned b = 0; b < VSC_RBANDS; ++b)
+            if (vsc.g[G_BG0 + b] > 60)
+                for (unsigned k = 0; k < 2; ++k) { spark_x[spark_w] = (uint8_t)(RB_X(b) + 4 + (int)(rnd8() % 14u)); spark_y[spark_w] = (uint8_t)(rnd8() % 30u); spark_a[spark_w] = 1; spark_w = (spark_w + 1) % 24; }
+    }
+}
+static void draw_reson(void)
+{
+#ifdef VSC_BENCH
+    return;   /* (the RESON benchmark build has no room for the drawing) */
+#endif
+    const int base = RB_BASE;
+    unsigned t = vsc.g[G_BTRACK] ? vsc.g[G_BTRACK] - 1u : track;
+    /* the source behind, a faint line */
+    for (int x = 2; x < 238; x += 2) { int h = vsc_meter.overview[t][x] * 22 / 60; px(x, base - 30 - h / 2, C_LAVK); px(x, base - 30 + h / 2, C_LAVK); }
+    int flash = (int32_t)(now_ms - rb_flash_at) < 120;
+    for (unsigned b = 0; b < VSC_RBANDS; ++b) {
+        int x = RB_X(b), w = 20;
+        int gh = vsc.g[G_BG0 + b] * 54 / 127, lh = vsc_meter.rb_level[b] * 54 / 255;
+        if (lh > 54) lh = 54;
+        for (int y = 0; y < gh; y += 3) hline(x, base - 1 - y, w, C_LAVK);                    /* the gain, faint */
+        for (int y = 0; y < lh; y += 3) hline(x, base - 1 - y, w, y > lh - 5 ? C_INK : flash && gh > 40 ? C_FG : C_LAV);
+        if (lh > 2) hline(x - 1, base - lh - 1, w + 2, C_INK);                                   /* the glowing cap */
+        for (int y = 0; y < lh / 3; y += 3) hline(x, base + 3 + y, w, C_LAVD);                   /* the reflection */
+        if (gh < 6) hline(x + 2, base - 2, w - 4, C_LAVD);
+        char n[2] = {(char)('1' + b), 0};
+        int sel = b == rb_sel && (row == RV_BAND || page == PG_RESON);
+        if (sel && row == RV_BAND) { rect(x + 3, base + 8, 14, 11, C_LAV); text(x + 7, base + 10, n, C_BG, 1); }
+        else text(x + 7, base + 10, n, b == rb_sel ? C_FG : C_DIM, 1);
+    }
+    hline(4, base + 1, 232, C_LAVD);
+    if (row == RV_BAND) {   /* the band's window: its curve, its tuning and decay */
+        int bx = 132, by = VIS_Y + 2, bw = 104, bh = 40;
+        rect(bx, by, bw + 1, bh + 1, C_LAV); rect(bx + 1, by + 1, bw - 1, bh - 1, C_BG);
+        char b2[12] = "BAND  "; b2[5] = (char)('1' + rb_sel); text(bx + 4, by + 3, b2, C_FG, 1);
+        int sq = 400 - vsc.g[G_BWIDTH] * 3;   /* the curve, narrower for less WIDTH */
+        for (int i = -28; i < 28; ++i) px(bx + 32 + i, by + bh - 4 - 24 * 784 / (784 + i * i * sq / 64), C_LAV);
+        vline(bx + 32, by + 12, bh - 15, C_LAVD);
+        char v[10]; int hz = (int)(vsc_reson_hz(rb_sel) + 0.5f); num(v, hz); copy_n(v + vsc_strlen(v), "HZ", 3); text(bx + 64, by + 12, v, C_INK, 1);
+        int ms = (int)(vsc_reson_sec(rb_sel) * 1000.f + 0.5f); num(v, ms > 9999 ? 9999 : ms); copy_n(v + vsc_strlen(v), "MS", 3); text(bx + 64, by + 30, v, C_INK, 1);
+        vline(RB_X(rb_sel) + 10, by + bh, base - 56 - by - bh > 0 ? base - 56 - by - bh : 1, C_LAV);
+    } else if (row == RV_VOC) {   /* the carrier and the modulator, meeting */
+        unsigned vm = vsc.g[G_BVMOD] % 6, u = vm == 2 ? VSC_PARTNER(t) : t;
+        text(30, VIS_Y + 1, "CARRIER", C_DIM, 1); text(150, VIS_Y + 1, "MODULATOR", C_DIM, 1);
+        for (int x = 0; x < 104; ++x) {
+            int h = vsc_meter.overview[t][x * 2] * 8 / 60; vline(8 + x, VIS_Y + 18 - h, 2 * h + 1, C_LAVD);
+            int h2 = vm == 0 || vm == 2 ? vsc_meter.overview[u][x * 2 + 30] * 8 / 60 : (int)(rnd8() % (vm == 4 ? 9u : 4u)); vline(128 + x, VIS_Y + 18 - h2, 2 * h2 + 1, C_LAVD);
+        }
+        text(150, VIS_Y + 30, rs_msrc(), C_LAV, 1);
+        text(117, VIS_Y + 14, "X", C_INK, 1);
+    }
+    if (row == RV_PING || vsc.g[G_BDUST])   /* sparks off the bars on each ping */
+        for (unsigned i = 0; i < 24; ++i) if (spark_a[i]) {
+            int y = base - 58 - spark_y[i] / 2 + spark_a[i] * 2, x = spark_x[i];
+            uint16_t c = spark_a[i] < 4 ? C_INK : spark_a[i] < 9 ? C_LAV : C_LAVD;
+            px(x, y, c); if (spark_a[i] < 4) px(x, y - 1, c);
+        }
+    if (!vsc.g[G_BMODE]) text(96, VIS_Y + 40, "MODE OFF", C_WARN, 1);
+}
 static void draw_vis(void)
 {
     unsigned t = track;
@@ -1377,12 +1533,13 @@ static void draw_vis(void)
         break;
     }
     case PG_SHARDS: draw_shards(); break;
+    case PG_RESON: draw_reson(); break;
     case PG_SPECTRA: draw_spectra(); break;
     case PG_SOURCE: draw_source(); break;
     case PG_SEQ: if (vsc.t[track][P_SEQM] == SEQ_STEPS) { draw_seq(); break; }
 {
         int x0 = 20, y0 = VY(4), w = 200, h = 128;
-        hline(x0, y0, w, C_LINE); hline(x0, y0 + h, w, C_LINE); vline(x0, y0, h, C_LINE); vline(x0 + w, y0, h + 1, C_LINE);
+        rect(x0, y0, w + 1, h + 1, C_LINE); rect(x0 + 1, y0 + 1, w - 1, h - 1, C_BG);
         static const char *const iv[3] = {"-12", "0", "-7"};
         static const char *const ivr[3] = {"+12", "0", "+7"};
         text(2, y0 + h / 2 - 3, iv[vsc.t[track][P_RWALLS] % 3], C_DIM, 1);
@@ -1398,8 +1555,8 @@ static void draw_vis(void)
             px(bx - 3, byy, C_MID); px(bx + 3, byy + 1, C_MID); px(bx, byy - 3, C_DIM); px(bx + 1, byy + 3, C_DIM);
             if (hit > 30) { int r = 3 + (255 - hit) / 24; px(bx - r, byy, C_MID); px(bx + r, byy, C_MID); px(bx, byy - r, C_MID); px(bx, byy + r, C_MID); }
         }
-        if (!count) text(x0 + 14, y0 + h / 2 - 3, live_rec ? "PLAY NOTES TO THROW BALLS" : "NO STEPS: PRESS REC, PLAY", C_DIM, 1);
-        else if (!vsc_meter.playing) text(x0 + 4, y0 + h + 4, "PLAY TO SET THEM MOVING", C_DIM, 1);
+        if (!count) text(x0 + 14, y0 + h / 2 - 3, live_rec ? "PLAY NOTES" : "NO STEPS: PRESS REC, PLAY", C_DIM, 1);
+        else if (!vsc_meter.playing) text(x0 + 4, y0 + h + 4, "PRESS PLAY", C_DIM, 1);
         if (live_rec) text(x0 + w - 54, y0 + h + 4, "RECORDING", C_WARN, 1);
         break;
     }
@@ -1548,8 +1705,8 @@ static void draw_vis(void)
                 rect(lx - 1, y, 2, 7, C_MOD[m]);
             }
             if (!count) {
-                text(4, VY(40), "NO ROUTES: TURN A KNOB HERE,", C_DIM, 1);
-                text(4, VY(52), "OR HOLD LFO + TURN ANY KNOB.", C_DIM, 1);
+                text(4, VY(40), "NO ROUTES: HOLD LFO", C_DIM, 1);
+                text(4, VY(52), "+ TURN A KNOB", C_DIM, 1);
             }
             break;
         }
@@ -1668,7 +1825,7 @@ static void draw_vis(void)
         static const char *const sn[3] = {"CAPTURES", "PLAYS THE REEL", "PLAYS LIVE"};
         copy_n(b + 8, sn[vsc.t[track][P_SRC] % 3], 20);
         text(6, VIS_Y + 72, b, C_FG, 1);
-        text(6, VIS_Y + 88, "REC ON A PUTTY PAGE CATCHES IT", C_DIM, 1);
+        text(6, VIS_Y + 88, "REC ON PUTTY CATCHES IT", C_DIM, 1);
         break;
     } else if (row == SET_CLOCK) {
         text(6, VY(4), "CLOCK", C_DIM, 1);
@@ -1696,7 +1853,7 @@ static void draw_vis(void)
             pb[pl] = ' '; num(pb + pl + 1, vsc_host.part[i]);
             text(6 + (int)i * 39, VY(116), pb, vsc_host.part[i] > 30 ? C_WARN : C_DIM, 1);
         }
-        text(6, VY(130), vsc_host.relief >= 2 ? "GUARD: EASED 2 (SHARDS, CROSS)" : vsc_host.relief ? "GUARD: EASED 1 (REVERB RESTS)" : "GUARD: OFF",
+        text(6, VY(130), vsc_host.relief >= 2 ? "GUARD: EASED 2" : vsc_host.relief ? "GUARD: EASED 1" : "GUARD: OFF",
              vsc_host.relief ? C_WARN : C_LINE, 1);
         break;
     } else if (row == SET_LEARN) {
@@ -1714,7 +1871,7 @@ static void draw_vis(void)
             if (L->param < VSC_NP) text(90, y, tk, C_DIM, 1);
             char dn[10]; vsc_mod_dest_name(L->param, dn); text_n(112, y, dn, C_FG, 9);
         }
-        if (!any && VY(120) >= by0) text(6, VY(128), "HOLD SAVE, TURN A KNOB, SEND A CC", C_DIM, 1);
+        if (!any && VY(120) >= by0) text(6, VY(128), "SAVE+KNOB, THEN SEND A CC", C_DIM, 1);
         break;
     } else {
         static const char *const states[] = {"OFF", "IDLE", "WAITING", "SCANNING", "CONNECTING", "CHECKING", "CONNECTED", "READY", "DISCONNECTING"};
@@ -1808,6 +1965,7 @@ void vsc_ui_frame(uint32_t now)
     }
     hist_w = (hist_w + 1) % 96;
     if (page == PG_SHARDS) shards_frame();
+    if (page == PG_RESON) reson_frame();
     if (page == PG_SPECTRA) spectra_frame();
     if (page == PG_MODS && row != MATRIX_VIEW) compute_mod_curve();
 }
@@ -1828,7 +1986,7 @@ void vsc_ui_leds(uint8_t out[41])
     for (unsigned i = 0; i < 41; ++i) out[i] = glow;
     /* the open page's button */
     static const uint8_t page_btn[PG_COUNT] = {BTN_HOME, BTN_FX, BTN_SCL, BTN_EDIT, BTN_EDIT, BTN_ENV, BTN_LFO, BTN_GLO,
-                                               BTN_ARP, BTN_SEQ, BTN_SAVE, BTN_GLO, BTN_SAVE, BTN_GLO};
+                                               BTN_ARP, BTN_SEQ, BTN_SAVE, BTN_GLO, BTN_SAVE, BTN_GLO, BTN_ENV};
     out[page_btn[page]] = 2;
     if (vsc_meter.playing) out[BTN_PLAY] = 2;
     if (recording()) out[BTN_REC] = (now_ms / 250u) & 1u ? 2 : 0;
@@ -1845,6 +2003,7 @@ void vsc_ui_leds(uint8_t out[41])
             if (vsc_meter.playing && vsc_meter.step[track] == st) out[14 + k] = vsc.step[track][st].on ? 0 : 2;
         }
     }
+    if (page == PG_RESON) for (unsigned k = 0; k < VSC_RBANDS; ++k) out[14 + k] = vsc.g[G_BG0 + k] > 60 || k == rb_sel ? 2 : glow;
     if (prev_buttons & (1u << BTN_ARP)) for (unsigned k = 0; k < VSC_SCENES; ++k) out[14 + k] = vsc.scene[k].used ? 2 : glow;
     if (prev_buttons & (1u << BTN_HOME)) for (unsigned k = 23; k < 27; ++k) out[14 + k] = k - 23 == track ? 2 : glow;
     for (unsigned k = 0; k < 27; ++k) if (prev_keys & (1u << k)) out[14 + k] = 2;

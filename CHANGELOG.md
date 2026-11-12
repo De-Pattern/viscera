@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.0.0 — PUTTY
+
+**Viscera is now PUTTY: catch loops from the input and work them like putty.** The engine is new; the framework stays (four tracks, COLOR, SPACE, the modulators and matrix, scenes, macros, STEPS, CAROM, the listener, the install page). After the spirit of Synthux Spotykach, a little of Montreal Assembly's 856 for Zellersasn, a little of Bastl Thyme, Morphagene and Nebulae.
+
+- **Tracks are A–D, in pairs: A+B and C+D.**
+- **SOURCE** (EDIT): CAPTURE, REEL or THRU.
+  - CAPTURE: tap REC, tap again: the gesture sets the length. Hold REC to overdub (SOS keeps the old). RATE HI, MID or LO: 0.34, 0.68 or 1.36 s.
+  - INPUT: BT+USB by default, or either, another track or the mix.
+  - BOUNCE: IN captures the partner's output (B does, by default); PING passes the sound back and forth between the pair.
+  - REEL: SAVE + REC KEEPs a capture on the reel in flash (about 2.6 s, 16 splices); REEL plays it, splice by splice, or any bank sample.
+- **Three ways to work it** — the page is the mode:
+  - **HANDS** (HOME): STRETCH from 0.25× to 8× and frozen at the top, PITCH ±24 semitones, independent of each other; POS and SIZE set the window; GRAIN, JITTER, REVRS.
+  - **SHARDS** (FX): up to eight glass-shard grains: SHAPE from smooth through reverse-expodec and expodec to shatter; DENS, SPRAY; TRIG FREE, HIT (the listener's hits), NOTE or CLOCK; SIZE, SPREAD, REVRS, STEREO.
+  - **SPECTRA** (SEL): a phase vocoder: STRETCH, BLUR, SHIFT, CROSS (the partner's spectrum on this one's phases), GATE, TILT, HOLD, PHASE. Two tracks at a time.
+- **Robots:** hold REC on a putty page and turn a knob: the gesture loops on its own around the knob. Four a track. REC + PLAY clears the capture and its robots.
+- **Two hands:** hold OCT− (together) or OCT+ (apart) and turn a knob to move both tracks of the pair.
+- **SEQ:** each step has SLICE, PITCH, LEN and PROB. PRESETS picks the step.
+- **The screen** follows the PUTTY drawings: white on black with lavender and small flashes of red; both tracks of the pair, the shard cloud, the spectrum, the steps as blocks.
+- **The emulator's** knobs and buttons look as in the drawings: matte black knobs, charcoal keys, a lavender REC that flashes red while recording.
+- **Kept:** COLOR, SPACE, the modulators and matrix, PERFORM, scenes, macros, CAROM, DISSECT's listener (now driving SHARDS), MIDI learn, sounds, settings, the CPU guard.
+- **Gone:** PLAY, LOOP, KEYS and THRU modes as they were, GRAIN, the filters, RESON and REBUILD.
+- **Changed:** project format 6 and device settings version 3: 0.x projects and sounds don't load. The delay line is 8-bit µ-law (as the captures), which frees RAM for the vocoders.
+- **Budgets:** app image 452.9 KB of 453.9 KB; heap 116.0 KB (needs 110). CPU in fm1-emu at the FM-1's timing, with two SPECTRA tracks (one crossing), dense SHARDS, HANDS and SPACE all busy: 72–85% a block (the guard steps in above 90%); one SPECTRA instead: 51–77%; HANDS and SHARDS only: 54%.
+
 ## 0.3.0
 
 **DISSECT: take a piece of music apart and rebuild it.** GLO's second page (GLO: SPACE, DISSECT, SETTINGS). Projects saved by 0.2.x load and are converted; sounds keep working.

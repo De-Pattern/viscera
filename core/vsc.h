@@ -148,8 +148,8 @@ int vsc_sound_recall(unsigned slot, unsigned track);
 extern struct vsc_device vsc_dev;
 extern volatile uint32_t vsc_dev_changed;   /* bumped on every change */
 /* CPU: the platform's clock (both unset: no readout), and the guard's relief level.
- * Relief 1: SPACE's reverb rests. Relief 2: also half the shards, and SPECTRA makes a
- * frame every other block. */
+ * Relief 1: SPACE's reverb rests. Relief 2: also half the shards, and SPECTRA drops
+ * CROSS (the partner's frame). */
 #define VSC_PARTS (VSC_TRACKS + 1)
 extern uint32_t (*vsc_clock_now)(void);
 extern uint32_t (*vsc_clock_since)(uint32_t since);

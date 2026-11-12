@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Viscera Emulator</title>
-<meta name="description" content="Play Viscera, the four-track sculpting sampler firmware for the M-VAVE FM-1, in your browser. The same code the FM-1 runs.">
+<meta name="description" content="Play Viscera PUTTY, live-capture firmware for the M-VAVE FM-1, in your browser: catch loops and work them like putty. The same code the FM-1 runs.">
 <link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32">
 <meta property="og:title" content="Viscera emulator">
 <meta property="og:image" content="https://de-pattern.github.io/viscera/social.png">
@@ -58,13 +58,15 @@ nav a:hover{color:var(--ink)}
 .screen{width:100%;aspect-ratio:1;border-radius:7px;background:#121110;padding:7px;box-shadow:0 0 0 1px #000 inset,0 0 0 2px #2a2926,0 0 0 3px #0b0b0a}
 #lcd{width:100%;height:100%;display:block;image-rendering:pixelated;image-rendering:crisp-edges;border-radius:2px}
 
-/* a knob as on the FM-1: its name printed above, a small knurled black cap with a pale line (the cap turns) */
+/* a knob as in the PUTTY drawings: its name printed above, a smooth matte black cap with a soft
+   top light and a faint pointer (the cap turns) */
 .enc{--k:40px;position:relative;display:flex;flex-direction:column;align-items:center;width:100%;cursor:ns-resize;touch-action:none}
 .enc .lbl{order:-1;margin-bottom:9px;font:500 9px/1 var(--mono);letter-spacing:.16em;color:#c8c1b3;white-space:nowrap}
 .enc .cap{position:relative;width:var(--k);height:var(--k);border-radius:50%;flex:none;
-  background:repeating-conic-gradient(#0d0c0b 0 4deg,#2a2826 4deg 12deg);box-shadow:0 0 0 2px #0b0b0a,0 4px 7px rgba(0,0,0,.6)}
-.enc .cap::after{content:"";position:absolute;inset:13%;border-radius:50%;
-  background:linear-gradient(var(--mark),var(--mark)) 50% 6%/2px 34% no-repeat,radial-gradient(circle at 45% 35%,#34322e,#151412 75%);box-shadow:inset 0 1px 1px rgba(255,255,255,.1)}
+  background:radial-gradient(circle at 50% 18%,#3c3b40 0,#1d1c20 46%,#0e0e10 78%);
+  box-shadow:0 0 0 1px #050506,0 7px 12px rgba(0,0,0,.62),inset 0 1px 0 rgba(255,255,255,.14),inset 0 -2px 3px rgba(0,0,0,.6)}
+.enc .cap::after{content:"";position:absolute;inset:9%;border-radius:50%;
+  background:linear-gradient(#77727f,#77727f) 50% 4%/2px 30% no-repeat,radial-gradient(circle at 48% 30%,#2b2a2f,#141316 72%);box-shadow:inset 0 1px 1px rgba(255,255,255,.08)}
 .enc .fn{font:400 8px/1.4 var(--mono);letter-spacing:.06em;color:#7d776c;margin-top:7px;white-space:nowrap}
 .enc:focus-visible{outline:none}.enc:focus-visible .cap{outline:1px solid var(--mark);outline-offset:3px}
 .knobs4 .enc{--k:38px}
@@ -72,20 +74,27 @@ nav a:hover{color:var(--ink)}
 /* buttons sit in a recessed tray, as on the FM-1 */
 .tray{border-radius:12px;background:#151413;box-shadow:inset 0 2px 6px rgba(0,0,0,.8),0 1px 0 rgba(255,255,255,.05);padding:10px;display:grid;gap:8px}
 .lefthand .tray{grid-column:1/-1;grid-template-columns:1fr 1fr;padding:8px;width:100%}
-.btn{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;height:46px;padding:0;border:1px solid #0b0b0a;border-radius:8px;cursor:pointer;
-  background:linear-gradient(180deg,#2e2c29,#1d1c1a);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 3px 3px rgba(0,0,0,.55);color:#e6dfd1;min-width:0}
-.btn .l{font:600 10px/1 var(--mono);letter-spacing:.08em}
-.btn .f{font:400 7.5px/1 var(--mono);letter-spacing:.04em;color:#7d776c;white-space:nowrap;overflow:hidden;max-width:100%}
-.btn.down{transform:translateY(1px);background:linear-gradient(180deg,#3a3834,#292724);box-shadow:inset 0 0 0 1px rgba(230,223,209,.35),0 1px 1px rgba(0,0,0,.55)}
+/* buttons as in the PUTTY drawings: soft charcoal keys with white names; REC is the lavender one */
+.btn{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;height:46px;padding:0;border:1px solid #0c0c0e;border-radius:7px;cursor:pointer;
+  background:linear-gradient(180deg,#3a393e,#28272b 60%,#232226);box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 3px 4px rgba(0,0,0,.6);color:#efecf3;min-width:0}
+.btn .l{font:600 10px/1 var(--sans);letter-spacing:.09em}
+.btn .f{font:400 7.5px/1 var(--mono);letter-spacing:.04em;color:#8b8695;white-space:nowrap;overflow:hidden;max-width:100%}
+.btn.down{transform:translateY(1px);background:linear-gradient(180deg,#45434a,#302f34);box-shadow:inset 0 0 0 1px rgba(178,152,224,.45),0 1px 1px rgba(0,0,0,.55)}
+.btn.rec{background:linear-gradient(180deg,#c3abee,#a088d6 60%,#9479c9);border-color:#2a2236;color:#1d1726}
+.btn.rec .l{color:#1d1726}.btn.rec .f{color:#3d3350}
+.btn.rec.down{background:linear-gradient(180deg,#b29ae0,#8d74c2)}
 .btn.oct{height:34px}
 .btn:focus-visible{outline:1px solid var(--mark);outline-offset:2px}
 .btn .l{transition:color .08s,text-shadow .08s}
-.btn.glow .l{color:#f3efe7}
-.btn.lit .l{color:#fff;text-shadow:0 0 6px rgba(255,255,255,.9),0 0 14px rgba(230,223,209,.55)}
+.btn.glow .l{color:#f6f3fa}
+.btn.lit{box-shadow:inset 0 0 0 1px rgba(178,152,224,.75),0 0 12px rgba(178,152,224,.28),0 3px 4px rgba(0,0,0,.6)}
+.btn.lit .l{color:#fff;text-shadow:0 0 6px rgba(205,185,245,.95),0 0 14px rgba(178,152,224,.6)}
+.btn.rec.lit{background:linear-gradient(180deg,#f07a7a,#d24f4f);box-shadow:0 0 14px rgba(236,84,84,.55),0 3px 4px rgba(0,0,0,.6)}
+.btn.rec.lit .l{color:#fff;text-shadow:none}
 .key.glow::before{opacity:1;box-shadow:0 0 4px rgba(230,223,209,.35)}
-.key.lit::before{opacity:1;background:#fff;box-shadow:0 0 6px rgba(255,255,255,.95),0 0 14px rgba(230,223,209,.6)}
+.key.lit::before{opacity:1;background:#fff;box-shadow:0 0 6px rgba(255,255,255,.95),0 0 14px rgba(178,152,224,.7)}
 
-.btn.latched::after{content:"";position:absolute;top:5px;right:6px;width:5px;height:5px;border-radius:50%;background:var(--mark);box-shadow:0 0 6px rgba(230,223,209,.8)}
+.btn.latched::after{content:"";position:absolute;top:5px;right:6px;width:5px;height:5px;border-radius:50%;background:#b298e0;box-shadow:0 0 6px rgba(178,152,224,.9)}
 .holdhint{font:400 8.5px/1 var(--mono);letter-spacing:.12em;color:#6f695f;text-transform:uppercase}
 
 /* the pads: tall rounded pills with a pale line, sharps on the row above, gaps as on the FM-1 */
@@ -156,7 +165,7 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
   </header>
   <div class="intro">
     <div>
-      <p class="eyebrow">Emulator</p>
+      <p class="eyebrow">Emulator · PUTTY</p>
       <h1>Play it before<br>you flash it.</h1>
     </div>
     <p>The same code the FM-1 runs, compiled for the browser: the engine, the screen and the controls. An audio file or your microphone stands in for Bluetooth and USB audio in.</p>
@@ -172,7 +181,7 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
         <div class="righthand">
           <div class="knobs4" id="knobs4"></div>
           <div class="tray"><div class="btns" id="btnrow1"></div><div class="btns" id="btnrow2"></div></div>
-          <div class="now"><b>KNOBS</b><span id="now">KNOB 1–4 turn the four parameters on screen. SELECT pages through them, ALGORITHM picks the track, PRESETS picks the device or list.</span></div>
+          <div class="now"><b>KNOBS</b><span id="now">Tap REC to capture the input, tap again to end it. KNOB 1–4 work it like putty; hold REC and turn one for a robot; hold OCT− or OCT+ and turn to move the pair.</span></div>
         </div>
       </div>
       <div class="keybed"><div class="krow" id="blackrow"></div><div class="krow" id="whiterow"></div></div>
@@ -187,11 +196,11 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
           <button id="in-mic" aria-pressed="false">Mic</button>
         </div>
         <input type="file" id="in-file-pick" accept="audio/*" hidden>
-        <p id="in-name" style="margin:8px 0 0;font-size:12px">T2 (LOOP) and T4 (THRU) listen to it. Press REC on T2 to catch a loop.</p>
+        <p id="in-name" style="margin:8px 0 0;font-size:12px">A catches it: tap REC on HANDS, tap again. B catches what A plays.</p>
       </div>
       <div class="panel">
         <h3>Sample bank</h3>
-        <p>Drop a WAV or MP3 on a slot, or click one to choose a file. Slots 1–5 start with sounds made here.</p>
+        <p>Drop a WAV or MP3 on a slot, or click one to choose a file. A track set to REEL plays them (REEL S1–S16), as well as captures you KEEP.</p>
         <div class="slots" id="slots"></div>
         <input type="file" id="slot-pick" accept="audio/*" hidden>
       </div>
@@ -199,22 +208,22 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
         <h3>Controls</h3>
         <dl>
           <dt>Turning</dt><dd>drag up and down, scroll, or focus and use the arrow keys</dd>
-          <dt>KNOB 1–4</dt><dd>the four parameters on screen</dd>
-          <dt>SELECT</dt><dd>the next four parameters (pages)</dd>
-          <dt>ALGORITHM</dt><dd>track 1–4</dd>
-          <dt>PRESETS</dt><dd>the device in this slot, a modulator's type, a route, a step or a slot</dd>
-          <dt>MASTER</dt><dd>output level</dd>
-          <dt>EDIT FX SEL ENV</dt><dd>material, grain, filter, color</dd>
-          <dt>GLO</dt><dd>space, then settings (Bluetooth, audio in, clock, panel, MIDI learn)</dd>
-          <dt>LFO</dt><dd>the four modulators and the matrix; hold LFO and turn a knob to map</dd>
+          <dt>REC</dt><dd>on HANDS, SHARDS, SPECTRA or SOURCE: tap to capture, tap to end; hold to overdub; hold and turn a knob for a robot; REC + PLAY clears; SAVE + REC keeps it on the reel</dd>
+          <dt>HOME</dt><dd>HANDS: stretch, pitch, position and size of the window, A and B together</dd>
+          <dt>FX</dt><dd>SHARDS: glass-shard grains, by shape, density, spray and trigger</dd>
+          <dt>SEL</dt><dd>SPECTRA: the phase vocoder; stretch, blur, shift, cross with the partner</dd>
+          <dt>EDIT</dt><dd>SOURCE (capture, reel or thru; input, rate, bounce), then MIX</dd>
+          <dt>ENV</dt><dd>COLOR: drive, comp, crush, tilt, noise</dd>
+          <dt>LFO</dt><dd>the matrix and the four modulators; hold LFO and turn a knob to map</dd>
+          <dt>GLO</dt><dd>SPACE, then DISSECT (the listener), then SETTINGS</dd>
           <dt>ARP</dt><dd>perform: eight macros, scenes (ARP + pad)</dd>
-          <dt>HOME</dt><dd>mix: level, pan, send and filter for each track</dd>
-          <dt>REC</dt><dd>the page's action: record, lock, freeze, trigger</dd>
+          <dt>SEQ</dt><dd>steps (SLICE, PITCH, LEN, PROB each) or CAROM</dd>
           <dt>SAVE</dt><dd>projects, then sounds: REC loads or saves, SAVE + PLAY saves over; hold SAVE and turn a knob for MIDI learn</dd>
-          <dt>OCT− + OCT+</dt><dd>held together: TEMP, everything snaps back</dd>
+          <dt>OCT− / OCT+</dt><dd>held with a knob: both tracks of the pair move, together or apart; both held: TEMP</dd>
+          <dt>SELECT · ALGORITHM · PRESETS</dt><dd>the page's views · the track (A–D) · the page's list</dd>
           <dt>Pads</dt><dd>click, or type Z X C V… / and Q W E R T Y; sharps on S D F H J… and 3 4 6</dd>
           <dt>Space</dt><dd>PLAY</dd>
-          <dt>MIDI</dt><dd>channels 1–4 play tracks 1–4; CCs, clock and start/stop follow</dd>
+          <dt>MIDI</dt><dd>channels 1–4 play A–D; CCs, clock and start/stop follow</dd>
         </dl>
       </div>
       <p id="note" role="status" aria-live="polite"></p>

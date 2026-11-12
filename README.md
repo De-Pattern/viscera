@@ -6,18 +6,24 @@
 
 <h1 align="center">viscera</h1>
 
-<p align="center">A four-track sculpting sampler firmware for the M-VAVE FM-1.<br>
+<p align="center">PUTTY: a live-capture firmware for the M-VAVE FM-1. Catch loops and work them like putty.<br>
 <a href="https://de-pattern.github.io/viscera/">Install page</a> · <a href="docs/DESIGN.md">Design</a> · <a href="docs/STATUS.md">Status</a></p>
 
 <p align="center">
   <img src="docs/art/cycle.gif" width="520" alt="The install page animation: vapour, rain, swell, melt, settle">
 </p>
 
-Viscera brings sound in over Bluetooth (a phone or tablet) or USB (a computer), or plays it from the FM-1's flash sample bank, then takes it apart. Each track runs MATERIAL → GRAIN → FILTER → COLOR into a shared SPACE bus (delay and reverb), with four modulators per track, macros, scenes that morph, and a step sequencer with parameter locks. DISSECT listens to the music coming in (its bands, hits and pitch) and lets it drive the devices: hits start grains and strike RESON, the pitch tunes RESON, REBUILD resynthesises it as partials, and hits can throw CAROM balls or clock the steps.
+Viscera catches sound coming in over Bluetooth (a phone or tablet) or USB (a computer) and lets you work it like putty. Tap REC to catch a loop, tap again to end it; a partner track can catch what the first one plays, or the two can pass a sound back and forth. Then stretch it without changing its pitch, freeze it, phase-vocode it, break it into glass-shard grains and build it back up:
+
+- **HANDS**: stretch (0.25× to 8×, frozen at the top) and pitch, independent of each other, over a window you move and size.
+- **SHARDS**: up to eight grains with expodec, reverse-expodec and shattering windows, free, on the hits the listener hears, on notes or on the clock.
+- **SPECTRA**: a phase vocoder: blur, shift, gate, hold, and CROSS, one track's spectrum on its partner's phases.
+
+Four tracks in two pairs, each SOURCE → PUTTY → COLOR into a shared SPACE bus (delay and reverb), with four modulators per track, robots (a knob gesture recorded while REC is held, looping on its own), macros, scenes that morph, and STEPS (each step a SLICE, PITCH, LEN and PROB) or CAROM. Captures can be kept on a reel in flash.
 
 It's built on M-VAVE's official FM1 Open SDK (V14), so Bluetooth, USB audio and MIDI keep working, and samples uploaded with M-VAVE's workbench still play.
 
-**Status: early, untested on hardware.** The firmware builds, packages and passes M-VAVE's updater checks; it hasn't run on an FM-1 yet. Two sequencers per track: STEPS, and CAROM, where notes bounce around a box and play when they hit the walls.
+**Status: being tested on hardware.** The firmware builds, packages, passes M-VAVE's updater checks and starts in an emulated FM-1 running M-VAVE's own library. 1.0 replaced 0.x's engine: 0.x projects don't load.
 
 | | |
 |:-:|:-:|

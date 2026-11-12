@@ -20,8 +20,8 @@
   /* ---------- panel: the FM-1's own layout ---------- */
   /* encoder indices as the FM-1 reports them: 0 SELECT, 1 ALGORITHM, 2-5 KNOB 1-4, 6 PRESETS */
   const ENC_FN = ['page', 'track', 'param 1', 'param 2', 'param 3', 'param 4', 'device / list'];
-  const BTN_FN = {FX: 'grain', SEL: 'filter', ENV: 'colour', LFO: 'mods', EDIT: 'material', GLO: 'space · setup',
-    HOME: 'mix', SAVE: 'proj · sounds', ARP: 'scenes', SEQ: 'steps', REC: 'record'};
+  const BTN_FN = {FX: 'shards', SEL: 'spectra', ENV: 'color', LFO: 'mods', EDIT: 'source · mix', GLO: 'space · setup',
+    HOME: 'hands', SAVE: 'proj · sounds', ARP: 'perform', SEQ: 'seq', REC: 'capture'};
   const ROW1 = ['FX', 'SEL', 'ENV', 'LFO', 'EDIT', 'GLO'], ROW2 = ['HOME', 'SAVE', 'ARP', 'SEQ', 'PLAY', 'REC'];
   let master = 0.8;
   function makeEnc(role, parent, label, fn) {
@@ -103,7 +103,7 @@
   makeBtn('OCT−', octTray, 'oct');
   makeBtn('OCT+', octTray, 'oct');
   ROW1.forEach(n => makeBtn(n, $('btnrow1')));
-  ROW2.forEach(n => makeBtn(n, $('btnrow2')));
+  ROW2.forEach(n => makeBtn(n, $('btnrow2'), n === 'REC' ? 'rec' : ''));
 
   /* 27 pads from F3: sharps on the row above, offset half a pad, with gaps as on the FM-1 */
   const WHITE = [0, 2, 4, 6, 7, 9, 11, 12, 14, 16, 18, 19, 21, 23, 24, 26], BLACK = [1, 3, 5, 8, 10, 13, 15, 17, 20, 22, 25];
@@ -253,7 +253,7 @@
     } catch { note('That input is not available here.'); setInput('none'); }
   }
   $('in-none').addEventListener('click', () => { setInput('none'); useSource(async () => null, 'No live input.'); });
-  $('in-mic').addEventListener('click', () => { setInput('mic'); useSource(async () => ctx.createMediaStreamSource(await navigator.mediaDevices.getUserMedia({audio: {echoCancellation: false, noiseSuppression: false}})), 'Microphone. T2 (LOOP) and T4 (THRU) listen to it.'); });
+  $('in-mic').addEventListener('click', () => { setInput('mic'); useSource(async () => ctx.createMediaStreamSource(await navigator.mediaDevices.getUserMedia({audio: {echoCancellation: false, noiseSuppression: false}})), 'Microphone. A catches it: tap REC on HANDS.'); });
   $('in-file').addEventListener('click', () => $('in-file-pick').click());
   $('in-file-pick').addEventListener('change', e => {
     const f = e.target.files[0]; e.target.value = '';
@@ -262,7 +262,7 @@
     useSource(async () => {
       const a = new Audio(URL.createObjectURL(f)); a.loop = true; await a.play();
       return ctx.createMediaElementSource(a);
-    }, f.name + ', looping. T2 (LOOP) and T4 (THRU) listen to it.');
+    }, f.name + ', looping. A catches it: tap REC on HANDS.');
   });
 
   /* ---------- power ---------- */

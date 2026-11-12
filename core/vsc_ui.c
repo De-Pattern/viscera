@@ -1696,7 +1696,7 @@ static void draw_vis(void)
             pb[pl] = ' '; num(pb + pl + 1, vsc_host.part[i]);
             text(6 + (int)i * 39, VY(116), pb, vsc_host.part[i] > 30 ? C_WARN : C_DIM, 1);
         }
-        text(6, VY(130), vsc_host.relief >= 2 ? "GUARD: EASED 2 (GRAINS, BANDS)" : vsc_host.relief ? "GUARD: EASED 1 (REVERB RESTS)" : "GUARD: OFF",
+        text(6, VY(130), vsc_host.relief >= 2 ? "GUARD: EASED 2 (SHARDS, CROSS)" : vsc_host.relief ? "GUARD: EASED 1 (REVERB RESTS)" : "GUARD: OFF",
              vsc_host.relief ? C_WARN : C_LINE, 1);
         break;
     } else if (row == SET_LEARN) {

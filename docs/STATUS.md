@@ -13,6 +13,8 @@ The firmware builds and packages on Linux, and the package passes M-VAVE's own u
 
 Budget at 0.1.0: app image 443,528 of 453,921 bytes; Bluetooth heap 54,924 bytes (needs 49,152).
 
+Budget at 1.0.0 (PUTTY): app image 452,884 of 453,921 bytes; heap 116,012 bytes (the build refuses less than 112,640). The control task's functions in `viscera_fm1.c` are built for size, and the engine's per-event functions (notes, captures, steps, MIDI, events) sit in RAM built for size, to fit.
+
 ## Identity and build ID
 
 The update identity is `FM-1_86` followed by the version as X YY ZZ: 0.1.2 reports `FM-1_8600102` ("86" is "V"; M-VAVE's SDK requires `FM-1_8` plus six digits). The build ID is a SHA-256 over the SDK manifest and every app file; the FM-1 reports it after an install, and the install page shows it next to the package's build ID after connecting. CI and local builds of the same commit give the same build ID.
@@ -27,7 +29,7 @@ Felucca-based firmwares (Ravel, SLOOP and others) accept only packages whose 16 
 
 `tools/emulator/` simulates an FM-1 for this: `fm1_device.js` replaces Web MIDI with a device in a Web Worker (its own clock, a strict per-block deadline, Felucca's head check, stock V15's voice-bank restore), and `flash_test.py` installs through the real page in headless Chrome from each starting firmware, checking reply times, every written byte and the build ID afterwards. CI runs it on every build.
 
-Safe mode: hold OCT- and OCT+ while switching on. Viscera starts with sound and controls off; the update protocol still answers, so the page can always reinstall. A CPU guard eases in two steps when rendering takes over 90 % of a block (1: the reverb rests; 2: also half the RESON bands and new grains), and only rests the engine for about a second if that isn't enough. GLO → SETTINGS → PANEL shows the load per track, SPACE and the rest, and the guard's step.
+Safe mode: hold OCT- and OCT+ while switching on. Viscera starts with sound and controls off; the update protocol still answers, so the page can always reinstall. A CPU guard eases in two steps when rendering takes over 90 % of a block (1: the reverb rests; 2: also half the shards, and SPECTRA drops CROSS), and only rests the engine for about a second if that isn't enough. GLO → SETTINGS → PANEL shows the load per track, SPACE and the rest, and the guard's step.
 
 ## First hardware test
 

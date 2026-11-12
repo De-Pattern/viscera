@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Viscera · FM-1 firmware</title>
-<meta name="description" content="Viscera: a four-track sculpting sampler firmware for the M-VAVE FM-1. Install it from your browser.">
+<meta name="description" content="Viscera PUTTY: live-capture firmware for the M-VAVE FM-1. Catch loops and work them like putty. Install it from your browser.">
 <link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
 <link rel="icon" href="icon-512.png" type="image/png" sizes="512x512">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta property="og:title" content="Viscera">
-<meta property="og:description" content="A four-track sculpting sampler firmware for the M-VAVE FM-1. Install it from your browser.">
+<meta property="og:description" content="Live-capture firmware for the M-VAVE FM-1: catch loops and work them like putty. Install it from your browser.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://de-pattern.github.io/viscera/">
 <meta property="og:image" content="https://de-pattern.github.io/viscera/social.png">
@@ -168,7 +168,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
     <canvas id="field" aria-hidden="true"></canvas>
     <div class="hero-copy">
       <h1>Matter, unmade<br>and remade.</h1>
-      <p>A four-track sculpting sampler for the M-VAVE FM-1. Bring sound in over Bluetooth or USB, then grind it, filter it, stain it and let it settle.</p>
+      <p>PUTTY: live capture for the M-VAVE FM-1. Catch loops coming in over Bluetooth or USB, two at a time, then stretch, freeze, shatter and rebuild them.</p>
     </div>
     <div class="phase" aria-hidden="true"><span id="phase-n">01 / 05</span><b id="phase-name">vapour</b></div>
   </div>
@@ -274,16 +274,16 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
   <div class="wrap cols">
     <div>
       <p class="eyebrow">About</p>
-      <h2>Four tracks of material.</h2>
-      <p>Each track takes a sample from the FM-1's flash bank, a live loop, a playable keyboard voice, or the live input itself, then passes it through grains, a filter and colour into a shared delay and reverb. Four modulators per track, four macros, eight scenes to morph between, and a step sequencer with parameter locks.</p>
+      <h2>Four tracks of putty.</h2>
+      <p>Each track catches the input (or its partner's output, or the reel), then works it three ways: HANDS stretches and pitches it independently, SHARDS breaks it into glass-shard grains, SPECTRA phase-vocodes it and crosses it with its partner. Then colour, a shared delay and reverb, four modulators per track, robots that loop your knob gestures, macros, scenes, and steps that jump between slices.</p>
       <p>Try it first in the <a href="emulator/">browser emulator</a>: the same code, running in this page's browser.</p>
-      <p>Viscera is early: each release builds and passes M-VAVE's update checks, but it hasn't been tested on an FM-1 yet. Two sequencers per track: steps, and CAROM, where notes bounce around a box and play when they hit the walls.</p>
+      <p>Viscera is early: each release builds, passes M-VAVE's update checks and starts in an emulated FM-1, and is being tested on hardware. 1.0 is a new engine: projects from 0.x don't load. Two sequencers per track: steps, and CAROM, where notes bounce around a box and play when they hit the walls.</p>
     </div>
     <div>
       <p class="eyebrow">Before you flash</p>
       <ul>
         <li><span>Backup</span>Save your projects and samples with M-VAVE's workbench first. Switching firmware doesn't convert them.</li>
-        <li><span>Samples</span>Viscera reads the same flash sample bank, so samples uploaded with the workbench still play. Manage them in <a href="#samples">Samples</a> above. Viscera keeps its projects at the end of that flash area, so a bank for it holds about 16.5 s, not 19.5.</li>
+        <li><span>Samples</span>Viscera reads the same flash sample bank, so samples uploaded with the workbench still play. Manage them in <a href="#samples">Samples</a> above. Viscera keeps its projects at the end of that flash area, so a bank for it holds about 16.5 s, not 19.5. Its reel (captures you KEEP) uses the space where the stock firmware keeps its projects: back those up first.</li>
         <li><span>Return</span>"Put M-VAVE's V15 back" installs M-VAVE's original firmware from this page; M-VAVE's <a href="https://open.m-vave.com/fm1-workbench">workbench</a> can too.</li>
         <li><span>From</span>Coming from Ravel, SLOOP or another Felucca-based firmware, put M-VAVE's V15 back with M-VAVE's own tools first. The page won't install from those firmwares: handing over to M-VAVE's updater from them can switch the FM-1 off part-way.</li>
         <li><span>Risk</span>Any firmware update can fail. Don't unplug the FM-1 while it's writing.</li>

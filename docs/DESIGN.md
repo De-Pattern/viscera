@@ -1,6 +1,6 @@
 # Viscera: design
 
-Viscera is a sculpting sampler for the M-VAVE FM-1, built on M-VAVE's official FM1 Open SDK (V14). It follows the working idea of a four-track sculpting sampler (material, grains, filter, colour, space, four modulators per track, macros and scenes) on the FM-1's keys, encoders and screen. It is its own instrument: no code, names or graphics from any other product.
+Viscera PUTTY (1.0) is a live-capture instrument for the M-VAVE FM-1, built on M-VAVE's official FM1 Open SDK (V14). It catches loops from the input and lets you work them like putty: two at a time, or bounced between two buffers; stretched without changing pitch, frozen, phase-vocoded, broken into glass-shard grains and rebuilt. It is its own instrument, after the spirit of a few others (Synthux Spotykach, Montreal Assembly's 856 for Zellersasn, Bastl Thyme, Make Noise Morphagene, Qu-Bit Nebulae), with no code, names or graphics from any of them. 0.x was a four-track sculpting sampler; 1.0 replaced its engine and kept the framework: four tracks, COLOR, SPACE, the modulators and matrix, scenes, macros, STEPS and CAROM, DISSECT's listener, the screen style and the install page.
 
 ## Why the SDK
 
@@ -9,54 +9,61 @@ The SDK keeps Bluetooth and USB working, and gives two live inputs:
 - **Bluetooth audio**: a phone or tablet plays music into the FM-1 (`fm1_bluetooth_audio_read`).
 - **USB audio**: a computer plays into the FM-1 (`fm1_usb_audio_read`).
 
-It also gives BLE MIDI, DIN and USB MIDI, the official workbench (firmware updates and the sample bank), and the flash sample bank (16 entries, 32 kHz, SEA5-compressed, about 19 s in total).
+It also gives BLE MIDI, DIN and USB MIDI, the official workbench (firmware updates and the sample bank), and the flash sample bank (16 entries, 32 kHz, SEA5-compressed).
 
-Viscera keeps M-VAVE's platform library and its storage/transfer code, so the workbench still uploads sample banks. It replaces the screen and control code (`screen.c`) and the audio callback: the ISR renders Viscera instead of the stock DX7 engine. The DX7 engine is still linked (it lives in the same binary object as the platform) but never runs.
+Viscera keeps M-VAVE's platform library and its storage/transfer code, so the workbench still uploads sample banks. It replaces the screen and control code (`screen.c`) and the audio callback: the ISR renders Viscera instead of the stock engine.
 
 ## Signal flow
 
 ```
-inputs: BT audio, USB audio ─┐
-track outputs (resample) ────┼─▶ per track: MATERIAL ─▶ GRAIN ─▶ FILTER ─▶ COLOR ─▶ level/pan ─┬─▶ master
-flash sample bank ───────────┘                                                                └─▶ SPACE send (delay + reverb, shared)
+inputs: BT, USB, both ──┐
+the partner's output ───┼─▶ per track: SOURCE ─▶ PUTTY ─▶ COLOR ─▶ level/pan ─┬─▶ master
+the reel, the bank ─────┘   (capture,     (HANDS,                              └─▶ SPACE send (delay + reverb)
+                             reel, thru)   SHARDS, SPECTRA)
 ```
 
-### Material (one per track)
+Four tracks, A to D, in two pairs: **A+B** and **C+D**. A pair bounces, crosses and moves together.
 
-| Mode | What it does |
+### SOURCE (EDIT)
+
+| Knob | |
 | --- | --- |
-| PLAY | Streams one sample from the flash bank like a record: start, length, speed (−2× to +2×, reverse), pitch, loop off/on/back-and-forth. Steps and keys retrigger it. |
-| LOOP | A live looper on a slice of the shared loop memory. Records from the track's input (BT, USB, both, another track, or the master), with overdub feedback, varispeed and a moving window. Keys jump to 16 slices of the loop. |
-| KEYS | Four-voice chromatic sampler with an amp envelope, playing a bank sample or the track's loop. |
-| THRU | The live input goes straight into the chain. Keys gate the ENV modulator. |
+| SOURCE | CAPTURE (a buffer in RAM), REEL (the reel or a bank sample) or THRU (the input, live, through a short ring) |
+| INPUT | BT, USB, BT+USB (default), another track, or the main mix |
+| RATE | HI 44.1 kHz (0.34 s), MID 22 kHz (0.68 s, default) or LO 11 kHz (1.36 s): each capture is 15,000 bytes of 8-bit µ-law |
+| SOS | how much of the old an overdub keeps |
+| BOUNCE | OFF; IN: the track captures its partner's output; PING: when one ends a capture, the other takes it back, as long, so the sound passes between them |
+| REEL / SPLICE | KEPT (the reel) or a bank slot S1–S16; ALL or one splice |
+| GAIN, KEYS | input gain; what keys do: OFF, PITCH, PLAY (restart and gate), SLICE (a sixteenth of the window each, from F3) |
 
-### Devices
+**REC** on HANDS, SHARDS, SPECTRA or SOURCE: tap to start a capture, tap to end it (the gesture sets the length; a full buffer ends it). Hold to overdub. Hold and turn a knob to record a robot. REC + PLAY clears the capture and the track's robots. SAVE + REC keeps the capture on the reel.
 
-Each track runs the same chain as the S-4's: MATERIAL, then GRAIN, FILTER and COLOR, then a send to SPACE. Parameters follow the S-4's devices; the FM-1 has four knobs, so each device's parameters come four at a time and SELECT steps through them.
+**The reel.** KEEP writes the capture to flash as a splice. The reel lives in the stock firmware's project sectors 0 to 14 (Viscera never used them; the stock settings and staging sectors stay untouched): a 4 KB index, then 56 KB of audio, each splice starting on a sector, about 2.6 s at MID in all, 16 splices at most. The first KEEP asks again, because a new reel takes the place of any projects the stock firmware kept there. Recording straight to flash isn't possible: on this SDK every flash write briefly silences audio, so KEEP pauses the sound for a moment, as saving does. SETTINGS → PANEL → REEL shows the room left; turn it and press REC to erase the reel.
 
-- **GRAIN**: a per-track capture ring (8-bit µ-law) read by up to 8 grains. PITCH, RATE, SIZE, SHAPE | SCAN, SPRAY, DETUNE, WET | REVRS, FDBK, QUANT, W.MODE. REC locks the buffer.
-- **FILTER**: **RESON**, a resonant bank of ten tuned bands after the S-4's filter device: CUTOFF, RESO, DECAY, PITCH | SLOPE (low-pass, band-pass, high-pass), TONE, SCALE, WET | WAVES, W.RATE, NOISE, N.RATE | TILT, DETUNE, D.MODE (SUSTAIN: the bands ring on after the shape closes; CHOKE: closing a band silences it), W.MODE (MIX or SEND) | EXCITE, FOLLOW (see DISSECT). SCALE also has HARM, MEMBR and BAR: a string's, a drum head's and a struck bar's partials. Or **REBUILD** (see DISSECT), a classic LP, BP, HP, or PEAKS. PRESETS picks the device.
-- **COLOR**: noise, drive, crush and compression in that order, then a two-band tilt: DRIVE, COMP, CRUSH, TILT | NOISE, N.DEC, N.TONE, WET | C.MODE (BITS, REDUX, BOTH), XOVER (80 Hz, 650 Hz, 2.5 kHz), N.TYPE (WHITE, PINK, DUST), W.MODE. The noise follows the input's envelope.
-- **SPACE**: a shared bus (the FM-1's RAM holds one, where the S-4 has one per track). Each track has a send on MIX; the bus has a tempo-synced delay and a reverb: DELAY, TIME, FDBK, TONE | REVERB, SIZE, DAMP, LONG. REC freezes it, holding REC clears it.
-- Every WET can be MIX (crossfade) or SEND (the dry signal stays, the effect is added), as on the S-4.
+### PUTTY: three ways to work the capture
 
-### DISSECT: taking the music apart
+The page is the mode: opening HANDS, SHARDS or SPECTRA puts the track into it. Each reads a window of the source, POS to POS + SIZE, with a playhead moving through it at STRETCH (0.25× to 8×, the top: frozen), independent of PITCH (±24 semitones).
 
-GLO's second page. One listener for the whole engine hears DISSECT's SOURCE (BT, USB, both, a track, or the main mix) once a block, and only while something uses it:
+- **HANDS** (HOME): two overlapping Hann grains follow the playhead. STRETCH, PITCH, POS, SIZE | GRAIN (10 ms to 260 ms), JITTER, REVRS, LEVEL | FREEZE, KEYS, GAIN, SOS.
+- **SHARDS** (FX): up to eight grains from the window. SHAPE runs smooth (Hann) → swell (reverse expodec) → expodec → glass (sharper, shorter, and at the top it SHATTERS: octaves up, denser). DENS, SPRAY (scatter in the window), TRIG: FREE (random), HIT (bursts on the listener's hits), NOTE (keys, steps, CAROM), CLOCK (on the steps) | SIZE, SPREAD (pitch scatter), REVRS (chance), STEREO | the hands. Sparse, sharp shards are brought up to the level of the source.
+- **SPECTRA** (SEL): a 512-point phase vocoder at the playhead. STRETCH, BLUR (magnitudes smeared over time), SHIFT (±24 semitones, on top of PITCH), CROSS (the partner's magnitudes, through their geometric mean, on this track's phases) | GATE (the loud bins only), TILT, HOLD (peaks held), PHASE (scatter) | PITCH, POS, SIZE, FREEZE. Frames every 256 samples with sine windows; each spectral peak's phase moves on by its true frequency (from a parabola through its log magnitudes), and the bins around it keep their place relative to it (identity phase locking), so frozen sound stays a tone rather than a smear. Two tracks can be SPECTRA at once (RAM); a third plays as HANDS and says so. The two vocoders work on alternate blocks.
 
-- **EXTRACT** (the listener): SOURCE, SENS (how easily a rise counts as a hit), FOCUS (FULL, or hits from the LOW, MID or HIGH band only), HITS (OFF; BALLS: each hit throws a ball into every CAROM track, at the pitch heard; STEPS: the hits clock the STEPS sequencers while PLAY is on). It hears three bands (below about 150 Hz, to 2.5 kHz, above), hits (a rise in the FOCUS band against its recent level, at most one per 36 ms), and the pitch (YIN on an 11 kHz 8-bit history, 50 Hz to 1 kHz) with the levels of its first eight partials, every 46 ms.
-- **FRAGMENT** (GRAIN): TRIG FREE (as before), HITS (each hit plays a burst of 1–8 grains, RATE sets how many) or NOTES (keys, steps and CAROM do). The grains start where a remembered hit fell in the track's buffer: SCAN picks how many hits back (of 8), SPRAY scatters among older ones. QUANT TUNE pitches each grain so the pitch heard at its hit lands on the note (NOTES) or on C. REC locks the buffer, and the hits in it with it.
-- **RESONATE** (RESON): EXCITE lets the hits strike the bank (a short burst as strong as the hit) while the track's own sound feeds it less, to none at full EXCITE. FOLLOW tunes the lowest band to the pitch heard, to the semitone, held through silence; PITCH shifts it.
-- **REBUILD** (a FILTER device): up to eight sine partials at the pitch heard and its partials' levels: PARTS, SHIFT, SMEAR (how slowly they follow), WET | STRTCH (inharmonic), TILT (more or fewer upper partials), DETUNE (odd and even apart, and across the stereo field), TONE | UNVOIC (HOLD the last pitch, or FADE), SNAP (to the semitone), W.MODE.
-- **FOLLOW** modulators can follow the listener too: INPUT LOW, MID, HIGH, HITS, PITCH (A1–A6, held) or BRIGHT (the high band's share).
+**Robots.** Hold REC on a putty page and turn a knob: the turn is recorded (up to about two seconds) and, when REC is let go, loops around the knob on its own. Four a track; a fifth replaces the oldest. A robot shows as a lavender mark in its knob's cell, with a tick where it has the parameter now. Robots aren't kept in projects.
 
-The page shows the three bands, the last moments of level with each hit as a bright stroke, the pitch (note, Hz, how sure) and the partials. Its views are the knobs above: EXTRACT, two of FRAGMENT, two of RESONATE or REBUILD (for the track's FILTER; KNOB 4 on the second picks it).
+**Two hands.** Hold OCT− and turn a knob: both tracks of the pair move together. Hold OCT+: they move apart. The octave only changes when an OCT button is let go without a knob turned. Both held: TEMP.
 
-CPU, after Ravel: the listener is off unless something listens or the page is on screen, skips the pitch while the source is silent and under the guard's second step, stops its pitch search at the first clear dip, and costs a few hundred integer multiplies a block. REBUILD skips silent partials and plays four at most under the guard's second step. In fm1-emu at the FM-1's timing, every DISSECT device on, all tracks awake: about 55% of a block (peak 58%), as 0.2.6's worst case.
+### COLOR and SPACE
+
+- **COLOR** (ENV): noise, drive, crush and compression in that order, then a two-band tilt: DRIVE, COMP, CRUSH, TILT | NOISE, N.DEC, N.TONE, WET | C.MODE (BITS, REDUX, BOTH), XOVER, N.TYPE (WHITE, PINK, DUST), W.MODE.
+- **SPACE** (GLO): a shared bus with a tempo-synced delay (8-bit µ-law, as the captures) and a reverb: DELAY, TIME, FDBK, TONE | REVERB, SIZE, DAMP, LONG. REC freezes it, holding REC clears it.
+
+### DISSECT: the listener
+
+GLO's second page. One listener for the whole engine hears its SOURCE once a block, only while something uses it: three bands, hits (SENS, FOCUS) and the pitch with its first eight partials. HITS can throw CAROM balls or clock the steps. SHARDS TRIG HIT bursts on the hits; FOLLOW modulators can follow the bands, the hits, the pitch or the brightness. REC on DISSECT opens SHARDS with TRIG HIT.
 
 ### Modulation
 
-Four modulator slots per track, each **WAVE**, **RANDOM**, **FOLLOW** or **ADSR** (PRESETS changes a slot's type), with the S-4's parameters: WAVE has RATE, AMOUNT, PHASE, OFFSET, SKEW, FOLD, CURVE, SHAPE and SYNC (free, straight, triplet, dotted); RANDOM has RATE, AMOUNT, PHASE, OFFSET, LENGTH, VARIATION, SMOOTH and SYNC; FOLLOW has DELAY, AMOUNT, RISE, FALL, INPUT (this track, its material, any track, the main mix or the live input), FILTER, HOLD and GAIN; ADSR has ATTACK, DECAY, SUSTAIN, RELEASE, their three curves and AMOUNT, and plays from notes or REC.
+Four modulator slots per track, each **WAVE**, **RANDOM**, **FOLLOW** or **ADSR** (PRESETS changes a slot's type), with the S-4's parameters: WAVE has RATE, AMOUNT, PHASE, OFFSET, SKEW, FOLD, CURVE, SHAPE and SYNC (free, straight, triplet, dotted); RANDOM has RATE, AMOUNT, PHASE, OFFSET, LENGTH, VARIATION, SMOOTH and SYNC; FOLLOW has DELAY, AMOUNT, RISE, FALL, INPUT (this track, its source, any track, the main mix or the live input), FILTER, HOLD and GAIN; ADSR has ATTACK, DECAY, SUSTAIN, RELEASE, their three curves and AMOUNT, and plays from notes or REC.
 
 **LFO** opens the **MATRIX** first, then each press goes to the next modulator (MOD 1–4, three pages each), then back to the matrix. SELECT pages through them all.
 
@@ -64,7 +71,7 @@ The MATRIX lists every route on every track: the source in its modulator's colou
 
 | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 | REC |
 | --- | --- | --- | --- | --- |
-| SOURCE: any of the sixteen modulators, T1 WAV1 to T4 ENV4 (a modulator on one track can move another track) | DEVICE: T1 MATERIAL, GRAIN, FILTER, COLOR, MIX, MODS, then T2 … T4, then SPACE, PERFORM and MASTER | PARAM: that device's parameters in the order of its page's knobs (for the track's current mode and filter); turned back past the first, the route goes | AMOUNT, either way | BIPOLAR or UNIPOLAR |
+| SOURCE: any of the sixteen modulators, A WAV1 to D ENV4 (a modulator on one track can move another track) | DEVICE: A SOURCE, PUTTY, COLOR, MIX, MODS, then B … D, then SPACE, PERFORM, MASTER and DISSECT | PARAM: that device's parameters in the order of its page's knobs (PUTTY: the track's mode first); turned back past the first, the route goes | AMOUNT, either way | BIPOLAR or UNIPOLAR |
 
 **Hold LFO and turn any knob** on any page to map: the current track's modulator (the last one you looked at; PRESETS changes it while LFO is held) moves that knob's parameter, and the direction you turn sets the amount. While LFO is held the header and the knob cells take the modulator's colour and the bottom line says which modulator a turn maps. On MIX, where the knobs are the four tracks, a track's modulator can move another track's level, pan or send. Every continuous parameter can be a destination, plus each modulator's RATE and AMOUNT. Modulators restart with PLAY.
 
@@ -76,41 +83,40 @@ The MATRIX lists every route on every track: the source in its modulator's colou
 
 ### Sequencer
 
-One pattern per track, 16 to 64 steps, or CAROM (notes bounce in a box and play when they hit a wall). A step holds a note, a velocity and up to two parameter locks. Internal tempo (30–300 BPM) with swing, or MIDI clock. Live recording quantises to the step.
+One pattern per track, 16 to 64 steps, or CAROM (notes bounce in a box and play when they hit a wall). A step holds, after the 856's fragments, a SLICE (the playhead jumps to that sixteenth of the window; OFF: it plays on), a PITCH, a LEN (in eighths of a step) and a PROB, then a velocity and a parameter lock. PRESETS picks the step, the pads switch steps on and off. Internal tempo (30–300 BPM) with swing, or MIDI clock. Live recording quantises to the step.
 
 ### MIDI
 
 MIDI comes in from the FM-1's MIDI jack, USB and Bluetooth MIDI alike.
 
-- Notes on channels 1–4 play tracks 1–4.
+- Notes on channels 1–4 play tracks A–D.
 - **Clock** follows the CLOCK setting: AUTO follows MIDI clock whenever it arrives, MIDI always, INT never. Start, continue and stop drive the transport (except in INT). The tempo shown is measured from the clock. Clock is taken from one port at a time.
 - **MIDI learn**: hold SAVE and turn a knob, then move a controller: that CC drives the parameter. SETTINGS lists the mappings; REC clears one. Mappings belong to the FM-1, not the project, and pick up: the parameter doesn't move until the controller passes its value.
 - **KNOB CC**: CC 110–113 on any channel turn KNOB 1–4 of the page on screen, with pickup (unless that CC is learned). SETTINGS → PANEL switches it off.
-- **Fixed CCs** on a track's channel: 7 level, 10 pan, 11 send, 12 mix filter; 14–19 material (start, length, speed, pitch, level, SOS); 20–29 grain (pitch, rate, size, shape, scan, spray, detune, wet, feedback, reverse); 70–79 filter (cutoff, reso, decay, pitch, slope, tone, wet, waves, noise, tilt); 80–87 color (drive, comp, crush, tilt, noise, noise decay, noise tone, wet); 102–105 the four modulators' AMOUNT. On channel 16: 7 main, 9 master comp, 20 delay, 22 feedback, 23 delay tone, 24 reverb, 25 size, 26 damp, 27 morph, 28–31 and 102–105 macros 1–8, 106 swing. 120/123 stop all notes.
+- **Fixed CCs** on a track's channel: 7 level, 10 pan, 11 send, 12 mix filter; 14–19 the hands (POS, SIZE, STRETCH, PITCH, GAIN, SOS); 20–28 SHARDS (SHAPE, DENS, SPRAY, SIZE, SPREAD, REVRS, STEREO) and HANDS' GRAIN and JITTER; 70–76 SPECTRA (BLUR, SHIFT, CROSS, GATE, TILT, HOLD, PHASE); 80–87 color (drive, comp, crush, tilt, noise, noise decay, noise tone, wet); 102–105 the four modulators' AMOUNT. On channel 16: 7 main, 9 master comp, 20 delay, 22 feedback, 23 delay tone, 24 reverb, 25 size, 26 damp, 27 morph, 28–31 and 102–105 macros 1–8, 106 swing. 120/123 stop all notes.
 
 ## Controls
-
-The FM-1's left-hand encoders are the same kind of control on every page, but their job follows the page:
 
 | Control | Job |
 | --- | --- |
 | KNOB 1–4 | The four parameters on screen |
-| SELECT | The next four parameters of this device or page |
-| ALGORITHM | Track 1–4 |
-| PRESETS | The page's list: the device in this slot (MATERIAL, FILTER), the sequencer (STEPS or CAROM), a modulator's type, a row in the matrix, a project slot, a Bluetooth device, a learned mapping |
+| SELECT | The page's next view |
+| ALGORITHM | Track A–D |
+| PRESETS | The page's list: SOURCE's source, the step (SEQ), a modulator's type, a row in the matrix, a project or sound slot, a Bluetooth device, a learned mapping |
 | MASTER | Output level |
-| EDIT / FX / SEL / ENV | MATERIAL / GRAIN / FILTER / COLOR (press again for the next page) |
-| GLO | SPACE, then DISSECT, then SETTINGS: Bluetooth, AUDIO IN, clock, PANEL, MIDI learn (SELECT pages) |
+| HOME / FX / SEL | HANDS / SHARDS / SPECTRA, and the track's mode with them (press again for the next view) |
+| EDIT | SOURCE, then MIX |
+| ENV | COLOR |
+| GLO | SPACE, then DISSECT, then SETTINGS: Bluetooth, AUDIO IN, clock, PANEL, MIDI learn |
 | LFO | The MATRIX, then the four modulators; hold + turn a knob = map |
-| HOME | MIX: level, pan, send, filter and mute, each across the four tracks; hold HOME + a top pad = track |
 | ARP | PERFORM: macros and scenes; hold + turn = map a macro; hold + pad = scene |
 | SEQ | STEPS or CAROM |
-| SAVE | PROJECT, then SOUNDS: PRESETS picks a slot, REC loads (or saves into an empty one), SAVE + PLAY saves over; hold + turn = MIDI learn |
+| SAVE | PROJECT, then SOUNDS: REC loads (or saves into an empty slot), SAVE + PLAY saves over; hold + turn = MIDI learn; SAVE + REC on a putty page: KEEP |
 | PLAY | Play / stop |
-| REC | The page's action: record or overdub (LOOP), restart (PLAY), lock (GRAIN, DISSECT), freeze (SPACE), trigger (ADSR), record steps; held, clear |
-| OCT− / OCT+ | Octave; both held = TEMP |
+| REC | Putty pages and SOURCE: capture (tap, tap), overdub (hold), robot (hold + turn); REC + PLAY clears. Elsewhere the page's action: freeze (SPACE), trigger (ADSR), record steps, BI/UNI (matrix); held, clear |
+| OCT− / OCT+ | Octave; held with a knob: the pair together (OCT−) or apart (OCT+); both held = TEMP |
 
-The screen is white on black (an alternative background, a dark violet-grey gradient from #2C2A32 at the top to #100F12, is kept behind `VSC_SCREEN_GRADIENT` in `core/vsc_ui.c`). Its layout follows the S-4's: the track and page at the top with the tempo, a picture of the device, the four parameter cells (a bar for continuous values with a centre mark for bipolar ones, the value while you turn, a coloured marker where a modulator is mapped), and the page's actions along the bottom. MATERIAL, FILTER and the modulators draw as the S-4 does; GRAIN, COLOR and SPACE have their own pictures of the sound coming apart: grains lifting out of a dust horizon, a body of matter worn, coarsened and sheared by COLOR, echoes leaving as broken rings beside a drifting reverb cloud.
+The screen follows the PUTTY drawings (`docs/art/putty-mockups.png`): white on black with a lavender accent and small flashes of red. A small header (VISCERA PUTTY and the page's views as dots), the track and page large ("A / HANDS"), REC in red while anything records, and the pair's link as a lavender badge (A→B: B captures A; A<>B: PING; A×B: CROSS). Then the picture: HANDS draws both tracks of the pair with the window as a lavender pane, the playhead and, while capturing, a red record head; SHARDS throws up a cloud of dust where the shards play, a tick for each one born, and their window shape below; SPECTRA scrolls its spectrum; SEQ draws the steps as blocks (lavender where a step jumps to a slice), the bounces between the steps that play, and the source with the slices marked. Below, four knob cells: the name, the value large, a lavender bar (a centre mark for bipolar values), coloured ticks for modulators and a pale one for a robot; choices show as lavender badges and SHAPE draws its window. The footer: the input, the pair's lengths or the page's subject, and the tempo; a page's gestures show there for a moment when it opens, and notices replace it.
 
 ## Memory
 
@@ -118,17 +124,17 @@ The FM-1 has about 511 KB of RAM, and the platform library takes roughly 200 KB 
 
 | Buffer | Default | Notes |
 | --- | --- | --- |
-| Grain rings | 4 × 7.75 KB µ-law | 0.18 s each at 44.1 kHz |
-| Loop memory | 32 KB µ-law, shared | 0.75 s HI (44.1 kHz) or 1.5 s LO (22 kHz); a track claims 1–4 of 4 slices |
-| Delay | 16 KB int16 | 0.19 s, double in LONG mode at half rate |
+| Captures | 4 × 15,000 B µ-law | 0.34 s HI, 0.68 s MID, 1.36 s LO |
+| Vocoders | 2 × 5 KB, plus 6 KB shared | 16-bit phases and overlap-add |
+| Delay | 8 KB µ-law | 0.19 s, double in LONG mode at half rate |
 | Reverb | about 7 KB | |
-| Bank chunk cache | 8 × 640 B | decoded SEA chunks for PLAY, KEYS and grains |
+| Bank chunk cache | 8 × 640 B | decoded SEA chunks for REEL S1–S16 |
 
 All of these sizes are compile-time settings in `core/vsc_config.h`. The first hardware build should print the link map's free heap; the buffers can grow from there.
 
 ## Storage
 
-Projects (sound, sequences, scenes, macros; about 7 KB each) live in the top 64 KB of the sample-bank area, below the DX7 library sectors: 8 slots of 8 KB. The sample bank limit is lowered by 64 KB to make room, so the bank holds about 17 s instead of 19.5 s. A legacy bank that is already larger than that stays readable, but projects can't be saved until it's rewritten smaller. Saves happen only while stopped, with audio muted for the write.
+Projects (sound, sequences, scenes, macros; about 7 KB each; 0.x projects don't load in 1.0) live in the top 64 KB of the sample-bank area, below the DX7 library sectors: 8 slots of 8 KB. The sample bank limit is lowered by 64 KB to make room, so the bank holds about 17 s instead of 19.5 s. A legacy bank that is already larger than that stays readable, but projects can't be saved until it's rewritten smaller. Saves happen only while stopped, with audio muted for the write.
 
 ## Licence
 
@@ -136,10 +142,10 @@ GPL-3.0 with M-VAVE's SDK linking exception, as required by the SDK's app source
 
 ### The panel and the FM-1's own settings
 
-The page buttons light for the open page, PLAY while playing, REC blinks while recording, OCT shows the octave. The pads show steps and the playhead on SEQ, scenes on ARP and tracks on HOME. Unlit keys glow at the BACKLIT level (OFF/LOW/MID/HIGH, by PWM from the control loop, and only while that loop runs fast enough to keep the glow steady).
+The page buttons light for the open page, PLAY while playing, REC blinks while recording, OCT shows the octave. The pads show steps and the playhead on SEQ, scenes on ARP and tracks on HOME. In the emulator REC is the lavender key and flashes red while recording. Unlit keys glow at the BACKLIT level (OFF/LOW/MID/HIGH, by PWM from the control loop, and only while that loop runs fast enough to keep the glow steady).
 
-**Audio in**: SETTINGS → AUDIO IN gathers Bluetooth audio (KNOB 1 switches it), USB audio status, a level meter for each, and the selected track's INPUT, LEVEL and the input monitor. PRESETS picks the track and REC opens its MATERIAL page (at the INPUT view for LOOP). The FM-1 has no analogue input: sound gets in over Bluetooth or USB, and samples are written to the flash bank over USB with M-VAVE's workbench.
+**Audio in**: SETTINGS → AUDIO IN gathers Bluetooth audio (KNOB 1 switches it), USB audio status, a level meter for each, and the selected track's INPUT, GAIN and the input monitor. PRESETS picks the track and REC opens its SOURCE page. The FM-1 has no analogue input: sound gets in over Bluetooth or USB, and samples are written to the flash bank over USB with M-VAVE's workbench.
 
-**Sounds**: 16 slots that belong to the FM-1, not to a project. A sound is one track's MATERIAL, GRAIN, FILTER and COLOR settings and its four modulators with their routes; level, pan, send and the sequence stay with the track. REC on SOUNDS loads one onto the selected track.
+**Sounds**: 16 slots that belong to the FM-1, not to a project. A sound is one track's SOURCE, PUTTY and COLOR settings and its four modulators with their routes; level, pan, send and the sequence stay with the track. REC on SOUNDS loads one onto the selected track.
 
-SETTINGS (under GLO) → PANEL holds BACKLIT, KNOB CC and METRO (a click on each beat, accented on the bar, mixed after the limiter), and shows the version and the CPU load. These, the MIDI learn mappings and the sounds are a `struct vsc_device` in their own 4 KB flash sector after the eight project slots, sealed with a CRC and written a second after a change, only while stopped. The emulator keeps them in the browser.
+SETTINGS (under GLO) → PANEL holds BACKLIT, KNOB CC and METRO (a click on each beat, accented on the bar, mixed after the limiter), the room left on the reel, and shows the version and the CPU load. These, the MIDI learn mappings and the sounds are a `struct vsc_device` in their own 4 KB flash sector after the eight project slots, sealed with a CRC and written a second after a change, only while stopped. The emulator keeps them in the browser.

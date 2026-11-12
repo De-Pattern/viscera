@@ -186,6 +186,15 @@ W_EXPORT(ana_pitch) float w_ana_pitch(void) { return vsc_meter.ana_pitch; }
 W_EXPORT(ana_conf) float w_ana_conf(void) { return vsc_meter.ana_conf; }
 W_EXPORT(ana_harm) float w_ana_harm(unsigned h) { return h < 8 ? vsc_meter.ana_harm[h] : 0.f; }
 W_EXPORT(step_now) unsigned w_step_now(unsigned t) { return t < VSC_TRACKS ? vsc_meter.step[t] : 0; }
+/* the putty, for the tests */
+W_EXPORT(cap_state) unsigned w_cap_state(unsigned t) { return t < VSC_TRACKS ? vsc_meter.cap_state[t] : 0; }
+W_EXPORT(src_len) unsigned w_src_len(unsigned t) { return t < VSC_TRACKS ? vsc_meter.src_len[t] : 0; }
+W_EXPORT(head) unsigned w_head(unsigned t) { return t < VSC_TRACKS ? vsc_meter.head[t] : 0; }
+W_EXPORT(spectra_on) unsigned w_spectra_on(unsigned t) { return t < VSC_TRACKS ? vsc_meter.spectra_on[t] : 0; }
+W_EXPORT(robot_param) unsigned w_robot_param(unsigned t, unsigned r) { return t < VSC_TRACKS && r < VSC_ROBOTS ? vsc_robot_param[t][r] : 255; }
+W_EXPORT(robot_off) float w_robot_off(unsigned t, unsigned r) { return t < VSC_TRACKS && r < VSC_ROBOTS ? vsc_robot_off[t][r] : 0.f; }
+W_EXPORT(reel_free) unsigned w_reel_free(void) { return vsc_host.reel_free; }
+W_EXPORT(track_peak_meter) float w_track_peak_meter(unsigned t) { return t < VSC_TRACKS ? vsc_meter.peak[t] : 0.f; }
 
 /* ---- the panel's LEDs and the FM-1's own settings ---- */
 static uint8_t leds[41];

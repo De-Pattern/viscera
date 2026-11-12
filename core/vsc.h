@@ -186,7 +186,7 @@ enum { REC_TAP, REC_DUB_ON, REC_DUB_OFF };
 /* EV_ACTION a: */
 enum { ACT_SPACE_FREEZE, ACT_SPACE_CLEAR, ACT_MOD_TRIG, ACT_TAPE_REWIND, ACT_TAPE_REVERSE };
 /* Robots: a recorded knob gesture per slot, looping; the UI plays them into this
- * (offsets in parameter units, added like a route; 0 when idle). */
+ * (offsets in knob units, 0..1 full scale, added like a route; 0 when idle). */
 #define VSC_ROBOTS 4
 extern volatile float vsc_robot_off[VSC_TRACKS][VSC_ROBOTS];
 extern volatile uint8_t vsc_robot_param[VSC_TRACKS][VSC_ROBOTS];   /* 255: none */

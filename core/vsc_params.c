@@ -153,7 +153,7 @@ void vsc_param_label(const struct vsc_pinfo *info, unsigned p, unsigned v, char 
             int c = (int)(f * 100.f + 0.5f), i = 0;
             if (c >= 1000) { put_int(out, c / 100); i = (int)vsc_strlen(out); out[i++] = '.'; out[i++] = (char)('0' + (c / 10) % 10); }
             else { out[i++] = (char)('0' + c / 100); out[i++] = '.'; out[i++] = (char)('0' + (c / 10) % 10); out[i++] = (char)('0' + c % 10); }
-            out[i++] = 'X'; out[i] = 0; return;
+            out[i++] = '\\'; out[i] = 0; return;   /* the screen draws '\\' as a times sign */
         }
         if (p == P_RCOUNT) { put_int(out, (int)v + 1); return; }
         if (p > P_MOD0 && p < P_MOD0 + 4 * VSC_MOD_PARAMS && (p - P_MOD0) % VSC_MOD_PARAMS == 5 && !info->names && info->max == 15) { put_int(out, (int)v + 1); return; }

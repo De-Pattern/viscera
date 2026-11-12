@@ -341,6 +341,8 @@ static VSC_HOT void compute_globals(void)
         }
     for (unsigned g = 0; g < VSC_NG; ++g) gv[g] = clampf(gv[g], 0.f, (float)vsc_gparam_max[g]);   /* the RAM copy */
 }
+volatile float vsc_robot_off[VSC_TRACKS][VSC_ROBOTS];
+volatile uint8_t vsc_robot_param[VSC_TRACKS][VSC_ROBOTS] = { { 255, 255, 255, 255 }, { 255, 255, 255, 255 }, { 255, 255, 255, 255 }, { 255, 255, 255, 255 } };
 static VSC_HOT void compute_params(unsigned t)
 {
     /* Every value from the project (or a lock, or the scene morph) is already in
@@ -381,6 +383,10 @@ static VSC_HOT void compute_params(unsigned t)
             const struct vsc_mroute *ro = &vsc.macro[m][r];
             if (ro->track == t && ro->param < VSC_NP && ro->depth) { k->e[ro->param] += (float)ro->depth * (1.f / 127.f) * mv; moved = 1; }
         }
+    }
+    for (unsigned r = 0; r < VSC_ROBOTS; ++r) {   /* robots: the UI's looped gestures */
+        unsigned p = vsc_robot_param[t][r];
+        if (p < P_MOD0 && !en[p]) { k->e[p] = clampf(k->e[p] + vsc_robot_off[t][r], 0.f, 1.f); }
     }
     if (!moved) return;
     for (unsigned r = 0; r < VSC_MOD_ROUTES; ++r) {
@@ -878,6 +884,14 @@ static VSC_HOT void shards(unsigned t, const struct srcv *s, float a, float wl, 
     k->note_hit = 0; k->clock_hit = 0;
     unsigned slots = vsc_relief >= 2 ? VSC_GRAINS / 2 : VSC_GRAINS;
     float inv_len = 1.f / (float)len;
+    /* make-up: sparse, sharp shards come up to about the level of the source */
+    float sharp = shape < 0.6667f ? 6.f : 6.f + (shape - 0.6667f) * 72.f;
+    float epow = shape < 0.3333f ? 0.375f : 0.7213f / sharp;   /* mean of env^2 */
+    float over = trig == TRIG_FREE ? p_free * (float)len : 0.5f + dens;
+    if (over > (float)slots) over = (float)slots;
+    float mk = over * epow; mk = mk > 0.04f ? 1.4f / sqrta(mk) : 5.f;
+    if (mk > 4.f) mk = 4.f;
+    if (mk < 1.f) mk = 1.f;
     for (unsigned i = 0; i < n; ++i) {
         int fire = 0;
         if (trig == TRIG_FREE) fire = rndu() < p_free;
@@ -906,8 +920,8 @@ static VSC_HOT void shards(unsigned t, const struct srcv *s, float a, float wl, 
             g->pos += g->inc;
             if (++g->t >= g->len) g->active = 0;
         }
-        x[i] = (l + r) * 0.8f;
-        sd[i] = (l - r) * 0.4f;
+        x[i] = (l + r) * 0.5f * mk;
+        sd[i] = (l - r) * 0.5f * mk;
         k->ph = wrapw(k->ph + speed, wl);
     }
 }

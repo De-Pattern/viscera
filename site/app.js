@@ -18,7 +18,7 @@
     loader_sha256: 'ef1f2db89b011fa53e71df363f0122de0ea896618c53fb53e8da676322004541',
     url: 'firmware/stock/FM-1_015.fwsc'};
   const OPEN = /^(FM1_OFFICIAL_OPEN|FM1_COMMUNITY_\d+|FM-1_8\d{6})$/;
-  let prepared = null, access = null, latest = null, busy = false, route = null, identity = '';
+  let prepared = null, access = null, latest = null, busy = false, route = null, identity = '', versions = [];
 
   function status(text, progress) {
     $('status').textContent = en(text);
@@ -50,17 +50,43 @@
     return btoa(s);
   }
 
-  /* firmware/latest.json is written by the release workflow */
+  /* firmware/versions.json (newest first) and latest.json are written by the deploy */
+  function pick() {
+    const v = versions[+$('ver').value] || versions[0];
+    latest = v || null;
+    $('ver-note').textContent = v ? (v.date ? v.date + ' · ' : '') + (v.note || '') : '';
+  }
   async function findLatest() {
     try {
-      const r = await fetch('firmware/latest.json', {cache: 'no-cache'});
-      if (!r.ok) throw 0;
-      latest = await r.json();
-      $('release-text').textContent = 'Latest build: ' + (latest.version || latest.product) + '. Early firmware, being tested on hardware now: install from M-VAVE’s stock V15, and back up first.';
+      let r = await fetch('firmware/versions.json', {cache: 'no-cache'});
+      if (r.ok) versions = await r.json();
+      else {
+        r = await fetch('firmware/latest.json', {cache: 'no-cache'});
+        if (!r.ok) throw 0;
+        versions = [await r.json()];
+      }
+      if (!versions.length) throw 0;
+      const sel = $('ver');
+      sel.innerHTML = '';
+      versions.forEach((v, i) => {
+        const o = document.createElement('option');
+        o.value = i; o.textContent = 'Viscera ' + (v.version || v.product) + (i === 0 ? ' · newest' : '');
+        sel.appendChild(o);
+      });
+      sel.disabled = false;
+      pick();
+      $('release-text').textContent = 'Newest: Viscera ' + (versions[0].version || versions[0].product) + ' (' + versions.length + ' version' + (versions.length > 1 ? 's' : '') + ' to choose from). Early firmware, being tested on hardware now: back up first.';
       $('use-latest').disabled = false;
     } catch {
+      $('ver').innerHTML = '<option>No published version</option>';
       $('release-text').textContent = 'No build is published yet. You can still open a .fwsc file you built.';
     }
+  }
+  $('ver').addEventListener('change', pick);
+  /* which published version an identity or build is */
+  function versionOf(id, build) {
+    const v = versions.find(m => (build && m.build_id && m.build_id.startsWith(build)) || m.product === id);
+    return v ? 'Viscera ' + v.version : '';
   }
   function describe(meta) {
     $('pkg-meta').innerHTML = '<b>' + meta.product + '</b><br>' +
@@ -114,7 +140,8 @@
       else route = 'bridge';
       fx.state.connected = 1;
       const now = device.current ? String(device.current).slice(0, 16) : '';
-      $('dev-meta').innerHTML = 'Connected: <b>' + identity + '</b>' +
+      const which = versionOf(identity, now);
+      $('dev-meta').innerHTML = 'Connected: <b>' + identity + '</b>' + (which ? ' (' + which + ')' : '') +
         (now ? '<br>installed build ' + now : '') +
         (device.same ? '<br>Matches this package: already installed.' : '');
       $('route').textContent = {

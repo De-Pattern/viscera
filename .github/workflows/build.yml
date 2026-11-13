@@ -113,11 +113,10 @@ jobs:
         with:
           name: firmware
           path: build
-      - name: Put the build behind the installer
+      - name: Put this build and every earlier one behind the installer
         run: |
-          mkdir -p site/firmware
-          cp build/viscera.fwsc "site/firmware/viscera-$V.fwsc"
-          cp build/latest.json site/firmware/latest.json
+          python3 tools/site_versions.py --build build --site site --seed firmware-archive \
+            --live https://de-pattern.github.io/viscera --changelog CHANGELOG.md
           cp build/viscera.wasm site/emulator/viscera.wasm
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

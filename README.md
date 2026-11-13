@@ -2,7 +2,7 @@
   <img src="docs/art/icon.png" width="520" alt="Viscera: a tape reel spun from splattered ink">
 </p>
 
-> **Being tested on hardware.** The [install page](https://de-pattern.github.io/viscera/) offers the latest build for hardware testing, installed from M-VAVE's stock V15 (it refuses to install from Ravel or other Felucca-based firmware). Back up first. If the FM-1 stays dark afterwards, [Ravel's install page](https://de-pattern.github.io/Ravel_FM1/install/) "Back to the stock firmware" with a V15 file puts M-VAVE's firmware back. The `.fwsc` files on the releases page are older builds: please don't flash those. You can also try Viscera in the [browser emulator](https://de-pattern.github.io/viscera/emulator/).
+> **Being tested on hardware.** The [install page](https://de-pattern.github.io/viscera/) offers every published version (the newest first, with a line on each) for hardware testing, and says which one an FM-1 has when it connects, installed from M-VAVE's stock V15 (it refuses to install from Ravel or other Felucca-based firmware). Back up first. If the FM-1 stays dark afterwards, [Ravel's install page](https://de-pattern.github.io/Ravel_FM1/install/) "Back to the stock firmware" with a V15 file puts M-VAVE's firmware back. The `.fwsc` files on the releases page are older builds: please don't flash those. You can also try Viscera in the [browser emulator](https://de-pattern.github.io/viscera/emulator/).
 
 <h1 align="center">viscera</h1>
 

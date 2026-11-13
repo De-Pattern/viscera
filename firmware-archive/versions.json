@@ -1,0 +1,30 @@
+[
+ {
+  "schema": 1,
+  "kind": "open",
+  "product": "FM-1_8610100",
+  "build_id": "78599baca06a23db5cb3d4c73ed2d46dfcb6e614e8358eb9ad1279e1b87a08ce",
+  "family": 7,
+  "bytes": 492084,
+  "sha256": "edcd7ebfd386589c806ca172d80d7f667ef8154141e3bbc7b2e94b222ff0ade4",
+  "loader_sha256": "ef1f2db89b011fa53e71df363f0122de0ea896618c53fb53e8da676322004541",
+  "url": "firmware/viscera-1.1.0.fwsc",
+  "version": "1.1.0",
+  "note": "RESON, the eight-band resonant filterbank. Overloads the FM-1 when RESON is on: use 1.1.1.",
+  "date": "2026-11-12"
+ },
+ {
+  "schema": 1,
+  "kind": "open",
+  "product": "FM-1_8610000",
+  "build_id": "837787d31ad0f1bda76439fc2d229a82012729a68ba2a7277025a3612a48c41a",
+  "family": 7,
+  "bytes": 492084,
+  "sha256": "965d407c2ec57fa05fbe5e177661bc5533d74cba6394a69680dc974af4dabeb9",
+  "loader_sha256": "ef1f2db89b011fa53e71df363f0122de0ea896618c53fb53e8da676322004541",
+  "url": "firmware/viscera-1.0.0.fwsc",
+  "version": "1.0.0",
+  "note": "PUTTY: live capture worked like putty (HANDS, SHARDS, SPECTRA), the reel, robots.",
+  "date": "2026-11-12"
+ }
+]

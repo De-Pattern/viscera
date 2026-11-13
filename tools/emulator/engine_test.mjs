@@ -420,7 +420,7 @@ x.set_param(0, P.P_STRETCH, 50);
   for (let m = 1; m <= 4; m++) { x.set_global(G.G_BMODE, m); sound(run(150), 'RESON mode ' + m); }
   for (let v = 0; v < 6; v++) { x.set_global(G.G_BVMOD, v); sound(run(120), 'RESON modulator ' + v); }
   x.set_global(G.G_BVMOD, 0);
-  const p0 = x.reson_pings(); x.set_global(G.G_BTRIG, 2); run(350); ok(x.reson_pings() > p0, 'RESON pings on the hits: ' + (x.reson_pings() - p0));
+  const p0 = x.reson_pings(); x.set_global(G.G_BTRIG, 2); x.set_global(G.G_BSENS, 127); run(700); ok(x.reson_pings() > p0, 'RESON pings on the hits: ' + (x.reson_pings() - p0));
   for (const q of [1, 2, 3, 4]) { x.set_global(G.G_BQUANT, q); clean(run(120), 'RESON quantised ' + q); }
   x.set_global(G.G_BQUANT, 0);
   x.set_global(G.G_BDUST, 100); x.set_global(G.G_BDROP, 127); x.set_global(G.G_BMIGR, 90); x.set_global(G.G_BFDBK, 127); x.set_global(G.G_BLIQ, 127);

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.2 — safe mode only when starts really fail
+
+- **Fixed:** safe mode ("LAST STARTS FAILED") came up after installing. The start guard counted every start that never sat stopped for 8 s, and kept counting across installs, so starts that were played from the beginning, or that the 1.1.0 overload cut short, put the next version into safe mode. Now each version starts the count afresh, and a start counts as good after 8 s stopped or 20 s playing. Marking it good writes one byte of flash, without an erase.
+- **Changed:** shorter messages on the screen (flash).
+
 ## 1.1.1 — one long capture; RESON on the FM-1
 
 - **New: one long capture, the default.** The four capture buffers work end to end as one capture the tracks share: about 1.3 s at HI, 2.6 s at MID, 5.2 s at LO (from 0.33, 0.65 and 1.31 s). Any track on CAPTURE plays it; one records at a time. A track on THRU keeps one buffer for its ring, and the long capture gets the rest. SOURCE → BUFFER: LONG or SPLIT (a buffer each, as before; PING needs it). Kept on the device, not in projects. KEEP keeps as much of a long capture as the reel has room for.

@@ -275,26 +275,38 @@ CTRL void vsc_fm1_device_load(void)
     if (!vsc_fm1_storage_ok() || fm1_flash_read(DEVICE_OFFSET, &vsc_dev, sizeof vsc_dev) || !vsc_device_valid(&vsc_dev))
         vsc_device_defaults();
 }
-/* The start guard. Each start programs one more byte of a 16-byte erased area to 0
- * (no erase needed: flash bits only go from 1 to 0); a start that runs well for a
- * few seconds erases the sector again (rewriting the settings). So the count is the
- * starts since the last good one. Returns that count before this start, or -1 if the
- * flash can't be used (then there is no guard). */
+/* The start guard, in the sector's last 16 bytes: a stamp of this version, then one
+ * byte a start, programmed without an erase (flash bits only go from 1 to 0): 0x00 when
+ * it starts, 0x5A over the next free byte once it has run well. The count is the
+ * starts since the last good one. Another version's stamp (a new install), anything
+ * unexpected or a full area starts afresh (an erase that rewrites the settings, before
+ * the audio starts). Returns that count before this start, or -1 if the flash can't be
+ * used (then there is no guard). */
+static unsigned boot_pos = 16u;
 CTRL int vsc_fm1_boot_begin(void)
 {
-    uint8_t b[16];
+    uint8_t b[16], st = 0;
     if (!vsc_fm1_storage_ok() || fm1_flash_read(BOOT_AT, b, sizeof b)) return -1;
-    /* ours looks like zeros then 0xff; anything else (old sample data, a first start
-     * after installing) isn't a count: start the sector afresh and count from 0 */
-    unsigned tries = 0;
-    while (tries < sizeof b && b[tries] == 0u) ++tries;
-    for (unsigned i = tries; i < sizeof b; ++i)
-        if (b[i] != 0xffu) { if (vsc_fm1_device_save()) return -1; tries = 0; break; }
-    if (tries < sizeof b) { uint8_t z = 0; (void)fm1_flash_write(BOOT_AT + tries, &z, 1); }
+    for (const char *v = VSC_VERSION; *v; ++v) st = (uint8_t)(st * 31u + (uint8_t)*v);
+    st |= 0x80u; if (st == 0xffu) st = 0xfeu;   /* never a start, a good mark or erased */
+    unsigned n = 1, tries = 0, ok = b[0] == st;
+    for (; ok && n < sizeof b && b[n] != 0xffu; ++n) { if (!b[n]) ++tries; else if (b[n] == 0x5au) tries = 0; else ok = 0; }
+    for (unsigned i = n; i < sizeof b; ++i) if (b[i] != 0xffu) ok = 0;
+    if (!ok || n >= sizeof b) {
+        if (vsc_fm1_device_save() || fm1_flash_write(BOOT_AT, &st, 1)) return -1;
+        n = 1; if (!ok) tries = 0;
+    }
+    uint8_t z = 0;
+    (void)fm1_flash_write(BOOT_AT + n, &z, 1);
+    boot_pos = n + 1u;
     return (int)tries;
 }
-/* a good start: clear the count (erases the sector and writes the settings back) */
-int vsc_fm1_boot_good(void) { return vsc_fm1_device_save(); }
+/* a good start: one byte, no erase */
+int vsc_fm1_boot_good(void)
+{
+    uint8_t g = 0x5au;
+    return boot_pos < 16u ? fm1_flash_write(BOOT_AT + boot_pos, &g, 1) : 0;
+}
 CTRL int vsc_fm1_device_save(void)
 {
     if (!vsc_fm1_storage_ok()) return -1;

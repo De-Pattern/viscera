@@ -72,9 +72,9 @@ static void host(unsigned req, unsigned arg)
     case HOST_BT_AUDIO: configure_bt(arg ? bt_features | FM1_BT_AUDIO : bt_features & ~FM1_BT_AUDIO); break;
     case HOST_BT_MIDI: configure_bt(arg ? bt_features | FM1_BT_MIDI : bt_features & ~FM1_BT_MIDI); break;
     case HOST_BLE_ROLE: (void)fm1_ble_set_role(arg ? FM1_BLE_CENTRAL : FM1_BLE_PERIPHERAL); break;
-    case HOST_BLE_SCAN: if (fm1_ble_scan() == 0) vsc_ui_notice("SCANNING FOR 15 S", 1500); break;
+    case HOST_BLE_SCAN: if (fm1_ble_scan() == 0) vsc_ui_notice("SCANNING", 1500); break;
     case HOST_BLE_CONNECT: (void)fm1_ble_connect(arg); break;
-    case HOST_BLE_FORGET: if (fm1_ble_forget_bonds() == 0) vsc_ui_notice("PAIRINGS FORGOTTEN", 1500); break;
+    case HOST_BLE_FORGET: if (fm1_ble_forget_bonds() == 0) vsc_ui_notice("UNPAIRED", 1500); break;
     case HOST_BLE_DISCONNECT: (void)fm1_ble_disconnect(); break;
     case HOST_DEVICE_SAVE:   /* a sound stored: write it now (the UI only asks while stopped) */
         dev_saved_gen = dev_seen_gen = vsc_dev_changed;
@@ -82,7 +82,7 @@ static void host(unsigned req, unsigned arg)
         break;
     case HOST_SAVE:
         r = vsc_fm1_save(arg);
-        vsc_ui_notice(r == 0 ? "SAVED" : r == -2 ? "STOP PLAYBACK TO SAVE" : "SAVE FAILED", 1500);
+        vsc_ui_notice(r == 0 ? "SAVED" : r == -2 ? "STOP TO SAVE" : "SAVE FAILED", 1500);
         refresh_slots();
         break;
     case HOST_KEEP: {   /* the first KEEP asks again: a new reel takes the stock firmware's project space */
@@ -92,7 +92,7 @@ static void host(unsigned req, unsigned arg)
         r = vsc_fm1_reel_keep(arg, confirmed);
         if (r == -5) { asked_at = now; vsc_ui_notice("AGAIN: A NEW REEL ERASES STOCK PROJECTS", 5000); break; }
         asked_at = 0;
-        vsc_ui_notice(r == 0 ? "KEPT ON THE REEL" : r == -2 ? "KEEP: LET THE CAPTURE PLAY FIRST" : r == -6 ? "THE REEL IS FULL (SETTINGS)" : "KEEP FAILED", 1300);
+        vsc_ui_notice(r == 0 ? "KEPT ON THE REEL" : r == -2 ? "KEEP: LET THE CAPTURE PLAY FIRST" : r == -6 ? "REEL FULL" : "KEEP FAILED", 1300);
         vsc_host.reel_free = (uint8_t)vsc_fm1_reel_free();
         break;
     }
@@ -138,14 +138,14 @@ void groove_screen_init(void)
 static void start(void)
 {
     started = 1;
-    if (safe_mode) vsc_ui_notice("SAFE MODE: CONNECT TO REINSTALL", 0x7fffffffu);
+    if (safe_mode) vsc_ui_notice("SAFE MODE: REINSTALL", 0x7fffffffu);
     vsc_fm1_device_load();                       /* the settings first: the guard may rewrite their sector */
     int tries = vsc_fm1_boot_begin();
     boot_pending = tries >= 0;
     if (safe_mode) return;
     if (tries >= (int)BOOT_FAILED_STARTS) {
         safe_mode = 1;
-        vsc_ui_notice("SAFE MODE: LAST STARTS FAILED", 0x7fffffffu);
+        vsc_ui_notice("SAFE MODE: STARTS FAILED", 0x7fffffffu);
         return;
     }
     vsc_fm1_start();
@@ -155,12 +155,12 @@ static void start(void)
     vsc_host.reel_free = (uint8_t)vsc_fm1_reel_free();
 }
 
-/* A start that has run for a while is a good one: clear the guard's count. In safe
- * mode too, so the next power-on tries Viscera again. Only while stopped (it writes
- * flash), and only once. */
+/* A start that has run for a while is a good one: mark it (one byte of flash). In
+ * safe mode too, so the next power-on tries Viscera again. Once, after 8 s stopped, or
+ * after 20 s even while playing (playing from the start shouldn't count as failing). */
 static void boot_check(uint32_t now)
 {
-    if (!boot_pending || now - boot_at < BOOT_GOOD_MS || (!safe_mode && vsc_meter.playing)) return;
+    if (!boot_pending || now - boot_at < BOOT_GOOD_MS || (!safe_mode && vsc_meter.playing && now - boot_at < 20000u)) return;
     boot_pending = 0;
     (void)vsc_fm1_boot_good();
 }

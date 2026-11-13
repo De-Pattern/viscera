@@ -2,6 +2,21 @@
  {
   "schema": 1,
   "kind": "open",
+  "product": "FM-1_8610101",
+  "build_id": "66feca707439aad3dcf29a7f514af2394a7de2273f73bd43b3cf2f884bbad9f6",
+  "family": 7,
+  "bytes": 492084,
+  "sha256": "e32d0171733a3bb66ec8ab26d6cc6a8552c0f5d73d8bff75e7d315b7fd765598",
+  "loader_sha256": "ef1f2db89b011fa53e71df363f0122de0ea896618c53fb53e8da676322004541",
+  "url": "firmware/viscera-1.1.1.fwsc",
+  "version": "1.1.1",
+  "note": "One long capture by default (2.6 s at MID); RESON eased under load.",
+  "date": "2026-11-13",
+  "commit": "8cc800639a4f656ccea2e81c4f4c0fa0f277b0be"
+ },
+ {
+  "schema": 1,
+  "kind": "open",
   "product": "FM-1_8610100",
   "build_id": "78599baca06a23db5cb3d4c73ed2d46dfcb6e614e8358eb9ad1279e1b87a08ce",
   "family": 7,
@@ -11,7 +26,8 @@
   "url": "firmware/viscera-1.1.0.fwsc",
   "version": "1.1.0",
   "note": "RESON, the eight-band resonant filterbank. Overloads the FM-1 when RESON is on: use 1.1.1.",
-  "date": "2026-11-12"
+  "date": "2026-11-12",
+  "commit": "655939bf9f5fbcf98e7412b64c4975d0d20a4cc3"
  },
  {
   "schema": 1,
@@ -25,6 +41,7 @@
   "url": "firmware/viscera-1.0.0.fwsc",
   "version": "1.0.0",
   "note": "PUTTY: live capture worked like putty (HANDS, SHARDS, SPECTRA), the reel, robots.",
-  "date": "2026-11-12"
+  "date": "2026-11-12",
+  "commit": "a9a1ed6088cdcce0fa66ee366ab3f3320b9a5d52"
  }
 ]

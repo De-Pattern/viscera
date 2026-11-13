@@ -86,18 +86,38 @@ jobs:
         with:
           name: firmware
           path: build
+      - name: Release the versions from before releases resumed (firmware-archive), once
+        run: |
+          python3 - <<'EOF'
+          import json, subprocess
+          for m in json.load(open('firmware-archive/versions.json')):
+              v = m['version']
+              if subprocess.run(['gh', 'release', 'view', 'v' + v], capture_output=True).returncode == 0:
+                  continue
+              meta = {k: x for k, x in m.items() if k not in ('note', 'date', 'commit')}
+              json.dump(meta, open(f'build/viscera-{v}.json', 'w'), indent=1)
+              notes = subprocess.run(['awk', '-v', 'v=' + v, '$0 ~ "^## "v"( |$)" {f=1; next} /^## / {f=0} f', 'CHANGELOG.md'],
+                                     capture_output=True, text=True).stdout
+              try: notes = open(f'firmware-archive/notes-{v}.md').read()
+              except OSError: pass
+              notes += '\nInstall it from https://de-pattern.github.io/viscera/ (Chrome or Edge, FM-1 on USB).\n'
+              open('notes.md', 'w').write(notes)
+              subprocess.run(['gh', 'release', 'create', 'v' + v, f'firmware-archive/viscera-{v}.fwsc', f'build/viscera-{v}.json',
+                              '--title', 'Viscera ' + v, '--notes-file', 'notes.md', '--target', m['commit'], '--latest=false'], check=True)
+              print('released', v)
+          EOF
       - name: Release this version if it's new
-        if: false   # paused until an install is confirmed on hardware
         run: |
           if gh release view "v$V" >/dev/null 2>&1; then
             echo "v$V is already released; bump VERSION to publish a new release."
             exit 0
           fi
           cp build/viscera.fwsc "build/viscera-$V.fwsc"
-          awk -v v="$V" '$0 ~ "^## "v"$" {f=1; next} /^## / {f=0} f' CHANGELOG.md > notes.md
-          printf '\nInstall it from https://de-pattern.github.io/viscera/ (Chrome or Edge, FM-1 on USB).\n' >> notes.md
-          gh release create "v$V" "build/viscera-$V.fwsc" build/fm1-report.json \
-            --title "Viscera $V" --notes-file notes.md --target "$GITHUB_SHA"
+          cp build/latest.json "build/viscera-$V.json"
+          awk -v v="$V" '$0 ~ "^## "v"( |$)" {f=1; next} /^## / {f=0} f' CHANGELOG.md > notes.md
+          printf '\nInstall it from https://de-pattern.github.io/viscera/ (Chrome or Edge, FM-1 on USB). The guide: https://de-pattern.github.io/viscera/manual.html\n' >> notes.md
+          gh release create "v$V" "build/viscera-$V.fwsc" "build/viscera-$V.json" build/fm1-report.json \
+            --title "Viscera $V" --notes-file notes.md --target "$GITHUB_SHA" --latest
 
   pages:
     needs: [build, release]
@@ -107,6 +127,7 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     env:
       V: ${{ needs.build.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -116,7 +137,7 @@ jobs:
       - name: Put this build and every earlier one behind the installer
         run: |
           python3 tools/site_versions.py --build build --site site --seed firmware-archive \
-            --live https://de-pattern.github.io/viscera --changelog CHANGELOG.md
+            --repo "$GITHUB_REPOSITORY" --changelog CHANGELOG.md
           cp build/viscera.wasm site/emulator/viscera.wasm
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

@@ -75,11 +75,12 @@ static void reel_status(void) { vsc_host.reel_free = (uint8_t)((REEL_BYTES - ree
 static void reel_keep(unsigned t)
 {
     uint32_t frames = vsc_meter.src_len[t], at = reel_end();
-    if (t >= VSC_TRACKS || vsc.t[t][P_SRC] != SRC_CAPTURE || vsc_meter.cap_state[t] != 2 || !frames || frames > VSC_CAP_FRAMES) { vsc_ui_notice("KEEP: LET THE CAPTURE PLAY FIRST", 1300); return; }
+    if (t >= VSC_TRACKS || vsc.t[t][P_SRC] != SRC_CAPTURE || vsc_meter.cap_state[t] != 2 || !frames || frames > VSC_LONG_FRAMES) { vsc_ui_notice("KEEP: LET THE CAPTURE PLAY FIRST", 1300); return; }
+    if (at + frames > REEL_BYTES && at + 256u <= REEL_BYTES) frames = REEL_BYTES - at;   /* what fits of a long capture */
     if (reel.count >= VSC_SPLICES || at + frames > REEL_BYTES) { vsc_ui_notice("THE REEL IS FULL (SETTINGS)", 1300); return; }
     memset(reel_pcm + at, 0xff, ((frames + 4095u) & ~4095u) < REEL_BYTES - at ? ((frames + 4095u) & ~4095u) : REEL_BYTES - at);
     memcpy(reel_pcm + at, vsc_capture(t), frames);
-    reel.s[reel.count].at = at; reel.s[reel.count].frames = frames; reel.s[reel.count].rate = vsc.t[t][P_RATE];
+    reel.s[reel.count].at = at; reel.s[reel.count].frames = frames; reel.s[reel.count].rate = (uint8_t)vsc_capture_rate(t);
     ++reel.count;
     reel_status();
 }
@@ -202,6 +203,8 @@ W_EXPORT(step_now) unsigned w_step_now(unsigned t) { return t < VSC_TRACKS ? vsc
 /* the putty, for the tests */
 W_EXPORT(cap_state) unsigned w_cap_state(unsigned t) { return t < VSC_TRACKS ? vsc_meter.cap_state[t] : 0; }
 W_EXPORT(src_len) unsigned w_src_len(unsigned t) { return t < VSC_TRACKS ? vsc_meter.src_len[t] : 0; }
+W_EXPORT(src_cap) unsigned w_src_cap(unsigned t) { return t < VSC_TRACKS ? vsc_meter.src_cap[t] : 0; }
+W_EXPORT(set_cap_split) void w_set_cap_split(unsigned v) { vsc_dev.cap_split = (uint8_t)(v != 0); }
 W_EXPORT(head) unsigned w_head(unsigned t) { return t < VSC_TRACKS ? vsc_meter.head[t] : 0; }
 W_EXPORT(spectra_on) unsigned w_spectra_on(unsigned t) { return t < VSC_TRACKS ? vsc_meter.spectra_on[t] : 0; }
 W_EXPORT(robot_param) unsigned w_robot_param(unsigned t, unsigned r) { return t < VSC_TRACKS && r < VSC_ROBOTS ? vsc_robot_param[t][r] : 255; }

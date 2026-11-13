@@ -353,7 +353,7 @@ CTRL void vsc_fm1_reel_load(void)
     for (unsigned i = 0; i < VSC_SPLICES; ++i) {
         struct reel_entry e;
         if (fm1_flash_read(REEL_ENTRIES_AT + i * sizeof e, &e, sizeof e) || e.commit != 0u) break;
-        if (e.at != next || !e.frames || e.frames > VSC_CAP_FRAMES || e.rate > RATE_LO || e.at + e.frames > REEL_DATA_BYTES) break;
+        if (e.at != next || !e.frames || e.frames > VSC_LONG_FRAMES || e.rate > RATE_LO || e.at + e.frames > REEL_DATA_BYTES) break;
         reel.s[i].at = e.at; reel.s[i].frames = e.frames; reel.s[i].rate = e.rate;
         reel.count = i + 1u;
         next = reel_end();
@@ -367,10 +367,11 @@ CTRL int vsc_fm1_reel_keep(unsigned t, int confirmed)
 {
     if (t >= VSC_TRACKS || !vsc_fm1_storage_ok() || !reel_map) return -1;
     uint32_t frames = vsc_meter.src_len[t];
-    if (vsc.t[t][P_SRC] != SRC_CAPTURE || vsc_meter.cap_state[t] != 2 || !frames || frames > VSC_CAP_FRAMES) return -2;
+    if (vsc.t[t][P_SRC] != SRC_CAPTURE || vsc_meter.cap_state[t] != 2 || !frames || frames > VSC_LONG_FRAMES) return -2;
     if (!reel_made && !confirmed) return -5;
     uint32_t at = reel_end();
-    if (reel.count >= VSC_SPLICES || at + frames > REEL_DATA_BYTES) return -6;
+    if (at + frames > REEL_DATA_BYTES) frames = REEL_DATA_BYTES - at;   /* what fits of a long capture */
+    if (reel.count >= VSC_SPLICES || at >= REEL_DATA_BYTES || frames < 256u) return -6;
     const uint8_t *cap = vsc_capture(t);
     int r = 0;
     reel_ready = 0;
@@ -387,7 +388,7 @@ CTRL int vsc_fm1_reel_keep(unsigned t, int confirmed)
         vsc_memcpy(chunk, cap + o, n);   /* the flash input must not change while it is written */
         r = fm1_flash_write(REEL_DATA + at + o, chunk, n);
     }
-    struct reel_entry e = {at, frames, vsc.t[t][P_RATE], {0, 0, 0}, 0xffffffffu};
+    struct reel_entry e = {at, frames, (uint8_t)vsc_capture_rate(t), {0, 0, 0}, 0xffffffffu};
     uint32_t ea = REEL_ENTRIES_AT + reel.count * sizeof e;
     if (!r) r = fm1_flash_write(ea, &e, sizeof e);
     if (!r) { uint32_t commit = 0; r = fm1_flash_write(ea + offsetof(struct reel_entry, commit), &commit, sizeof commit); }

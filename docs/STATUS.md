@@ -44,6 +44,10 @@ CPU at 1.1.0 in fm1-emu at the FM-1's timing (guard off): two SPECTRA (one cross
 
 The FM-1's second core isn't available: the SDK has no API for it, and M-VAVE's library runs its own work there through internal functions it doesn't export. Using it would mean taking their library apart, which this project doesn't do.
 
+Hardware, 1.1.0 (the first report from an FM-1): it started (a safe-mode start once, cleared by switching off and on), and RESON overloaded it badly, clicks even with MAIN at 0, while the emulator puts RESON at 16-21 % of a block. 1.1.1 clears RESON's state before it can go denormal and lets the guard ease RESON from its first step. Per-part readings from the FM-1 (GLO → SETTINGS → PANEL) with RESON off and on are the next thing to get: they say how far fm1-emu's timing is from the chip's.
+
+Budget at 1.1.1: app image 453,896 of 453,921 bytes; heap 118,892 bytes.
+
 ## Next
 
 - Browser emulator (wasm build of `core/` with the same UI).

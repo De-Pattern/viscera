@@ -110,12 +110,32 @@ track(1); ok(x.get_param(1, P.P_BOUNCE) === 1, 'B bounces A by default');
 press(B.REC); for (let i = 0; i < 25; i++) ctl(); press(B.REC);
 ok(x.cap_state(1) === 2 && x.src_len(1) > 3000, 'B caught A');
 solo(1); sound(run(150), 'B plays what it caught'); x.set_param(0, P.P_MUTE, 0);
+x.set_cap_split(1);   // SPLIT: a buffer each, as PING needs
 x.set_param(0, P.P_BOUNCE, 2); x.set_param(1, P.P_BOUNCE, 2);
 press(B.REC); for (let i = 0; i < 20; i++) ctl(); press(B.REC);
 ok(x.cap_state(0) === 1, 'PING: when B ends, A takes it back: ' + x.cap_state(0));
 run(600); ok(x.cap_state(0) === 2, 'A ends as long');
 x.set_param(0, P.P_BOUNCE, 0); x.set_param(1, P.P_BOUNCE, 1);
 paintCheck('ping');
+
+// 4b. LONG (the default): one capture, four buffers long, that the tracks share; a track
+// on THRU keeps a buffer of its own
+x.set_cap_split(0);
+{ track(0); const srcs = [0, 1, 2, 3].map(t => x.get_param(t, P.P_SRC)), bns = [0, 1, 2, 3].map(t => x.get_param(t, P.P_BOUNCE));
+  for (let t = 0; t < 4; t++) { x.set_param(t, P.P_SRC, 0); x.set_param(t, P.P_BOUNCE, 0); }
+  ok(x.src_cap(0) >= 9856, 'LONG: the capture can be four buffers long: ' + x.src_cap(0));
+  press(B.REC); for (let i = 0; i < 100; i++) ctl(); press(B.REC); run(5);
+  ok(x.cap_state(0) === 2 && x.src_len(0) > 14400, 'LONG: a capture longer than one buffer: ' + x.src_len(0));
+  solo(2); sound(run(120), 'C plays the long capture');
+  ok(x.cap_state(2) === 2 && x.src_len(2) === x.src_len(0), 'LONG: the other tracks have it too: ' + [x.cap_state(2), x.src_len(2), x.src_len(0)]);
+  for (let t = 0; t < 4; t++) x.set_param(t, P.P_MUTE, 0);
+  x.set_param(3, P.P_SRC, 2); run(2);
+  ok(x.src_cap(0) === 3 * 14400, 'a track on THRU takes one buffer: ' + x.src_cap(0));
+  clean(run(100), 'LONG with a THRU track');
+  x.set_param(3, P.P_SRC, 0);
+  x.set_cap_split(1); run(2); ok(x.src_cap(0) === 14400, 'SPLIT: one buffer each');
+  clean(run(60), 'SPLIT after LONG');
+  x.set_cap_split(0); for (let t = 0; t < 4; t++) { x.set_param(t, P.P_SRC, srcs[t]); x.set_param(t, P.P_BOUNCE, bns[t]); } }
 
 // 5. two hands: OCT- mirrors the pair, OCT+ opposes it; neither moves the octave
 track(0); home();

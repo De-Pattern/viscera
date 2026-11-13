@@ -81,9 +81,11 @@ static VSC_HOT_SMALL uint8_t ulaw_enc(float x)
     if (s < 0) { s = -s; sign = 0x80; }
     if (s > 32635) s = 32635;
     s += 0x84;
-    int e = 7;
-    for (int m = 0x4000; !(s & m) && e > 0; --e, m >>= 1) {}
-    int mant = (s >> (e + 3)) & 15;
+    /* the segment is where the top bit is (7 .. 14) and the step the four bits under
+     * it: read both off the float's exponent and mantissa (exact: s < 2^24) */
+    union { float f; uint32_t u; } c;
+    c.f = (float)s;
+    int e = (int)(c.u >> 23) - 134, mant = (int)(c.u >> 19) & 15;
     return (uint8_t)~(sign | (e << 4) | mant);
 }
 float vsc_ulaw(uint8_t v) { return ulaw_table[v]; }
@@ -206,6 +208,22 @@ static uint32_t frame_counter;
  * source's own frames, as floats (exact to 2^24, far past any source here). */
 struct srcv { const uint8_t *u8; float len, rate; int slot; uint32_t w; uint8_t ring; };
 static VSC_HOT_SMALL float rate_hz(unsigned r) { return r == RATE_HI ? 44100.f : r == RATE_MID ? 22050.f : 11025.f; }
+/* Where a track's capture lives. LONG (the default): the four buffers end to end, one
+ * capture the tracks share (four times as long); a track on THRU keeps one buffer for
+ * its ring, from the top, and the long capture gets the rest. SPLIT: a buffer each. */
+static uint8_t pool_rate = RATE_MID;   /* the rate the long capture was made at */
+static VSC_HOT_SMALL uint8_t *cap_at(unsigned t, uint32_t *room)
+{
+    unsigned q = t, n = 1;
+    if (!vsc_dev.cap_split) {
+        unsigned top = VSC_TRACKS;
+        for (unsigned u = 0; u < VSC_TRACKS; ++u)
+            if (vsc.t[u][P_SRC] == SRC_THRU) { --top; if (u == t) q = top; }
+        if (vsc.t[t][P_SRC] != SRC_THRU) { q = 0; n = top; }
+    }
+    if (room) *room = n * VSC_CAP_FRAMES;
+    return capture[q];
+}
 static VSC_HOT int src_view(unsigned t, struct srcv *s)
 {
     struct track *k = &tr[t];
@@ -229,9 +247,10 @@ static VSC_HOT int src_view(unsigned t, struct srcv *s)
         s->u8 = d + a->at; s->len = (float)(b->at + b->frames - a->at); s->rate = rate_hz(a->rate);
         return s->len > 0.f;
     }
-    s->u8 = capture[t]; s->rate = rate_hz(vsc.t[t][P_RATE]);
+    s->u8 = cap_at(t, 0); s->rate = rate_hz(vsc.t[t][P_RATE]);
     if (src == SRC_THRU) { s->ring = 1; s->len = (float)(VSC_CAP_FRAMES - 2048u); s->w = k->ring_w; return 1; }
     if (k->cap_state < 2) return 0;
+    if (!vsc_dev.cap_split) s->rate = rate_hz(pool_rate);
     s->len = (float)k->cap_len;
     return 1;
 }
@@ -304,6 +323,11 @@ static VSC_HOT_SMALL void note_off(unsigned t, unsigned note)
 static VSC_HOT_SMALL void cap_start(unsigned t, uint32_t fixed)
 {
     struct track *k = &tr[t];
+    if (!vsc_dev.cap_split) {   /* LONG: one track records at a time; the others play on */
+        for (unsigned u = 0; u < VSC_TRACKS; ++u)
+            if (u != t && (tr[u].cap_state == 1 || tr[u].cap_state == 3)) tr[u].cap_state = tr[u].cap_len ? 2 : 0;
+        pool_rate = vsc.t[t][P_RATE];
+    }
     k->cap_state = 1; k->rec_pos = 0; k->rec_phase = 0.f; k->bounce_len = fixed;
 }
 static VSC_HOT_SMALL void cap_end(unsigned t)
@@ -311,6 +335,11 @@ static VSC_HOT_SMALL void cap_end(unsigned t)
     struct track *k = &tr[t];
     k->cap_len = k->rec_pos < 256u ? 256u : k->rec_pos;
     k->cap_state = 2; k->ph = 0.f; k->hcount = 0; k->rec_pos = 0;
+    if (!vsc_dev.cap_split) {   /* LONG: every track on CAPTURE has it now (PING has nothing to pass back) */
+        for (unsigned u = 0; u < VSC_TRACKS; ++u)
+            if (vsc.t[u][P_SRC] == SRC_CAPTURE && tr[u].cap_state != 1) { tr[u].cap_len = k->cap_len; tr[u].cap_state = 2; }
+        return;
+    }
     /* PING: the partner takes this one back, as long */
     unsigned u = VSC_PARTNER(t);
     if (vsc.t[t][P_BOUNCE] == BOUNCE_PING && vsc.t[u][P_SRC] == SRC_CAPTURE && vsc.t[u][P_BOUNCE] != BOUNCE_OFF) {
@@ -782,12 +811,14 @@ static VSC_HOT int source(unsigned t, unsigned off, unsigned n)
     float gain = k->e[P_GAIN] * k->e[P_GAIN] * 2.f;
     unsigned step = vsc.t[t][P_RATE] == RATE_HI ? 1u : vsc.t[t][P_RATE] == RATE_MID ? 2u : 4u;
     float inv = step == 1u ? 1.f : step == 2u ? 0.5f : 0.25f;
+    uint32_t room;
+    uint8_t *cb = cap_at(t, &room);
     if (src == SRC_THRU) {
         if (vsc.t[t][P_FREEZE]) return 0;         /* frozen: the ring keeps what it has */
         for (unsigned i = 0; i < n; ++i) {
             k->rec_phase += in[i] * gain;
             if (++k->rec_pos >= step) {
-                capture[t][k->ring_w] = ulaw_enc(k->rec_phase * inv);
+                cb[k->ring_w] = ulaw_enc(k->rec_phase * inv);
                 if (++k->ring_w >= VSC_CAP_FRAMES) k->ring_w = 0;
                 k->rec_pos = 0; k->rec_phase = 0.f;
             }
@@ -796,14 +827,14 @@ static VSC_HOT int source(unsigned t, unsigned off, unsigned n)
     }
     if (src != SRC_CAPTURE) return 0;
     if (k->cap_state == 1) {   /* recording: what comes in is heard as it goes down */
-        uint32_t cap = k->bounce_len ? k->bounce_len : VSC_CAP_FRAMES;
+        uint32_t cap = k->bounce_len && k->bounce_len < room ? k->bounce_len : room;
         for (unsigned i = 0; i < n; ++i) {
             float v = in[i] * gain;
             x[i] = v;
             k->rec_phase += v;
             if (++k->ring_w >= step) {   /* ring_w counts the decimator's frames here */
                 k->ring_w = 0;
-                if (k->rec_pos < cap) capture[t][k->rec_pos++] = ulaw_enc(k->rec_phase * inv);
+                if (k->rec_pos < cap) cb[k->rec_pos++] = ulaw_enc(k->rec_phase * inv);
                 k->rec_phase = 0.f;
             }
         }
@@ -817,7 +848,7 @@ static VSC_HOT int source(unsigned t, unsigned off, unsigned n)
             if (++k->ring_w >= step) {
                 k->ring_w = 0;
                 if (k->rec_pos >= k->cap_len) k->rec_pos = 0;
-                uint8_t *c = &capture[t][k->rec_pos++];
+                uint8_t *c = &cb[k->rec_pos++];
                 *c = ulaw_enc(ulaw_table[*c] * sos + k->rec_phase * inv);
                 k->rec_phase = 0.f;
             }
@@ -1221,6 +1252,13 @@ static VSC_HOT_SMALL float rsqrt_(float x) { return sqrta(x); }
 #define RS_CONT(mode) ((mode) == BM_PING ? 0.f : (mode) == BM_HYBRID ? 0.5f : 1.f)   /* the sound's share through the bank */
 static VSC_HOT_SMALL void reson_control(unsigned n)
 {
+    /* nothing in the bank may sink to a denormal (an FPU can slow down a lot on them):
+     * every float of its state under about 1e-26 becomes 0, read as bits (no FPU) */
+    {
+        uint32_t *f = (uint32_t *)(void *)&rs;
+        for (unsigned i = 0; i < offsetof(__typeof__(rs), qidx) / 4u; ++i)
+            if (((f[i] >> 23) & 0xffu) < 40u) f[i] = 0u;
+    }
     const float cont = RS_CONT(vsc.g[G_BMODE]);
     const float liq = gv[G_BLIQ] * (1.f / 127.f);
     for (unsigned w = 0; w < 2; ++w) {
@@ -1312,23 +1350,24 @@ static VSC_HOT_SMALL void reson(unsigned t, unsigned off, unsigned n, unsigned s
         }
         mod = mbuf;
     }
-    /* eased by the guard (relief 2): the band itself is the modulator, no analysis bank */
-    const int other = vsc_relief < 2 && (vm == BV_INPUT || vm == BV_PARTNER || vm == BV_OSC || vm == BV_NOISE);
+    /* eased by the guard: the band itself is the modulator, no analysis bank */
+    const int other = !vsc_relief && (vm == BV_INPUT || vm == BV_PARTNER || vm == BV_OSC || vm == BV_NOISE);
     /* the detector's band: HIGH above ~3 kHz, LOW below ~200 Hz */
     const float hpk = 0.35f, lpk = 0.03f;
     const float sens = gv[G_BSENS] * (1.f / 127.f), th = 0.25f * exp2a(-sens * 9.f);
     const float fa = 1.f / (0.001f * (float)VSC_SR), fr = 1.f / (0.015f * (float)VSC_SR), sa = 1.f / (0.06f * (float)VSC_SR), sr = 1.f / (0.3f * (float)VSC_SR);
     /* the particles: dust, which COHES gathers around the hits; droplets of the wet sound */
     const float dust = gv[G_BDUST] * (1.f / 127.f), cohes = gv[G_BCOHES] * (1.f / 127.f);
-    const float drop = gv[G_BDROP] * (1.f / 127.f), migr = gv[G_BMIGR] * (1.f / 127.f);
+    const float drop = vsc_relief >= 2 ? 0.f : gv[G_BDROP] * (1.f / 127.f), migr = gv[G_BMIGR] * (1.f / 127.f);
     const float dust_p = vm == BV_NOISE ? 0.f : dust * dust * (300.f / (float)VSC_SR);
     unsigned live = 0;
     float pk = 0.f, opk[VSC_RBANDS];
-    /* the bands with gain: a silent band costs nothing. Eased by the guard (relief 2):
-     * only the bands within 12 dB of the loudest */
+    /* the bands with gain: a silent band costs nothing. Eased by the guard: only the
+     * bands within 12 dB of the loudest (relief 1), within 6 dB (relief 2) */
     unsigned on = 0;
     float gmin = 1e-6f;
-    if (vsc_relief >= 2) for (unsigned b = 0; b < VSC_RBANDS; ++b) if (rs.gain[b] * 0.25f > gmin) gmin = rs.gain[b] * 0.25f;
+    const float gk = vsc_relief >= 2 ? 0.5f : 0.25f;
+    if (vsc_relief) for (unsigned b = 0; b < VSC_RBANDS; ++b) if (rs.gain[b] * gk > gmin) gmin = rs.gain[b] * gk;
     for (unsigned b = 0; b < VSC_RBANDS; ++b) {
         opk[b] = 0.f;
         if (rs.gain[b] > gmin || rs.gstep[b] > 0.f) on |= 1u << b;
@@ -1391,24 +1430,30 @@ static VSC_HOT_SMALL void reson(unsigned t, unsigned off, unsigned n, unsigned s
             } else gg = rs.gg[b];
             y += sb * gg;
         }
-        /* feedback: the wet sound, DC-blocked and held soft, back into the bank */
-        rs.dc += (y - rs.dc) * 0.001f;
-        float fy = y - rs.dc;
-        rs.fb = fy / (1.f + absf(fy));
-        /* droplets: grains of the wet sound; MIGR sends them into another band instead */
-        rs.ring[rs.rw] = ulaw_enc(clampf(y, -1.f, 1.f)); rs.rw = (uint16_t)((rs.rw + 1u) & (RS_RING - 1u));
+        /* feedback: the wet sound, DC-blocked and held soft, back into the bank (none: no work) */
+        if (fdbk > 0.f) {
+            rs.dc += (y - rs.dc) * 0.001f;
+            float fy = y - rs.dc;
+            rs.fb = fy / (1.f + absf(fy));
+        } else rs.fb = 0.f;
+        /* droplets: grains of the wet sound; MIGR sends them into another band instead.
+         * One draw a sample decides whether one is born (there are three, each as likely) */
         float dsum = 0.f;
         if (drop > 0.f) {
+            rs.ring[rs.rw] = ulaw_enc(clampf(y, -1.f, 1.f)); rs.rw = (uint16_t)((rs.rw + 1u) & (RS_RING - 1u));
+            const float ps = drop * (0.4f + cohes * 6.f * rs.act) * (60.f / (float)VSC_SR);
+            float r = rndu();
             for (unsigned j = 0; j < RS_DROPS; ++j) {
                 struct rdrop *q = &rs.d[j];
                 if (!q->on) {
-                    if (rndu() < drop * (0.4f + cohes * 6.f * rs.act) * (60.f / (float)VSC_SR)) {
+                    if (r < ps) {
+                        r = 2.f;
                         q->on = 1; q->t = 0; q->len = (uint16_t)((0.004f + rndc() * 0.014f) * VSC_SR);   /* 4 .. 18 ms: inside the ring */
                         q->du = 1.f / (float)q->len;
                         q->pos = (float)((rs.rw + RS_RING - q->len - 64u - (rnd() & 511u)) & (RS_RING - 1u));
                         q->inc = 1.f + (rndc() - 0.5f) * 0.02f; q->amp = 0.7f + rndc() * 0.6f;
                         q->dest = (uint8_t)(rnd() & 7u); if (rs.gain[q->dest] < 1e-3f) q->dest = (uint8_t)((q->dest + 5u) & 7u);
-                    }
+                    } else r -= ps;
                     continue;
                 }
                 ++live;
@@ -2100,6 +2145,11 @@ void vsc_bench_setup(void)
     vsc.g[G_RLEVEL] = 100; vsc.g[G_DLEVEL] = 100;
 #if VSC_BENCH == 6   /* and RESON as it starts (LIQUID MEMORY) */
     vsc.g[G_BTRACK] = 4;
+#elif VSC_BENCH == 7   /* and RESON's DUST profile */
+    static const uint8_t dp[] = {G_BMODE, BM_PING, G_BDUST, 70, G_BCOHES, 40, G_BRESO, 100, G_BG0, 85, G_BG1, 95, G_BG2, 90, G_BG3, 88,
+        G_BG4, 92, G_BG5, 86, G_BG6, 95, G_BG7, 84, G_BDROP, 40, G_BMIGR, 50, G_BMIX, 100, G_BTRIG, BT_FULL};
+    vsc.g[G_BTRACK] = 4;
+    for (unsigned i = 0; i < sizeof dp; i += 2) vsc.g[dp[i]] = dp[i + 1];
 #elif VSC_BENCH >= 4   /* and RESON at its heaviest: HYBRID, dust, droplets migrating, feedback */
     vsc.g[G_BTRACK] = 4; vsc.g[G_BMODE] = BM_HYBRID; vsc.g[G_BTRIG] = BT_FULL; vsc.g[G_BDUST] = 90;
     vsc.g[G_BDROP] = 100; vsc.g[G_BMIGR] = 60; vsc.g[G_BFDBK] = 60; vsc.g[G_BVMOD] = BV_OSC;
@@ -2286,7 +2336,8 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
         vsc_meter.peak[t] = pk > vsc_meter.peak[t] ? pk : vsc_meter.peak[t] * 0.97f;
         struct track *k = &tr[t];
         vsc_meter.cap_state[t] = vsc.t[t][P_SRC] == SRC_CAPTURE ? k->cap_state : vsc.t[t][P_SRC] == SRC_THRU ? 2 : 0;
-        uint32_t cap = k->bounce_len ? k->bounce_len : VSC_CAP_FRAMES;
+        uint32_t cap; (void)cap_at(t, &cap);
+        if (k->bounce_len && k->bounce_len < cap) cap = k->bounce_len;
         vsc_meter.src_cap[t] = cap;
         vsc_meter.rec_head[t] = k->cap_state == 1 ? (uint16_t)((float)k->rec_pos * 65535.f / (float)cap)
                               : k->cap_state == 3 && k->cap_len ? (uint16_t)((float)k->rec_pos * 65535.f / (float)k->cap_len) : 0;
@@ -2302,4 +2353,5 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
     }
 }
 
-const uint8_t *vsc_capture(unsigned t) { return capture[t < VSC_TRACKS ? t : 0]; }
+const uint8_t *vsc_capture(unsigned t) { return cap_at(t < VSC_TRACKS ? t : 0, 0); }
+unsigned vsc_capture_rate(unsigned t) { return vsc_dev.cap_split ? vsc.t[t][P_RATE] : pool_rate; }

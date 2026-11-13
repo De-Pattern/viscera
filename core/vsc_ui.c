@@ -130,7 +130,7 @@ static const struct slot v_spectra[3][4] = {{T(P_STRETCH), T(P_BLUR), T(P_SHIFT)
                                             {T(P_PITCH), T(P_POS), T(P_SIZE), T(P_FREEZE)}};
 static const struct slot v_source[3][4] = {{T(P_SRC), T(P_INPUT), T(P_RATE), T(P_SOS)},
                                            {T(P_BOUNCE), T(P_REEL), T(P_SPLICE), T(P_GAIN)},
-                                           {T(P_KEYS), T(P_FREEZE), N, N}};
+                                           {T(P_KEYS), T(P_FREEZE), {S_SET, 8, 0}, N}};
 static const struct slot v_mix[6][4] = {TT(P_LEVEL), TT(P_PAN), TT(P_SEND), TT(P_DJF), TT(P_MUTE),
                                         {G(G_MAIN), G(G_MCOMP), G(G_INMON), N}};
 /* DISSECT: the listener (global), then the track's shards as its hits drive them */
@@ -245,7 +245,7 @@ static void robot_finish(void)
     vsc.t[rob_rec_t][R->param] = R->base;   /* the knob stays where it was; the robot moves around it */
     int any = 0;
     for (unsigned i = 0; i < R->n; ++i) any |= R->pts[i] != 0;
-    if (R->n < 3 || !any) { R->n = 0; vsc_ui_notice("ROBOT: TURN WHILE REC IS HELD", 1100); }
+    if (R->n < 3 || !any) { R->n = 0; vsc_ui_notice("ROBOT: HOLD REC, TURN", 1100); }
     else { R->t0 = now_ms; vsc_robot_param[rob_rec_t][rob_rec] = R->param; vsc_ui_notice("ROBOT RUNNING", 900); }
     rob_rec = -1;
 }
@@ -341,7 +341,7 @@ static struct slot slot_at(unsigned i)
     }
 }
 static const char *const step_names[9] = {"SLICE", "PITCH", "LEN", "PROB", "VELO", "LOCK", "VALUE", "STEPS", "TRIG"};
-static const char *const set_names[8] = {"BT AUD", "BT MIDI", "ROLE", "UNPAIR", "BACKLIT", "KNOB CC", "METRO", "REEL"};
+static const char *const set_names[9] = {"BT AUD", "BT MIDI", "ROLE", "UNPAIR", "BACKLIT", "KNOB CC", "METRO", "REEL", "BUFFER"};
 static const char *const backlight_names[4] = {"OFF", "LOW", "MID", "HIGH"};
 static void copy_n(char *d, const char *s, unsigned n);
 static const char *const mat_names[4] = {"SOURCE", "DEVICE", "PARAM", "AMOUNT"};
@@ -498,7 +498,7 @@ static void slot_text(struct slot s, char name[10], char val[10], float *bar)
     } else if (s.kind == S_TEMPO) {
         copy_n(name, "TEMPO", 7); num(val, vsc.tempo);
     } else if (s.kind == S_SET) {
-        copy_n(name, set_names[s.id < 8 ? s.id : 0], 7);
+        copy_n(name, set_names[s.id < 9 ? s.id : 0], 7);
         switch (s.id) {
         case 0: copy_n(val, vsc_host.bt_audio ? "ON" : "OFF", 7); break;
         case 1: copy_n(val, vsc_host.bt_midi ? "ON" : "OFF", 7); break;
@@ -506,6 +506,7 @@ static void slot_text(struct slot s, char name[10], char val[10], float *bar)
         case 4: copy_n(val, backlight_names[vsc_dev.backlight & 3], 7); break;
         case 5: copy_n(val, vsc_dev.knob_cc ? "110-3" : "OFF", 7); break;
         case 6: copy_n(val, vsc_dev.metro ? "ON" : "OFF", 7); break;
+        case 8: copy_n(val, vsc_dev.cap_split ? "SPLIT" : "LONG", 7); break;
         case 7: num(val, vsc_host.reel_free); { unsigned l = (unsigned)vsc_strlen(val); val[l] = '%'; val[l + 1] = 0; }
                 *bar = (float)vsc_host.reel_free / 100.f; break;
         default: copy_n(val, "TURN", 7); break;
@@ -579,7 +580,8 @@ static void edit_slot(struct slot s, int d, unsigned *req, unsigned *arg)
         else if (s.id == 4) { vsc_dev.backlight = (uint8_t)clampi((int)vsc_dev.backlight + d, 0, BACKLIGHT_HIGH); ++vsc_dev_changed; }
         else if (s.id == 5) { vsc_dev.knob_cc = d > 0; ++vsc_dev_changed; }
         else if (s.id == 6) { vsc_dev.metro = d > 0; ++vsc_dev_changed; }
-        else if (s.id == 7) { reel_armed = d > 0; vsc_ui_notice(reel_armed ? "REC: ERASE THE WHOLE REEL" : "REEL KEPT", 2500); }
+        else if (s.id == 8) { vsc_dev.cap_split = d > 0; ++vsc_dev_changed; }
+        else if (s.id == 7) { reel_armed = d > 0; vsc_ui_notice(reel_armed ? "REC: ERASE THE REEL" : "REEL KEPT", 2500); }
     } else if (s.kind == S_MAT) {
         unsigned tt; struct vsc_route *ro = matrix_at(route_sel, &tt);
         if (!ro) {
@@ -1130,15 +1132,15 @@ static const char *page_hint(void)
     case PG_SPACE: return "REC: FREEZE  HOLD REC: CLEAR";
     case PG_DISSECT: return "REC: SHARDS ON HITS";
     case PG_RESON: return row == RV_BAND ? "PADS 1-8: BAND  REC: PING" : "REC: PING  ENV: COLOR";
-    case PG_MODS: return row == MATRIX_VIEW ? "PRESETS: ROW  REC: BI/UNI  LFO: MODS"
+    case PG_MODS: return row == MATRIX_VIEW ? "REC: BI/UNI  LFO: MODS"
                        : (vsc.t[track][P_MOD(VMOD(row), 0)] & 3) == MT_ADSR ? "PRESETS: TYPE  REC: TRIG"
                        : "PRESETS: TYPE  LFO+KNOB: MAP";
     case PG_SCENE: return "ARP+PAD: SCENE  ARP+KNOB: MAP MACRO";
-    case PG_SEQ: return vsc.t[track][P_SEQM] == SEQ_CAROM ? "PRESETS: STEPS  REC: ADD  HOLD: CLEAR" : "PRESETS: STEP  PADS: ON/OFF  OCT: PAGE";
+    case PG_SEQ: return vsc.t[track][P_SEQM] == SEQ_CAROM ? "REC: ADD  HOLD: CLEAR" : "PADS: ON/OFF  OCT: PAGE";
     case PG_PROJECT: case PG_SOUND: return "REC: LOAD  SAVE+PLAY: SAVE";
-    case PG_SETTINGS: return row == 0 ? "PRESETS: DEVICE  REC: SCAN/CONNECT" : row == SET_LEARN ? "SAVE+KNOB: LEARN  REC: CLEAR"
-                           : row == SET_INPUT ? "PRESETS: TRACK  REC: OPEN SOURCE" : row == SET_PANEL ? "KEPT THROUGH POWER-OFF" : "SELECT: PAGE";
-    default: return "SELECT: PAGE  ALGORITHM: TRACK";
+    case PG_SETTINGS: return row == 0 ? "REC: SCAN/CONNECT" : row == SET_LEARN ? "SAVE+KNOB: LEARN  REC: CLEAR"
+                           : row == SET_INPUT ? "REC: OPEN SOURCE" : row == SET_PANEL ? "KEPT THROUGH POWER-OFF" : "SELECT: PAGE";
+    default: return "ALGORITHM: TRACK";
     }
 }
 static const char *rs_msrc(void)   /* RESON's modulator, by its name on the knob */
@@ -1174,12 +1176,9 @@ static void draw_footer(void)
     }
     char b[24];
     if (page == PG_RESON) {   /* what the page is about, in a line */
-        static const char *const what[7] = {" MOD . 8 BANDS . WATERY", "EDIT BAND . ", "CARRIER x MOD . VOCODE", "PING + DUST",
-                                            "MOTION . FEEDBACK", "PARTICLES . DROPLETS", "MODE . SENS"};
-        char l[44]; unsigned r = row % 7;
-        copy_n(l, r == 0 ? rs_msrc() : what[r], 30);
-        unsigned n = (unsigned)vsc_strlen(l);
-        if (r == 0) copy_n(l + n, what[0], 30); else if (r == 1) copy_n(l + n, rprof_name[rb_prof % 6], 20);
+        static const char *const what[7] = {"8 BANDS . WATERY", "EDIT BAND", "CARRIER x MOD . VOCODE", "PING + DUST",
+                                            "MOTION . FEEDBACK", "PARTICLES", "MODE . SENS"};
+        const char *l = what[row % 7];
         text(120 - text_w(l, 1) / 2, FOOT_Y, l, C_FG, 1);
         return;
     }
@@ -1361,7 +1360,7 @@ static void draw_spectra(void)
         }
     }
     if (!vsc_meter.spectra_on[t] && vsc.t[t][P_ENGINE] == ENG_SPECTRA)
-        text(6, VIS_Y + 50, "2 SPECTRA ALREADY: HANDS", C_WARN, 1);
+        text(6, VIS_Y + 50, "2 SPECTRA: HANDS", C_WARN, 1);
     else if (!vsc_meter.src_len[t]) text(78, VIS_Y + 50, "EMPTY: TAP REC", C_DIM, 1);
     /* where in the source it is */
     int hx = (int)vsc_meter.head[t] * 236 / 65536 + 2;
@@ -1471,8 +1470,6 @@ static void draw_reson(void)
 #endif
     const int base = RB_BASE;
     unsigned t = vsc.g[G_BTRACK] ? vsc.g[G_BTRACK] - 1u : track;
-    /* the source behind, a faint line */
-    for (int x = 2; x < 238; x += 2) { int h = vsc_meter.overview[t][x] * 22 / 60; px(x, base - 30 - h / 2, C_LAVK); px(x, base - 30 + h / 2, C_LAVK); }
     int flash = (int32_t)(now_ms - rb_flash_at) < 120;
     for (unsigned b = 0; b < VSC_RBANDS; ++b) {
         int x = RB_X(b), w = 20;
@@ -1502,9 +1499,9 @@ static void draw_reson(void)
     } else if (row == RV_VOC) {   /* the carrier and the modulator, meeting */
         unsigned vm = vsc.g[G_BVMOD] % 6, u = vm == 2 ? VSC_PARTNER(t) : t;
         text(30, VIS_Y + 1, "CARRIER", C_DIM, 1); text(150, VIS_Y + 1, "MODULATOR", C_DIM, 1);
-        for (int x = 0; x < 104; ++x) {
-            int h = vsc_meter.overview[t][x * 2] * 8 / 60; vline(8 + x, VIS_Y + 18 - h, 2 * h + 1, C_LAVD);
-            int h2 = vm == 0 || vm == 2 ? vsc_meter.overview[u][x * 2 + 30] * 8 / 60 : (int)(rnd8() % (vm == 4 ? 9u : 4u)); vline(128 + x, VIS_Y + 18 - h2, 2 * h2 + 1, C_LAVD);
+        for (int x = 0; x < 224; ++x) {   /* the carrier, then the modulator */
+            int h = x < 104 ? vsc_meter.overview[t][x * 2] * 8 / 60 : vm == 0 || vm == 2 ? vsc_meter.overview[u][x * 2 - 210] * 8 / 60 : (int)(rnd8() % (vm == 4 ? 9u : 4u));
+            if (x < 104 || x >= 120) vline(8 + x, VIS_Y + 18 - h, 2 * h + 1, C_LAVD);
         }
         text(150, VIS_Y + 30, rs_msrc(), C_LAV, 1);
         text(117, VIS_Y + 14, "X", C_INK, 1);
@@ -1555,7 +1552,7 @@ static void draw_vis(void)
             px(bx - 3, byy, C_MID); px(bx + 3, byy + 1, C_MID); px(bx, byy - 3, C_DIM); px(bx + 1, byy + 3, C_DIM);
             if (hit > 30) { int r = 3 + (255 - hit) / 24; px(bx - r, byy, C_MID); px(bx + r, byy, C_MID); px(bx, byy - r, C_MID); px(bx, byy + r, C_MID); }
         }
-        if (!count) text(x0 + 14, y0 + h / 2 - 3, live_rec ? "PLAY NOTES" : "NO STEPS: PRESS REC, PLAY", C_DIM, 1);
+        if (!count) text(x0 + 14, y0 + h / 2 - 3, live_rec ? "PLAY NOTES" : "NO STEPS: REC, PLAY", C_DIM, 1);
         else if (!vsc_meter.playing) text(x0 + 4, y0 + h + 4, "PRESS PLAY", C_DIM, 1);
         if (live_rec) text(x0 + w - 54, y0 + h + 4, "RECORDING", C_WARN, 1);
         break;
@@ -1832,14 +1829,16 @@ static void draw_vis(void)
         text(80, VY(4), vsc_meter.ext_clock ? "MIDI CLOCK ARRIVING" : "NO MIDI CLOCK", vsc_meter.ext_clock ? C_FG : C_LINE, 1);
         text(6, VY(20), "FOLLOWING", C_DIM, 1);
         text(80, VY(20), vsc.g[G_CLOCK] == CLOCK_INT || (vsc.g[G_CLOCK] == CLOCK_AUTO && !vsc_meter.ext_clock) ? "INTERNAL" : "MIDI", C_FG, 1);
-        text(6, VY(44), "CH 1-4: A-D  CH 16: GLOBAL", C_DIM, 1);
+        text(6, VY(44), "CH 1-4: A-D, 16: ALL", C_DIM, 1);
         text(6, VY(56), "PROGRAM CHANGE: SCENES", C_DIM, 1);
         break;
     } else if (row == SET_PANEL) {
         /* PANEL: the FM-1's own settings, the version and the load */
         text(6, VY(4), "VISCERA " VSC_VERSION, C_FG, 1);
-        text(6, VY(18), "KNOB CC: CC 110-113 TURN KNOB 1-4", C_DIM, 1);
+        text(6, VY(18), "KNOB CC: CC 110-113", C_DIM, 1);
+#ifdef __wasm__
         if (vsc_host.cpu == 255) { text(6, VY(100), "CPU: SHOWN ON THE FM-1", C_DIM, 1); break; }   /* the emulator */
+#endif
         char b[16] = "CPU "; num(b + 4, vsc_host.cpu); unsigned l = (unsigned)vsc_strlen(b); b[l] = '%'; b[l + 1] = 0;
         text(6, VY(100), b, vsc_host.cpu > 85 ? C_WARN : C_FG, 1);
         rect(60, VY(102), 170, 3, C_PANEL);

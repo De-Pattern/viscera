@@ -158,7 +158,7 @@ enum { BACKLIGHT_OFF, BACKLIGHT_LOW, BACKLIGHT_MID, BACKLIGHT_HIGH };
 struct vsc_sound { uint8_t used, pad[3]; uint8_t p[VSC_SOUND_NP]; struct vsc_route route[VSC_MOD_ROUTES]; };
 struct vsc_device {
     uint32_t magic, version, bytes, crc;
-    uint8_t backlight, knob_cc, metro, pad;
+    uint8_t backlight, knob_cc, metro, cap_split;   /* cap_split 0: one long capture, shared (the default) */
     struct vsc_learn learn[VSC_LEARN];
     struct vsc_sound sound[VSC_SOUNDS];
 };
@@ -268,6 +268,8 @@ float vsc_ulaw(uint8_t v);
 /* ---- Captures and reels ------------------------------------------------
  * Each track's capture: VSC_CAP_FRAMES of 8-bit mu-law in RAM. */
 const uint8_t *vsc_capture(unsigned track);
+unsigned vsc_capture_rate(unsigned track);   /* the RATE it was made at (LONG: the recording track's) */
+#define VSC_LONG_FRAMES (VSC_TRACKS * VSC_CAP_FRAMES)   /* the long capture at most */
 /* The reel: up to VSC_SPLICES kept captures in flash (the platform stores them). A
  * splice is a run of mu-law bytes at a rate; vsc_reel_data is the mapped reel (NULL:
  * no reel). The engine reads it from the audio context. */

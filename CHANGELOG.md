@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.1 — one long capture; RESON on the FM-1
+
+- **New: one long capture, the default.** The four capture buffers work end to end as one capture the tracks share: about 1.3 s at HI, 2.6 s at MID, 5.2 s at LO (from 0.33, 0.65 and 1.31 s). Any track on CAPTURE plays it; one records at a time. A track on THRU keeps one buffer for its ring, and the long capture gets the rest. SOURCE → BUFFER: LONG or SPLIT (a buffer each, as before; PING needs it). Kept on the device, not in projects. KEEP keeps as much of a long capture as the reel has room for.
+- **Fixed: RESON overloading the FM-1.** Every float of its state is cleared once it falls under about 1e-26, so nothing sinks to a denormal (the FPU may be slow on them; the emulator doesn't show it). The CPU guard eases RESON from its first step: only the bands within 12 dB of the loudest, the band itself as the modulator; at the second step only those within 6 dB, and no droplets.
+- **Faster:** RESON skips its feedback when FDBK is 0 and its droplets' ring when DROPS is 0; one draw a sample for the droplets' births; µ-law encoding reads the segment off the float's exponent (bit-exact, also for captures and the delay).
+- **Changed:** some hints are shorter, and the RESON page no longer draws the source behind its bars (flash).
+
 ## 1.1.0 — RESON
 
 **RESON: an eight-band resonant filterbank**, after Grains' bank and its liquefier. ENV toggles COLOR and RESON; the page puts it on the open track, after PUTTY and before COLOR.

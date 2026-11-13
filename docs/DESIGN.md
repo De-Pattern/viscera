@@ -32,6 +32,7 @@ Four tracks, A to D, in two pairs: **A+B** and **C+D**. A pair bounces, crosses 
 | SOURCE | CAPTURE (a buffer in RAM), REEL (the reel or a bank sample) or THRU (the input, live, through a short ring) |
 | INPUT | BT, USB, BT+USB (default), another track, or the main mix |
 | RATE | HI 44.1 kHz (0.33 s), MID 22 kHz (0.65 s, default) or LO 11 kHz (1.31 s): each capture is 14,400 bytes of 8-bit µ-law |
+| BUFFER | LONG (default): the four buffers as one capture the tracks share, 1.3 s HI, 2.6 s MID, 5.2 s LO; a track on THRU keeps a buffer for its ring. SPLIT: a buffer each (needed for PING). A device setting |
 | SOS | how much of the old an overdub keeps |
 | BOUNCE | OFF; IN: the track captures its partner's output; PING: when one ends a capture, the other takes it back, as long, so the sound passes between them |
 | REEL / SPLICE | KEPT (the reel) or a bank slot S1–S16; ALL or one splice |
@@ -74,7 +75,7 @@ Each band is two bandpass biquads with the same centre: one the sound goes throu
 - **LIQUID**: two slow random walks move each band's tuning (±3 %), decay and gain (±3 dB) a little, each band by its own weights. **FDBK** returns the wet sound, DC-blocked and soft-limited, into the ringing bank.
 - **Particles**: DENS throws dust (specks into one band each); COHES ties them to the detector's activity. DROPS plays up to three micrograins (4–18 ms, Hann-like, ±1 % speed) from a 23 ms ring of the wet sound; MIGR sends them into another band instead of out.
 - The screen: eight bars glowing with each band's output over faint stacks of their gains, a reflection under the line, the band being edited in a lavender pill; BAND opens a window on its curve, VOCODE shows carrier and modulator, PING throws sparks off the bars.
-- Under the CPU guard's second step RESON runs only the bands within 12 dB of the loudest, and SELF in place of an analysis bank.
+- Under the CPU guard RESON runs only the bands within 12 dB of the loudest and SELF in place of an analysis bank (first step), within 6 dB and without droplets (second). Its state is flushed to zero under about 1e-26 every 32 samples, so nothing sinks to a denormal.
 
 ### COLOR and SPACE
 

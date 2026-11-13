@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Viscera Manual</title>
+<meta name="description" content="The Viscera manual: installing (and coming from Ravel), getting sound in, the signal path, and what every page and control does.">
+<link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=Inter+Tight:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#f3efe7; --beige:#e6dfd1; --sand:#d8cfbd; --stone:#a9a397; --grey:#6f6b64;
+  --ink:#1a1917; --ink-soft:#3a3833; --line:#cfc7b7; --warn:#7a2d22;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --sans:"Inter Tight",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+html{color-scheme:light;overflow-x:clip;scroll-padding-top:24px}
+html,body{margin:0;background:var(--paper);color:var(--ink)}
+body{font:300 15px/1.65 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit;text-decoration:none;border-bottom:1px solid var(--stone)}
+a:hover{border-color:var(--ink)}
+body::after{content:"";position:fixed;inset:-50%;pointer-events:none;z-index:50;opacity:.07;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1.4 -.25'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation:grain 1.2s steps(6) infinite}
+@keyframes grain{0%{transform:translate(0,0)}20%{transform:translate(-3%,2%)}40%{transform:translate(2%,-4%)}60%{transform:translate(-4%,-1%)}80%{transform:translate(3%,3%)}100%{transform:translate(0,0)}}
+@media (prefers-reduced-motion:reduce){body::after{animation:none}}
+
+.wrap{max-width:980px;margin:0 auto;padding-left:max(28px,env(safe-area-inset-left,0px));padding-right:max(28px,env(safe-area-inset-right,0px))}
+header{display:flex;align-items:center;justify-content:space-between;padding:26px 0 0}
+.mark{display:flex;align-items:center;gap:14px;border:0}
+.mark img{display:block;width:46px;height:36px}
+.word{font:400 13px/1 var(--mono);letter-spacing:.42em;text-transform:lowercase}
+nav{display:flex;gap:26px;font:400 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--grey)}
+nav a{border:0}
+nav a:hover,nav a[aria-current]{color:var(--ink)}
+
+.top{padding:64px 0 40px}
+.top h1{font:300 clamp(34px,6vw,58px)/1.02 var(--sans);letter-spacing:-.02em;margin:0 0 18px}
+.top p{max-width:620px;color:var(--ink-soft);margin:0}
+.eyebrow{font:400 10px/1 var(--mono);letter-spacing:.24em;text-transform:uppercase;color:var(--grey);margin:0 0 22px}
+
+.layout{display:grid;grid-template-columns:190px minmax(0,1fr);gap:56px;padding-bottom:80px}
+nav.toc{display:block;position:sticky;top:24px;align-self:start;font:400 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--grey)}
+.toc a{display:block;border:0;color:var(--grey);padding:7px 0}
+.toc a:hover{color:var(--ink)}
+
+main section{padding:0 0 46px;margin:0 0 46px;border-bottom:1px solid var(--line)}
+main section:last-child{border-bottom:0}
+h2{font:300 28px/1.15 var(--sans);letter-spacing:-.01em;margin:0 0 16px}
+h3{font:400 12px/1.4 var(--mono);letter-spacing:.16em;text-transform:uppercase;margin:30px 0 10px}
+p,li{color:var(--ink-soft)}
+p{margin:0 0 14px}
+ul,ol{padding-left:20px;margin:0 0 14px}
+li{margin:0 0 6px}
+b,strong{font-weight:500;color:var(--ink)}
+code,kbd{font:400 12px/1 var(--mono);letter-spacing:.04em}
+kbd{display:inline-block;border:1px solid var(--stone);padding:3px 6px 2px;color:var(--ink);background:rgba(255,255,255,.35)}
+
+.warn{border-left:3px solid var(--warn);background:var(--beige);padding:18px 20px;margin:0 0 18px}
+.warn p:last-child,.note p:last-child{margin:0}
+.warn .k{font:400 10px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:var(--warn);display:block;margin:0 0 10px}
+.note{background:var(--beige);padding:16px 20px;margin:0 0 18px}
+
+table{border-collapse:collapse;width:100%;margin:0 0 18px;font-size:14px}
+th,td{text-align:left;vertical-align:top;padding:9px 12px 9px 0;border-top:1px solid var(--line)}
+th{font:400 10px/1.6 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--grey);font-weight:400}
+td:first-child{font:400 12px/1.6 var(--mono);color:var(--ink);white-space:nowrap;padding-right:18px}
+td{color:var(--ink-soft)}
+.tbl{overflow-x:auto}
+
+.flow{background:var(--ink);color:var(--paper);font:400 12px/1.7 var(--mono);padding:22px 24px;overflow-x:auto;white-space:pre;margin:0 0 18px}
+.flow em{font-style:normal;color:#c9b8f0}
+
+footer{padding:42px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;color:var(--grey);border-top:1px solid var(--line)}
+footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
+
+@media (max-width:760px){
+  .wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+  nav{gap:12px;letter-spacing:.06em;font-size:10px}
+  nav a[href*="github"]{display:none}
+  .word{letter-spacing:.24em}
+  .mark{gap:8px}
+  .layout{grid-template-columns:minmax(0,1fr);gap:20px}
+  main{min-width:0}
+  nav.toc{position:static;display:flex;flex-wrap:wrap;gap:4px 16px}
+  .toc a{padding:4px 0}
+  td:first-child{white-space:normal}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="mark" href="./" aria-label="Viscera home">
+      <img src="logo-small.png" width="46" height="36" alt="">
+      <span class="word">viscera</span>
+    </a>
+    <nav>
+      <a href="./#install">Install</a>
+      <a href="manual.html" aria-current="page">Manual</a>
+      <a href="emulator/">Emulator</a>
+      <a href="https://github.com/De-Pattern/viscera">Source</a>
+    </nav>
+  </header>
+
+  <div class="top">
+    <p class="eyebrow">Manual · Viscera 1.1</p>
+    <h1>How to work<br>the putty.</h1>
+    <p>Viscera turns the M-VAVE FM-1 into a live-capture instrument. You catch sound coming in over Bluetooth or USB, then stretch it, freeze it, shatter it, vocode it and ring it through resonators. This page covers installing it safely, getting sound in, how the sound flows, and what every page and control does.</p>
+  </div>
+
+  <div class="layout">
+    <nav class="toc" aria-label="Contents">
+      <a href="#install">Installing</a>
+      <a href="#start">Quick start</a>
+      <a href="#audio">Getting audio in</a>
+      <a href="#flow">Signal path</a>
+      <a href="#controls">Controls</a>
+      <a href="#capture">Capturing</a>
+      <a href="#putty">Putty pages</a>
+      <a href="#reson">RESON</a>
+      <a href="#color">COLOR &amp; SPACE</a>
+      <a href="#dissect">DISSECT</a>
+      <a href="#mods">Modulation</a>
+      <a href="#perform">Perform &amp; scenes</a>
+      <a href="#seq">Sequencer</a>
+      <a href="#save">Projects &amp; sounds</a>
+      <a href="#midi">MIDI</a>
+      <a href="#settings">Settings</a>
+      <a href="#trouble">Trouble</a>
+    </nav>
+
+    <main>
+      <section id="install">
+        <p class="eyebrow">01</p>
+        <h2>Installing</h2>
+
+        <div class="warn">
+          <span class="k">Coming from Ravel? Go back to stock first</span>
+          <p>Don't install Viscera straight over <b>Ravel</b>, SLOOP or any other Felucca-based firmware. Handing over to M-VAVE's updater from those can switch the FM-1 off part-way through. Viscera's install page refuses to install from them for this reason.</p>
+          <ol>
+            <li>Open <a href="https://de-pattern.github.io/Ravel_FM1/install/">Ravel's install page</a> and use <b>Back to the stock firmware</b> with M-VAVE's V15 file. That puts M-VAVE's own firmware back.</li>
+            <li>Check that the FM-1 starts into M-VAVE's firmware.</li>
+            <li>Then come back to <a href="./#install">Viscera's install page</a> and install from there.</li>
+          </ol>
+        </div>
+
+        <div class="warn">
+          <span class="k">Early firmware</span>
+          <p>Viscera is being tested on hardware now. Back up first: save your projects and samples with M-VAVE's workbench, because switching firmware doesn't convert them. Viscera's reel (captures you KEEP) uses the flash where the stock firmware keeps its projects.</p>
+        </div>
+
+        <h3>Steps</h3>
+        <ol>
+          <li>Use <b>Chrome or Edge on a computer</b>. Switch the FM-1 on and connect it by USB. Close other MIDI software.</li>
+          <li>On the <a href="./#install">install page</a>, pick a version from the menu. The newest is first, and each has a line on what it changed. Press <b>Use this version</b>.</li>
+          <li>Press <b>Connect</b> and allow MIDI access. The page says what the FM-1 runs now, and names the Viscera version if it's one.</li>
+          <li>Press <b>Install Viscera</b>. Keep the cable in, the FM-1 on and the tab in front until it restarts, which takes one to three minutes.</li>
+        </ol>
+        <p><b>Going back:</b> on the install page, <b>Put M-VAVE's V15 back</b> installs M-VAVE's original firmware. M-VAVE's <a href="https://open.m-vave.com/fm1-workbench">workbench</a> can too.</p>
+        <p><b>1.1.0 note:</b> on the FM-1, 1.1.0 overloads the CPU when RESON is on, with clicks even at zero volume. Use 1.1.1 or later.</p>
+      </section>
+
+      <section id="start">
+        <p class="eyebrow">02</p>
+        <h2>Quick start</h2>
+        <ol>
+          <li><b>Send sound in.</b> Pair a phone over Bluetooth and play something, or play into the FM-1 from a computer over USB (see <a href="#audio">Getting audio in</a>).</li>
+          <li><b>Press <kbd>HOME</kbd></b> for HANDS. The screen shows track A.</li>
+          <li><b>Tap <kbd>REC</kbd></b> to start catching, then <b>tap again</b> to end. The gap between the taps is the loop length. A full buffer ends it by itself.</li>
+          <li><b>Turn the knobs.</b> STRETCH slows or speeds it without changing pitch, PITCH shifts it, and POS and SIZE pick the window it plays.</li>
+          <li>Try <kbd>FX</kbd> (SHARDS) and <kbd>SEL</kbd> (SPECTRA) on the same capture. Opening one of these pages also sets the track to that mode.</li>
+          <li>Press <kbd>PLAY</kbd> to run the sequencer and modulators, and <kbd>ALGORITHM</kbd> to change track (A–D).</li>
+        </ol>
+      </section>
+
+      <section id="audio">
+        <p class="eyebrow">03</p>
+        <h2>Getting audio in</h2>
+        <p>The FM-1 has no analogue input. Sound gets in two ways, and Viscera can use both at once.</p>
+        <div class="tbl"><table>
+          <tr><th>Input</th><th>How</th></tr>
+          <tr><td>Bluetooth</td><td>A phone, tablet or computer plays music to the FM-1 as a Bluetooth speaker. Bluetooth audio must be on: <b>GLO → SETTINGS</b>, first view, <b>BT AUD</b>. Then pair from the phone's Bluetooth settings and press play.</td></tr>
+          <tr><td>USB</td><td>Connected to a computer, the FM-1 shows up as a USB audio device. Choose it as the output in your computer's sound settings or your DAW.</td></tr>
+        </table></div>
+        <h3>AUDIO IN (GLO → SETTINGS, second view)</h3>
+        <p>Everything about input in one place:</p>
+        <ul>
+          <li>whether Bluetooth is waiting, connected or playing, and whether USB is connected;</li>
+          <li>a level meter for each input;</li>
+          <li>the selected track's <b>INPUT</b> (BT, USB, BT+USB, another track, or the main mix), its <b>GAIN</b>, and <b>MONITR</b> (hear the input through the FM-1).</li>
+        </ul>
+        <p>PRESETS picks the track, and REC opens its SOURCE page. If a capture comes out silent, check here first: the meter moves, the track's INPUT is right, and its SOURCE is CAPTURE.</p>
+        <h3>Samples</h3>
+        <p>Samples in the FM-1's flash sample bank also play (SOURCE → REEL → a slot S1–S16). Write them with the <a href="./#samples">Samples</a> section of the install page or M-VAVE's workbench.</p>
+      </section>
+
+      <section id="flow">
+        <p class="eyebrow">04</p>
+        <h2>Signal path</h2>
+        <div class="flow">inputs: BT, USB ──┐
+partner's output ─┼─▶ <em>SOURCE</em> ─▶ <em>PUTTY</em> ─▶ (<em>RESON</em>) ─▶ <em>COLOR</em> ─▶ level / pan ─┬─▶ master ─▶ out
+the reel, samples ┘   capture    HANDS      one track         noise          └─▶ <em>SPACE</em> send
+                      reel       SHARDS     at a time         drive              (delay + reverb)
+                      thru       SPECTRA                      crush
+                                                              comp, tilt</div>
+        <p><b>Four tracks, A to D, in two pairs: A+B and C+D.</b> A pair can bounce sound between its two tracks, cross spectra, and move together under your hands.</p>
+        <ul>
+          <li><b>SOURCE</b>: what the track holds. Your capture, the reel or a sample, or the live input passing through (THRU).</li>
+          <li><b>PUTTY</b>: one of three ways to work it (HANDS, SHARDS, SPECTRA).</li>
+          <li><b>RESON</b>: an eight-band resonant filterbank, on one track at a time.</li>
+          <li><b>COLOR</b>: noise, drive, crush, compression and tilt.</li>
+          <li><b>SPACE</b>: a shared delay and reverb, fed by each track's SEND.</li>
+          <li><b>DISSECT</b> listens to a source and drives things from what it hears: hits, bands and pitch.</li>
+          <li><b>Modulators</b>, <b>robots</b>, <b>macros</b> and <b>scenes</b> move any of it.</li>
+        </ul>
+      </section>
+
+      <section id="controls">
+        <p class="eyebrow">05</p>
+        <h2>Controls</h2>
+        <div class="tbl"><table>
+          <tr><th>Control</th><th>What it does</th></tr>
+          <tr><td>KNOB 1–4</td><td>The four parameters on screen.</td></tr>
+          <tr><td>SELECT</td><td>The page's next view (the dots in the header).</td></tr>
+          <tr><td>ALGORITHM</td><td>Track A–D.</td></tr>
+          <tr><td>PRESETS</td><td>The page's list: SOURCE's source, the step on SEQ, a modulator's type, a matrix row, a project or sound slot, a Bluetooth device, a learned mapping.</td></tr>
+          <tr><td>MASTER</td><td>Output level.</td></tr>
+          <tr><td>HOME / FX / SEL</td><td>HANDS / SHARDS / SPECTRA, which also sets the track's mode. Press again for the next view.</td></tr>
+          <tr><td>EDIT</td><td>SOURCE, then MIX.</td></tr>
+          <tr><td>ENV</td><td>COLOR, press again for RESON.</td></tr>
+          <tr><td>GLO</td><td>SPACE, then DISSECT, then SETTINGS.</td></tr>
+          <tr><td>LFO</td><td>The modulation MATRIX, then the four modulators. Hold LFO and turn a knob to map a modulator to it.</td></tr>
+          <tr><td>ARP</td><td>PERFORM: macros and scenes. Hold ARP and turn a knob to map a macro; ARP + a pad recalls a scene.</td></tr>
+          <tr><td>SEQ</td><td>The sequencer: STEPS or CAROM (PRESETS switches).</td></tr>
+          <tr><td>SAVE</td><td>PROJECT, then SOUNDS. Hold SAVE and turn a knob for MIDI learn. SAVE + REC on a putty page keeps the capture on the reel.</td></tr>
+          <tr><td>PLAY</td><td>Play / stop.</td></tr>
+          <tr><td>REC</td><td>On putty pages and SOURCE: capture (tap, tap), overdub (hold), robot (hold + turn a knob). REC + PLAY clears the capture and its robots. On other pages, the page's own action: freeze SPACE, ping RESON, record steps, and so on.</td></tr>
+          <tr><td>OCT− / OCT+</td><td>Octave. Held while turning a knob: the pair moves together (OCT−) or apart (OCT+). Both held: TEMP, where changes snap back when you let go.</td></tr>
+          <tr><td>Pads</td><td>Notes for the track, or steps on SEQ, scenes on ARP, RESON's bands on its BAND view.</td></tr>
+        </table></div>
+        <p>The bottom line of the screen shows a page's gestures for a moment when it opens.</p>
+      </section>
+
+      <section id="capture">
+        <p class="eyebrow">06</p>
+        <h2>Capturing: SOURCE (EDIT)</h2>
+        <div class="tbl"><table>
+          <tr><th>Knob</th><th></th></tr>
+          <tr><td>SOURCE</td><td><b>CAPTURE</b> (what REC catches), <b>REEL</b> (a kept capture, or a bank sample S1–S16) or <b>THRU</b> (the live input, passing through a short ring).</td></tr>
+          <tr><td>INPUT</td><td>BT, USB, BT+USB (default), another track, or the main mix.</td></tr>
+          <tr><td>RATE</td><td>HI 44.1 kHz, MID 22 kHz (default) or LO 11 kHz: lower rates hold longer captures, and sound grittier.</td></tr>
+          <tr><td>SOS</td><td>How much of the old sound an overdub keeps.</td></tr>
+          <tr><td>BOUNCE</td><td>OFF, IN (the track captures its partner's output) or PING (when one track ends a capture, the other takes it back, as long). PING needs BUFFER SPLIT.</td></tr>
+          <tr><td>REEL / SPLICE</td><td>KEPT (the reel) or a bank slot; all of the reel or one splice.</td></tr>
+          <tr><td>GAIN</td><td>Input gain.</td></tr>
+          <tr><td>KEYS</td><td>What the pads do: OFF, PITCH, PLAY (restart and gate) or SLICE (each key a sixteenth of the window, from F3).</td></tr>
+          <tr><td>FREEZE</td><td>Hold the playhead still (for THRU, the ring stops recording).</td></tr>
+          <tr><td>BUFFER</td><td><b>LONG</b> (default) or <b>SPLIT</b>; see below.</td></tr>
+        </table></div>
+        <h3>LONG and SPLIT</h3>
+        <ul>
+          <li><b>LONG</b> (the default, 1.1.1 and later) puts the four buffers end to end as one capture the tracks share: about <b>1.3 s at HI, 2.6 s at MID, 5.2 s at LO</b>.
+            <ul>
+              <li>Any track on CAPTURE plays it, each with its own playhead, mode and settings.</li>
+              <li>One track records at a time.</li>
+              <li>A track on THRU keeps one buffer for its ring, so the long capture gets the rest.</li>
+            </ul></li>
+          <li><b>SPLIT</b> gives each track its own buffer (0.33 s HI, 0.65 s MID, 1.31 s LO), so the pairs can bounce and PING sound between two separate captures.</li>
+        </ul>
+        <p>BUFFER is a setting of the FM-1, not of a project.</p>
+        <h3>Recording</h3>
+        <ul>
+          <li><b>Tap REC</b> to start and tap again to end. A full buffer ends it.</li>
+          <li><b>Hold REC</b> to overdub over what plays (SOS sets how much stays).</li>
+          <li><b>Hold REC and turn a knob</b> to record a <b>robot</b>: up to about two seconds of the gesture, looping on its own after you let go. Each track has four, and a fifth replaces the oldest.</li>
+          <li><b>REC + PLAY</b> clears the capture and the track's robots.</li>
+        </ul>
+        <h3>The reel</h3>
+        <p><b>SAVE + REC</b> keeps the capture on the reel in flash, as a splice that survives power-off. That's about 2.6 s at MID in all, 16 splices at most. Writing to flash pauses the sound for a moment. The first KEEP asks twice, because the reel takes the place of any projects the stock firmware kept there. GLO → SETTINGS → PANEL → REEL shows the room left; turn it and press REC to erase the reel.</p>
+      </section>
+
+      <section id="putty">
+        <p class="eyebrow">07</p>
+        <h2>The putty pages</h2>
+        <p>Each mode reads a window of the source, from POS to POS + SIZE, with a playhead moving through it.</p>
+        <ul>
+          <li><b>STRETCH</b> sets the playhead's speed (0.25× to 8×; at the top it freezes) without changing pitch.</li>
+          <li><b>PITCH</b> shifts it ±24 semitones.</li>
+        </ul>
+        <h3>HANDS (HOME)</h3>
+        <p>Two overlapping grains follow the playhead: smooth stretching and pitching.</p>
+        <div class="tbl"><table>
+          <tr><th>View</th><th>Knobs</th></tr>
+          <tr><td>1</td><td>STRTCH, PITCH, POS, SIZE</td></tr>
+          <tr><td>2</td><td>GRAIN (10–260 ms), JITTER, REVRS, LEVEL</td></tr>
+          <tr><td>3</td><td>FREEZE, KEYS, GAIN, SOS</td></tr>
+        </table></div>
+        <h3>SHARDS (FX)</h3>
+        <p>Up to eight grains broken from the window. SHAPE runs:</p>
+        <ul>
+          <li>smooth;</li>
+          <li>swell (reverse decay);</li>
+          <li>expodec;</li>
+          <li>glass: sharper and shorter, and at the top it <b>shatters</b> into denser shards an octave up.</li>
+        </ul>
+        <div class="tbl"><table>
+          <tr><th>View</th><th>Knobs</th></tr>
+          <tr><td>1</td><td>SHAPE, DENS, SPRAY (scatter in the window), TRIG: FREE, HIT (on DISSECT's hits), NOTE (keys, steps, CAROM), CLOCK (the steps)</td></tr>
+          <tr><td>2</td><td>SIZE, SPREAD (pitch scatter), REVRS (chance), STEREO</td></tr>
+          <tr><td>3</td><td>The hands: STRTCH, PITCH, POS, SIZE</td></tr>
+        </table></div>
+        <h3>SPECTRA (SEL)</h3>
+        <p>A phase vocoder: the sound taken apart into its spectrum and put back.</p>
+        <div class="tbl"><table>
+          <tr><th>View</th><th>Knobs</th></tr>
+          <tr><td>1</td><td>STRTCH, BLUR (smears the spectrum over time), SHIFT (±24 semitones), CROSS (puts the partner's spectrum on this track's sound)</td></tr>
+          <tr><td>2</td><td>GATE (only the loud parts), TILT, HOLD (peaks held), PHASE (scatter)</td></tr>
+          <tr><td>3</td><td>PITCH, POS, SIZE, FREEZE</td></tr>
+        </table></div>
+        <p>Two tracks can be SPECTRA at once; a third plays as HANDS and says so.</p>
+      </section>
+
+      <section id="reson">
+        <p class="eyebrow">08</p>
+        <h2>RESON (ENV, twice)</h2>
+        <p>An eight-band resonant filterbank at 200, 400, 800, 1200, 1600, 2400, 3200 and 4800 Hz. It runs on one track at a time, after PUTTY and before COLOR. Opening the page puts it on the track you're on, and ENV goes back to COLOR. Each band is two resonators:</p>
+        <ul>
+          <li>one the sound passes through;</li>
+          <li>one that rings with a decay of its own, excited by pings, dust and droplets.</li>
+        </ul>
+        <div class="tbl"><table>
+          <tr><th>View</th><th>Knobs</th></tr>
+          <tr><td>BANK</td><td>PROFILE (LIQ MEM, GLASS, THROAT, DUST, RADIO, DROPS), WIDTH, RESO (decay), MIX</td></tr>
+          <tr><td>BAND</td><td>BAND (or pads 1–8), GAIN (dB, 0 is off), FREQ (±1 octave), DECAY</td></tr>
+          <tr><td>VOCODE</td><td>MODSRC, ATTACK, RELEAS, DEPTH</td></tr>
+          <tr><td>PING</td><td>TRIG, QUANT (OFF, 1/32 … 1/4), HARD, DENS (dust)</td></tr>
+          <tr><td>MOTION</td><td>LIQUID, FDBK, SHIFT (±12 semitones, all bands), SPECTR</td></tr>
+          <tr><td>PARTICLES</td><td>COHES, DROPS, MIGR, OSC</td></tr>
+          <tr><td>SETUP</td><td>MODE, SENS, TRACK (0 turns RESON off)</td></tr>
+        </table></div>
+        <h3>Modes (SETUP → MODE)</h3>
+        <div class="tbl"><table>
+          <tr><th>Mode</th><th>What it does</th></tr>
+          <tr><td>FILTER</td><td>The sound through the bank.</td></tr>
+          <tr><td>VOCODE</td><td>Each band's level follows the modulator in that band. The track is the carrier.</td></tr>
+          <tr><td>PING</td><td>Only the ringing bank, struck by bursts.</td></tr>
+          <tr><td>HYBRID</td><td>The default: half of each, vocoded.</td></tr>
+        </table></div>
+        <h3>The vocoder</h3>
+        <p>Set MODE to VOCODE on SETUP (HYBRID vocodes too). Then pick <b>MODSRC</b> on the VOCODE view:</p>
+        <div class="tbl"><table>
+          <tr><th>MODSRC</th><th>The modulator</th></tr>
+          <tr><td>INPUT</td><td>The live input, e.g. a voice over Bluetooth or USB.</td></tr>
+          <tr><td>PARTNR</td><td>The other track of the pair.</td></tr>
+          <tr><td>OSC</td><td>An oscillator, sine → saw → pulse, set on PARTICLES.</td></tr>
+          <tr><td>NOISE</td><td>A noise source.</td></tr>
+          <tr><td>SELF</td><td>The track itself.</td></tr>
+          <tr><td>OUTPUT</td><td>RESON's own output.</td></tr>
+        </table></div>
+        <p>For the classic voice-over-synth sound, put a sound on the track and set MODSRC to INPUT.</p>
+        <h3>Pings, dust and droplets</h3>
+        <ul>
+          <li><b>TRIG</b> picks what pings the ringing bank:
+            <ul>
+              <li><b>HIGH</b>, <b>FULL</b> or <b>LOW</b>: a transient detector on that band of the modulator (SENS sets how easily);</li>
+              <li><b>HITS</b>: DISSECT's hits;</li>
+              <li><b>NOTES</b>: keys, steps and CAROM on RESON's track;</li>
+              <li>REC on the page pings by hand.</li>
+            </ul></li>
+          <li><b>QUANT</b> holds pings for the grid: the steps' when playing, the tempo's when stopped.</li>
+          <li><b>HARD</b> runs from a soft burst to a sharp click.</li>
+          <li><b>DENS</b> throws dust, specks that each ring one band. <b>COHES</b> gathers them around the hits.</li>
+          <li><b>DROPS</b> plays tiny grains of the wet sound. <b>MIGR</b> sends them into other bands instead of out.</li>
+          <li><b>LIQUID</b> lets tuning, decay and level drift slowly. <b>FDBK</b> returns the wet sound into the bank.</li>
+        </ul>
+        <p>RESON is the heaviest thing on the FM-1. Under load the CPU guard thins it to its loudest bands.</p>
+      </section>
+
+      <section id="color">
+        <p class="eyebrow">09</p>
+        <h2>COLOR (ENV) and SPACE (GLO)</h2>
+        <h3>COLOR</h3>
+        <p>Noise, drive, crush and compression in that order, then a two-band tilt.</p>
+        <div class="tbl"><table>
+          <tr><th>View</th><th>Knobs</th></tr>
+          <tr><td>1</td><td>DRIVE, COMP, CRUSH, TILT</td></tr>
+          <tr><td>2</td><td>NOISE, N.DEC, N.TONE, WET</td></tr>
+          <tr><td>3</td><td>C.MODE (BITS, REDUX, BOTH), XOVER, N.TYPE (WHITE, PINK, DUST), W.MODE</td></tr>
+        </table></div>
+        <h3>SPACE</h3>
+        <p>A shared bus with a tempo-synced delay and a reverb. Each track feeds it with SEND on MIX.</p>
+        <div class="tbl"><table>
+          <tr><th>View</th><th>Knobs</th></tr>
+          <tr><td>1</td><td>DELAY, TIME, FDBK, TONE</td></tr>
+          <tr><td>2</td><td>REVERB, SIZE, DAMP, LONG</td></tr>
+        </table></div>
+        <p>REC freezes SPACE; holding REC clears it.</p>
+        <h3>MIX (EDIT, twice)</h3>
+        <p>Every track's LEVEL, PAN, SEND, FILTER and MUTE, then MAIN, master COMP and the input MONITR.</p>
+      </section>
+
+      <section id="dissect">
+        <p class="eyebrow">10</p>
+        <h2>DISSECT (GLO, twice)</h2>
+        <p>One listener for the whole instrument. It hears its SOURCE and finds:</p>
+        <ul>
+          <li>hits (set by SENS and FOCUS);</li>
+          <li>three bands;</li>
+          <li>the pitch, with its first eight partials.</li>
+        </ul>
+        <p>Its hits can throw CAROM balls, clock the steps, burst SHARDS (TRIG HIT) and ping RESON (TRIG HITS). FOLLOW modulators can follow its bands, hits, pitch or brightness. The second view sets the track's shards as the hits drive them. REC on DISSECT opens SHARDS with TRIG HIT.</p>
+      </section>
+
+      <section id="mods">
+        <p class="eyebrow">11</p>
+        <h2>Modulation (LFO)</h2>
+        <p>Each track has four modulator slots. PRESETS changes a slot's type:</p>
+        <div class="tbl"><table>
+          <tr><th>Type</th><th>Parameters</th></tr>
+          <tr><td>WAVE</td><td>RATE, AMOUNT, PHASE, OFFSET, SKEW, FOLD, CURVE, SHAPE and SYNC (free, straight, triplet, dotted)</td></tr>
+          <tr><td>RANDOM</td><td>RATE, AMOUNT, PHASE, OFFSET, LENGTH, VARIAT, SMOOTH and SYNC</td></tr>
+          <tr><td>FOLLOW</td><td>An envelope follower of this track, its source, any track, the main mix or the live input</td></tr>
+          <tr><td>ADSR</td><td>An envelope from notes or REC</td></tr>
+        </table></div>
+        <p><b>LFO</b> opens the <b>MATRIX</b>, a list of every route:</p>
+        <ul>
+          <li>PRESETS picks a row.</li>
+          <li>The knobs set SOURCE (any of the sixteen modulators), DEVICE, PARAM and AMOUNT.</li>
+          <li>REC switches the row between bipolar and unipolar.</li>
+          <li>On the last row, NEW, turning any knob makes a route.</li>
+        </ul>
+        <p>Press LFO again for each modulator's own pages.</p>
+        <p><b>The fast way:</b> hold LFO and turn any knob on any page. The track's modulator then moves that parameter, and the direction you turn sets the amount.</p>
+      </section>
+
+      <section id="perform">
+        <p class="eyebrow">12</p>
+        <h2>Perform, temp and scenes (ARP)</h2>
+        <ul>
+          <li><b>Macros</b>: eight per project, each moving up to eight parameters on any track. Hold ARP and turn a knob to map the selected macro (hold ARP and turn PRESETS to choose it).</li>
+          <li><b>Scenes</b>: eight per project, each a snapshot of every track's sound and the macros. ARP + a pad recalls a scene, and ARP + SAVE + a pad stores one. MORPH glides toward the TARGET scene. MIDI program change recalls them too.</li>
+          <li><b>TEMP</b>: hold OCT− and OCT+ together, tweak anything, and it all snaps back when you let go.</li>
+          <li><b>Two hands</b>: hold OCT− and turn a knob to move both tracks of the pair; hold OCT+ to move them apart.</li>
+        </ul>
+      </section>
+
+      <section id="seq">
+        <p class="eyebrow">13</p>
+        <h2>Sequencer (SEQ)</h2>
+        <p>One pattern per track. PRESETS switches between STEPS and CAROM.</p>
+        <h3>STEPS</h3>
+        <ul>
+          <li>16 to 64 steps. Each holds:
+            <ul>
+              <li>a <b>SLICE</b>: the playhead jumps to that sixteenth of the window, or OFF to play on;</li>
+              <li>a <b>PITCH</b>;</li>
+              <li>a <b>LEN</b>, in eighths of a step;</li>
+              <li>a <b>PROB</b>;</li>
+              <li>a velocity and a parameter lock.</li>
+            </ul></li>
+          <li>PRESETS picks the step and the pads switch steps on and off.</li>
+          <li>REC records live, quantised to the step.</li>
+        </ul>
+        <h3>CAROM</h3>
+        <p>Notes bounce around a box and play when they hit a wall. The knobs are:</p>
+        <ul>
+          <li>SPEED, GRAVTY, LOSS, SPREAD;</li>
+          <li>QUANT (snap the hits to the grid);</li>
+          <li>the number of balls and WALLS;</li>
+          <li>JITTER and GATE.</li>
+        </ul>
+        <p>Play notes to throw balls.</p>
+        <p>Tempo is internal (30–300 BPM, with swing) or MIDI clock.</p>
+      </section>
+
+      <section id="save">
+        <p class="eyebrow">14</p>
+        <h2>Projects and sounds (SAVE)</h2>
+        <ul>
+          <li><b>PROJECT</b>: eight slots, each holding every track's sound, the sequences, scenes and macros.
+            <ul>
+              <li>PRESETS picks a slot.</li>
+              <li>REC loads it, or saves into an empty slot.</li>
+              <li>SAVE + PLAY saves over.</li>
+              <li>Saving happens only while stopped, with a moment of silence.</li>
+            </ul></li>
+          <li><b>SOUNDS</b> (SAVE, twice): sixteen slots that belong to the FM-1, not to a project. A sound is one track's SOURCE, PUTTY and COLOR settings and its modulators. REC loads one onto the selected track.</li>
+        </ul>
+        <p>Captures themselves aren't saved in projects: KEEP them on the reel.</p>
+      </section>
+
+      <section id="midi">
+        <p class="eyebrow">15</p>
+        <h2>MIDI</h2>
+        <p>MIDI arrives over the MIDI jack, USB and Bluetooth MIDI alike.</p>
+        <ul>
+          <li><b>Notes</b>: channels 1–4 play tracks A–D.</li>
+          <li><b>Clock</b>: CLOCK AUTO follows MIDI clock when it arrives, MIDI always does, and INT never does. Start, continue and stop run the transport.</li>
+          <li><b>MIDI learn</b>: hold SAVE, turn a knob, then move a controller. Mappings belong to the FM-1 and pick up: the parameter doesn't move until the controller passes its value.</li>
+          <li><b>KNOB CC</b>: CC 110–113 turn knobs 1–4 of the page on screen (switch it off in SETTINGS → PANEL).</li>
+          <li><b>Fixed CCs</b> on a track's channel:
+            <ul>
+              <li>7 level, 10 pan, 11 send, 12 filter;</li>
+              <li>14–19 the hands;</li>
+              <li>20–28 SHARDS;</li>
+              <li>70–76 SPECTRA;</li>
+              <li>80–87 COLOR;</li>
+              <li>102–105 the modulators' amounts.</li>
+            </ul></li>
+          <li><b>Channel 16</b>: main, master compressor, SPACE, morph, the macros and swing.</li>
+          <li><b>Program change</b> recalls scenes.</li>
+        </ul>
+      </section>
+
+      <section id="settings">
+        <p class="eyebrow">16</p>
+        <h2>Settings (GLO, three times)</h2>
+        <div class="tbl"><table>
+          <tr><th>View</th><th></th></tr>
+          <tr><td>BLUETOOTH</td><td>BT AUD and BT MIDI on or off, ROLE (central or peripheral), UNPAIR. PRESETS picks a device, and REC scans and connects.</td></tr>
+          <tr><td>AUDIO IN</td><td>Inputs, meters, and the track's INPUT, GAIN and monitor (see <a href="#audio">Getting audio in</a>).</td></tr>
+          <tr><td>CLOCK</td><td>Whether MIDI clock is arriving and which clock is followed.</td></tr>
+          <tr><td>PANEL</td><td>BACKLIT, KNOB CC, METRO (a click on each beat), REEL (room left; REC erases it). It also shows the version, the CPU load per track and the guard's state.</td></tr>
+          <tr><td>MIDI LEARN</td><td>The learned mappings. REC clears one.</td></tr>
+        </table></div>
+      </section>
+
+      <section id="trouble">
+        <p class="eyebrow">17</p>
+        <h2>Trouble</h2>
+        <h3>Clicks and glitches</h3>
+        <p>Clicks and glitches, even at zero volume, mean the FM-1 is out of CPU. A guard eases things in two steps when rendering takes over 90 % of the time: the reverb rests, then shards and RESON thin out. If that isn't enough, it rests the sound for about a second. GLO → SETTINGS → PANEL shows the load per track. Turn RESON off (SETUP → TRACK 0) or use fewer SPECTRA tracks.</p>
+        <h3>Safe mode</h3>
+        <p>"SAFE MODE" on the screen means the last two starts never ran cleanly. A start counts as good after about eight seconds, stopped. Safe mode starts with the sound off but still accepts updates, so you can reinstall. Switching off and on tries Viscera again. Hold <kbd>OCT−</kbd> + <kbd>OCT+</kbd> while switching on to enter safe mode yourself.</p>
+        <h3>A dark FM-1 after an install</h3>
+        <p>If the FM-1 stays dark (no screen, no lights), <a href="https://de-pattern.github.io/Ravel_FM1/install/">Ravel's install page</a> → <b>Back to the stock firmware</b> with a V15 file puts M-VAVE's firmware back.</p>
+        <h3>Silent captures</h3>
+        <p>Check GLO → SETTINGS → AUDIO IN. The meter should move, the track's INPUT should be right, and SOURCE should be CAPTURE.</p>
+        <h3>Trying it without an FM-1</h3>
+        <p>The <a href="emulator/">browser emulator</a> runs the same code, with an audio file, your computer's sound or a microphone as the input.</p>
+      </section>
+    </main>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>Viscera · GPL-3.0 with the FM1 SDK linking exception</span>
+    <span>Built on M-VAVE's FM1 Open SDK · updater © M-VAVE</span>
+  </div>
+</footer>
+</body>
+</html>

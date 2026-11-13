@@ -740,9 +740,10 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
                               else { page = PG_SOURCE; row = 0; hint_until = now_ms + 2500; } }
     if ((up & B(BTN_HOME)) && !(prev_buttons & B(31))) open_page(PG_HANDS);
     if ((up & B(BTN_LFO)) && !(prev_buttons & B(31))) {
-        /* LFO: the matrix first, then one press per modulator, then the matrix again */
-        if (page != PG_MODS) { page = PG_MODS; row = MATRIX_VIEW; }
-        else { row = row == MATRIX_VIEW ? 1 : (VMOD(row) + 1) * 3 + 1; if (row >= MOD_VIEWS) row = MATRIX_VIEW; }
+        /* LFO: the first modulator (RATE, SHAPE...), one press per modulator, then the
+         * matrix of every route, then the first again */
+        if (page != PG_MODS) { page = PG_MODS; row = 1; }
+        else { row = row == MATRIX_VIEW ? 1 : (VMOD(row) + 1) * 3 + 1; if (row >= MOD_VIEWS) { row = MATRIX_VIEW; mod_sel = 0; } }
     }
     if ((up & B(BTN_ARP)) && !(prev_buttons & B(31))) open_page(PG_SCENE);
     /* GLO: the global things, SPACE (the shared bus), DISSECT (the listener), then

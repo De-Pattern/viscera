@@ -248,16 +248,16 @@ for (const t of [0, 1, 2, 3]) {
   for (let k = 0; k < 4; k++) x.set_param(t, P.P_MUTE, 0);
 }
 press(B.EDIT); for (let i = 0; i < 3; i++) { enc(6, 1); paintCheck('source ' + i); } enc(6, -5);
-press(B.LFO); press(B.LFO); for (let i = 0; i < 4; i++) { enc(6, 1); paintCheck('mod type ' + i); }
+press(B.LFO); for (let i = 0; i < 4; i++) { enc(6, 1); paintCheck('mod type ' + i); }
 
-// 14. the matrix: LFO opens it first; it lists every route on every track, then NEW
+// 14. the matrix: after the four modulators; it lists every route on every track, then NEW
 { const NP = x.np(), ROUTES = 32 + 4 * NP + x.ng() + 4;
   const routes = () => { const b = new Uint8Array(mem(), x.project() + ROUTES, 4 * 16 * 4), out = [];
     for (let t = 0; t < 4; t++) for (let r2 = 0; r2 < 16; r2++) { const o = (t * 16 + r2) * 4; if (b[o + 1] !== 255) out.push({t, src: b[o], param: b[o + 1], depth: (b[o + 2] << 24) >> 24, flags: b[o + 3]}); }
     return out; };
   for (let t = 0; t < 4; t++) for (let r2 = 0; r2 < 16; r2++) x.set_route(t, r2, 0, 255, 0, 0);
   track(0); x.set_param(0, P.P_ENGINE, ENG.HANDS);
-  home(); press(B.LFO); paintCheck('matrix, empty');
+  home(); for (let i = 0; i < 5; i++) press(B.LFO); paintCheck('matrix, empty');
   enc(6, -40);                                  // PRESETS: the NEW row
   enc(2, 1);                                    // a knob on NEW makes a route
   let rs = routes();

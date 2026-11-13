@@ -108,7 +108,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
   </header>
 
   <div class="top">
-    <p class="eyebrow">Manual · Viscera 1.1.2</p>
+    <p class="eyebrow">Manual · Viscera 1.1.3</p>
     <h1>Guide</h1>
     <p>Viscera turns the M-VAVE FM-1 into a live-capture instrument. You catch sound coming in over Bluetooth or USB, then stretch it, freeze it, shatter it, vocode it and ring it through resonators. This page covers installing it safely, getting sound in, how the sound flows, and what every page and control does.</p>
   </div>
@@ -234,7 +234,7 @@ the reel, samples ┘   capture    HANDS      one track         noise          �
           <tr><td>EDIT</td><td>SOURCE, then MIX.</td></tr>
           <tr><td>ENV</td><td>COLOR, press again for RESON.</td></tr>
           <tr><td>GLO</td><td>SPACE, then DISSECT, then SETTINGS.</td></tr>
-          <tr><td>LFO</td><td>The modulation MATRIX, then the four modulators. Hold LFO and turn a knob to map a modulator to it.</td></tr>
+          <tr><td>LFO</td><td>The first modulator, then the next one each press, then the MATRIX of every route. Hold LFO and turn a knob to map a modulator to it.</td></tr>
           <tr><td>ARP</td><td>PERFORM: macros and scenes. Hold ARP and turn a knob to map a macro; ARP + a pad recalls a scene.</td></tr>
           <tr><td>SEQ</td><td>The sequencer: STEPS or CAROM (PRESETS switches).</td></tr>
           <tr><td>SAVE</td><td>PROJECT, then SOUNDS. Hold SAVE and turn a knob for MIDI learn. SAVE + REC on a putty page keeps the capture on the reel.</td></tr>
@@ -427,14 +427,13 @@ the reel, samples ┘   capture    HANDS      one track         noise          �
           <tr><td>FOLLOW</td><td>An envelope follower of this track, its source, any track, the main mix or the live input</td></tr>
           <tr><td>ADSR</td><td>An envelope from notes or REC</td></tr>
         </table></div>
-        <p><b>LFO</b> opens the <b>MATRIX</b>, a list of every route:</p>
+        <p><b>LFO</b> opens the first modulator: RATE, AMOUNT, PHASE and OFFSET, then SELECT for SKEW, FOLD, CURVE and SHAPE, then SYNC. Each LFO press goes to the next modulator. After the fourth comes the <b>MATRIX</b>, a list of every route:</p>
         <ul>
           <li>PRESETS picks a row.</li>
           <li>The knobs set SOURCE (any of the sixteen modulators), DEVICE, PARAM and AMOUNT.</li>
           <li>REC switches the row between bipolar and unipolar.</li>
           <li>On the last row, NEW, turning any knob makes a route.</li>
         </ul>
-        <p>Press LFO again for each modulator's own pages.</p>
         <p><b>The fast way:</b> hold LFO and turn any knob on any page. The track's modulator then moves that parameter, and the direction you turn sets the amount.</p>
       </section>
 
@@ -536,7 +535,7 @@ the reel, samples ┘   capture    HANDS      one track         noise          �
         <h3>Clicks and glitches</h3>
         <p>Clicks and glitches, even at zero volume, mean the FM-1 is out of CPU. A guard eases things in two steps when rendering takes over 90 % of the time: the reverb rests, then shards and RESON thin out. If that isn't enough, it rests the sound for about a second. GLO → SETTINGS → PANEL shows the load per track. Turn RESON off (SETUP → TRACK 0) or use fewer SPECTRA tracks.</p>
         <h3>Safe mode</h3>
-        <p>"SAFE MODE" on the screen means the last two starts never ran cleanly. A start counts as good after about eight seconds stopped, or twenty seconds playing. Installing a new version starts the count afresh (from 1.1.2). Safe mode starts with the sound off but still accepts updates, so you can reinstall. Switching off and on tries Viscera again. Hold <kbd>OCT−</kbd> + <kbd>OCT+</kbd> while switching on to enter safe mode yourself.</p>
+        <p>"SAFE MODE" on the screen means the last three starts never ran for four seconds. <b>Press PLAY</b> to start Viscera anyway. Leaving it on for four seconds also clears the count, so the next power-on starts normally. Installing a new version starts the count afresh. In safe mode the sound is off and the install page still connects, so you can always reinstall. Hold <kbd>OCT−</kbd> + <kbd>OCT+</kbd> while switching on to enter safe mode yourself.</p>
         <h3>A dark FM-1 after an install</h3>
         <p>If the FM-1 stays dark (no screen, no lights), <a href="https://de-pattern.github.io/Ravel_FM1/install/">Ravel's install page</a> → <b>Back to the stock firmware</b> with a V15 file puts M-VAVE's firmware back.</p>
         <h3>Silent captures</h3>

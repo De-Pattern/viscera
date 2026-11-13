@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.3 — out of safe mode with PLAY; LFO opens the LFO
+
+- **Safe mode can be left:** press **PLAY** in safe mode to start Viscera anyway. Safe mode now takes three starts that never ran well (from two), and a start counts as good after 4 s (from 8 s stopped). A safe-mode start still clears the count after 4 s, so the next power-on starts Viscera.
+- **LFO opens the first modulator** (RATE, AMOUNT, PHASE, OFFSET; SELECT for SKEW, FOLD, CURVE, SHAPE, then SYNC). Each press goes to the next modulator, then to the MATRIX of every route, then back to the first. It opened on the matrix before, so a modulator's own controls were a press away.
+- **Changed:** shorter screen messages (flash).
+
 ## 1.1.2 — safe mode only when starts really fail
 
 - **Fixed:** safe mode ("LAST STARTS FAILED") came up after installing. The start guard counted every start that never sat stopped for 8 s, and kept counting across installs, so starts that were played from the beginning, or that the 1.1.0 overload cut short, put the next version into safe mode. Now each version starts the count afresh, and a start counts as good after 8 s stopped or 20 s playing. Marking it good writes one byte of flash, without an erase.

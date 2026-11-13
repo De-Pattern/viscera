@@ -17,8 +17,8 @@ static uint8_t safe_mode;   /* OCT- and OCT+ held at power-on, or two failed sta
 static uint8_t boot_pending;            /* this start hasn't yet been marked good */
 static uint8_t started;                 /* the first control pass has run start() */
 static uint32_t boot_at;
-#define BOOT_FAILED_STARTS 2u           /* starts that never ran well before safe mode takes over */
-#define BOOT_GOOD_MS 8000u              /* running this long counts as a good start */
+#define BOOT_FAILED_STARTS 3u           /* starts that never ran well before safe mode takes over */
+#define BOOT_GOOD_MS 4000u              /* running this long counts as a good start */
 static uint32_t frame_at;
 
 static uint32_t hash(const uint16_t *p, unsigned n)
@@ -92,7 +92,7 @@ static void host(unsigned req, unsigned arg)
         r = vsc_fm1_reel_keep(arg, confirmed);
         if (r == -5) { asked_at = now; vsc_ui_notice("AGAIN: A NEW REEL ERASES STOCK PROJECTS", 5000); break; }
         asked_at = 0;
-        vsc_ui_notice(r == 0 ? "KEPT ON THE REEL" : r == -2 ? "KEEP: LET THE CAPTURE PLAY FIRST" : r == -6 ? "REEL FULL" : "KEEP FAILED", 1300);
+        vsc_ui_notice(r == 0 ? "KEPT ON THE REEL" : r == -2 ? "KEEP: PLAY IT FIRST" : r == -6 ? "REEL FULL" : "KEEP FAILED", 1300);
         vsc_host.reel_free = (uint8_t)vsc_fm1_reel_free();
         break;
     }
@@ -135,19 +135,22 @@ void groove_screen_init(void)
 
 /* First control pass: the FM-1's settings, the start guard, then the engine (or safe
  * mode, after two starts that never ran well). */
+static void run_engine(void);
 static void start(void)
 {
     started = 1;
-    if (safe_mode) vsc_ui_notice("SAFE MODE: REINSTALL", 0x7fffffffu);
     vsc_fm1_device_load();                       /* the settings first: the guard may rewrite their sector */
     int tries = vsc_fm1_boot_begin();
     boot_pending = tries >= 0;
-    if (safe_mode) return;
-    if (tries >= (int)BOOT_FAILED_STARTS) {
-        safe_mode = 1;
-        vsc_ui_notice("SAFE MODE: STARTS FAILED", 0x7fffffffu);
-        return;
-    }
+    if (tries >= (int)BOOT_FAILED_STARTS) safe_mode = 1;
+    if (safe_mode) { vsc_ui_notice("SAFE MODE  PLAY: START", 0x7fffffffu); return; }
+    run_engine();
+}
+/* the engine and the rest; from safe mode too, when PLAY is pressed */
+static void run_engine(void)
+{
+    safe_mode = 0;
+    vsc_ui_notice("", 0);
     vsc_fm1_start();
     vsc_ui_init();
     configure_bt(FM1_BT_AUDIO | FM1_BT_MIDI);
@@ -155,12 +158,11 @@ static void start(void)
     vsc_host.reel_free = (uint8_t)vsc_fm1_reel_free();
 }
 
-/* A start that has run for a while is a good one: mark it (one byte of flash). In
- * safe mode too, so the next power-on tries Viscera again. Once, after 8 s stopped, or
- * after 20 s even while playing (playing from the start shouldn't count as failing). */
+/* A start that has run for 4 s is a good one: mark it (one byte of flash, no erase).
+ * In safe mode too, so the next power-on tries Viscera again. */
 static void boot_check(uint32_t now)
 {
-    if (!boot_pending || now - boot_at < BOOT_GOOD_MS || (!safe_mode && vsc_meter.playing && now - boot_at < 20000u)) return;
+    if (!boot_pending || now - boot_at < BOOT_GOOD_MS) return;
     boot_pending = 0;
     (void)vsc_fm1_boot_good();
 }
@@ -197,7 +199,7 @@ static void device_settings(uint32_t now)
     if (g != dev_seen_gen) { dev_seen_gen = g; dev_changed_at = now; }
     if (g == dev_saved_gen || vsc_meter.playing || now - dev_changed_at < 1000u) return;
     dev_saved_gen = g;
-    if (vsc_fm1_device_save() != 0) vsc_ui_notice("SETTINGS NOT SAVED", 1200);
+    if (vsc_fm1_device_save() != 0) vsc_ui_notice("NOT SAVED", 1200);
 }
 
 void groove_screen_control(void)
@@ -211,8 +213,9 @@ void groove_screen_control(void)
         start();
     }
     if (safe_mode) {
-        /* only the screen: the engine never starts, so nothing can stall */
+        /* only the screen: the engine hasn't started, so nothing can stall. PLAY starts it. */
         boot_check(now);
+        if (c.buttons & (1u << BTN_PLAY)) { run_engine(); return; }
         if (fm1_screen_pending() != 0) return;
         if (next_band == 0) { if (now - frame_at < 250u) return; frame_at = now; }
         vsc_ui_paint_band(next_band * VSC_BAND, pixels);
@@ -236,9 +239,9 @@ void groove_screen_control(void)
         { unsigned pk = 0, cpu = vsc_fm1_cpu(&pk); vsc_host.cpu = (uint8_t)(cpu > 254u ? 254u : cpu); vsc_host.cpu_peak = (uint8_t)(pk > 255u ? 255u : pk); }
         vsc_fm1_parts(vsc_host.part);
         { static uint8_t shown; uint8_t r = vsc_relief; vsc_host.relief = r;
-          if (r > shown) vsc_ui_notice(r >= 2 ? "CPU HIGH: FEWER SHARDS, NO CROSS" : "CPU HIGH: REVERB RESTS", 1500);
+          if (r > shown) vsc_ui_notice("CPU HIGH: EASED", 1500);
           shown = r; }
-        if (vsc_fm1_overload) vsc_ui_notice("CPU OVERLOAD: SOUND PAUSED", 1200);
+        if (vsc_fm1_overload) vsc_ui_notice("CPU OVERLOAD: PAUSED", 1200);
     }
     if (now - slots_at >= 3000u) { slots_at = now; refresh_slots(); }
 

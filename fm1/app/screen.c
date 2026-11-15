@@ -90,7 +90,7 @@ static void host(unsigned req, unsigned arg)
         uint32_t now = fm1_millis();
         int confirmed = asked_at && now - asked_at < 5000u;
         r = vsc_fm1_reel_keep(arg, confirmed);
-        if (r == -5) { asked_at = now; vsc_ui_notice("AGAIN: A NEW REEL ERASES STOCK PROJECTS", 5000); break; }
+        if (r == -5) { asked_at = now; vsc_ui_notice("AGAIN: ERASES STOCK PROJECTS", 5000); break; }
         asked_at = 0;
         vsc_ui_notice(r == 0 ? "KEPT ON THE REEL" : r == -2 ? "KEEP: PLAY IT FIRST" : r == -6 ? "REEL FULL" : "KEEP FAILED", 1300);
         vsc_host.reel_free = (uint8_t)vsc_fm1_reel_free();
@@ -245,10 +245,11 @@ void groove_screen_control(void)
     }
     if (now - slots_at >= 3000u) { slots_at = now; refresh_slots(); }
 
-    /* screen: one band per call while the DMA is free; a new frame every ~33 ms */
+    /* screen: one band per call while the DMA is free; a new frame every ~33 ms, every
+     * ~100 ms while the guard eases or the audio takes over 60% (it shares the core) */
     if (fm1_screen_pending() != 0) return;
     if (next_band == 0) {
-        if (now - frame_at < 33u) return;
+        if (now - frame_at < (vsc_relief || vsc_host.cpu > 60u ? 100u : 33u)) return;
         frame_at = now;
         vsc_ui_frame(now);
     }

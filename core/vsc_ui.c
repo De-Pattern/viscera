@@ -671,7 +671,7 @@ void vsc_ui_init(void)
  * Like projects, only while stopped (a flash write stalls the sound). */
 static unsigned store_sound(void)
 {
-    if (vsc_meter.playing) { vsc_ui_notice("STOP PLAYBACK TO SAVE", 1200); return HOST_NONE; }
+    if (vsc_meter.playing) { vsc_ui_notice("STOP TO SAVE", 1200); return HOST_NONE; }
     vsc_sound_store(sound_slot, track);
     vsc_ui_notice("SOUND SAVED", 900);
     return HOST_DEVICE_SAVE;
@@ -798,7 +798,7 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
         else if (was == RM_PENDING) {
             if (page == PG_SEQ) {
                 live_rec ^= 1;
-                if (vsc.t[track][P_SEQM] == SEQ_CAROM) vsc_ui_notice(live_rec ? "PLAY NOTES TO ADD BALLS" : "BALL RECORD OFF", 1200);
+                if (vsc.t[track][P_SEQM] == SEQ_CAROM) vsc_ui_notice(live_rec ? "PLAY NOTES" : "BALL RECORD OFF", 1200);
                 else vsc_ui_notice(live_rec ? "STEP RECORD ON" : "STEP RECORD OFF", 900);
             }
             else if (page == PG_PROJECT) { *arg = proj_slot; req = vsc_host.slot_used[proj_slot] ? HOST_LOAD : HOST_SAVE; }
@@ -814,12 +814,12 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
             else if (page == PG_SETTINGS && row == SET_LEARN) { vsc_dev.learn[learn_sel % VSC_LEARN].param = 255; ++vsc_dev_changed; vsc_ui_notice("MAPPING CLEARED", 800); }
             else if (page == PG_MODS && row == MATRIX_VIEW) {
                 unsigned tt; struct vsc_route *ro = matrix_at(route_sel, &tt);
-                if (ro) { ro->flags ^= 1; vsc_ui_notice(ro->flags & 1 ? "BIPOLAR: SWINGS BOTH WAYS" : "UNIPOLAR: ONE WAY", 900); }
+                if (ro) { ro->flags ^= 1; vsc_ui_notice(ro->flags & 1 ? "BIPOLAR" : "UNIPOLAR", 900); }
             }
             else if (page == PG_SPACE) { vsc_event(EV_ACTION, 0, ACT_SPACE_FREEZE, 0); vsc_ui_notice(vsc_meter.space_frozen ? "SPACE FLOWING" : "SPACE FROZEN", 900); }
             else if (page == PG_MIX || page == PG_COLOR) vsc_event(EV_REC, track, REC_TAP, 0);
             else if (page == PG_RESON) { reson_here(); vsc_event(EV_ACTION, track, ACT_RESON_PING, 0); }
-            else if (page == PG_DISSECT) { open_page(PG_SHARDS); vsc.t[track][P_TRIG] = TRIG_HIT; vsc_ui_notice("SHARDS ON THE HITS", 1000); }
+            else if (page == PG_DISSECT) { open_page(PG_SHARDS); vsc.t[track][P_TRIG] = TRIG_HIT; vsc_ui_notice("SHARDS ON HITS", 1000); }
         }
     }
     if (page == PG_PROJECT && save_held && (down & B(BTN_PLAY))) { *arg = proj_slot; req = HOST_SAVE; used = B(31); }
@@ -1127,19 +1127,19 @@ static const char *page_hint(void)
 {
     switch (page) {
     case PG_HANDS: case PG_SHARDS: case PG_SPECTRA:
-        return vsc_meter.src_len[track] ? "HOLD REC: DUB  REC+KNOB: ROBOT" : "REC: CAPTURE, REC AGAIN: END";
-    case PG_SOURCE: return "PRESETS: SOURCE  SAVE+REC: KEEP";
-    case PG_MIX: return "SELECT: PAGE  REC: CAPTURE";
+        return vsc_meter.src_len[track] ? "HOLD REC: DUB, +KNOB: ROBOT" : "REC: CAPTURE, AGAIN: END";
+    case PG_SOURCE: return "SAVE+REC: KEEP";
+    case PG_MIX: return "REC: CAPTURE";
     case PG_SPACE: return "REC: FREEZE  HOLD REC: CLEAR";
     case PG_DISSECT: return "REC: SHARDS ON HITS";
-    case PG_RESON: return row == RV_BAND ? "PADS 1-8: BAND  REC: PING" : "REC: PING  ENV: COLOR";
+    case PG_RESON: return row == RV_BAND ? "PADS: BAND  REC: PING" : "REC: PING  ENV: COLOR";
     case PG_MODS: return row == MATRIX_VIEW ? "REC: BI/UNI  LFO: MODS"
                        : (vsc.t[track][P_MOD(VMOD(row), 0)] & 3) == MT_ADSR ? "PRESETS: TYPE  REC: TRIG"
                        : "PRESETS: TYPE  LFO+KNOB: MAP";
-    case PG_SCENE: return "ARP+PAD: SCENE  ARP+KNOB: MAP MACRO";
+    case PG_SCENE: return "ARP+PAD: SCENE  ARP+KNOB: MAP";
     case PG_SEQ: return vsc.t[track][P_SEQM] == SEQ_CAROM ? "REC: ADD  HOLD: CLEAR" : "PADS: ON/OFF  OCT: PAGE";
     case PG_PROJECT: case PG_SOUND: return "REC: LOAD  SAVE+PLAY: SAVE";
-    case PG_SETTINGS: return row == 0 ? "REC: SCAN/CONNECT" : row == SET_LEARN ? "SAVE+KNOB: LEARN  REC: CLEAR"
+    case PG_SETTINGS: return row == 0 ? "REC: SCAN/CONNECT" : row == SET_LEARN ? "SAVE+KNOB: LEARN"
                            : row == SET_INPUT ? "REC: OPEN SOURCE" : row == SET_PANEL ? "KEPT THROUGH POWER-OFF" : "SELECT: PAGE";
     default: return "ALGORITHM: TRACK";
     }
@@ -1255,7 +1255,7 @@ static void wave_row(unsigned t, int x0, int mid, int amp, int sel)
     }
     if (!len) {
         unsigned src = vsc.t[t][P_SRC];
-        const char *m = src == SRC_REEL ? (vsc_reel_index() ? "EMPTY SLOT" : "NO REEL: SAVE+REC KEEPS") : cap == 1 ? "LISTENING" : sel ? "EMPTY: TAP REC" : "EMPTY";
+        const char *m = src == SRC_REEL ? (vsc_reel_index() ? "EMPTY SLOT" : "NO REEL YET") : cap == 1 ? "LISTENING" : sel ? "EMPTY: TAP REC" : "EMPTY";
         text(x0 + w / 2 - text_w(m, 1) / 2, mid - 3, m, cap == 1 ? C_RED : C_DIM, 1);
     }
 }

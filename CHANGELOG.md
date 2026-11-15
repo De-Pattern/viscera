@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.2.0 — lighter on the CPU
+
+The FM-1 has proved slower than the emulator these figures come from, so this version takes work out where it is hardly heard. In fm1-emu at the FM-1's timing:
+
+| | 1.1.3 | 1.2.0 |
+| --- | --- | --- |
+| RESON as it starts (LIQ MEM) | 16 % | 11 % |
+| RESON, DUST profile | 17 % | 12 % |
+| RESON at its heaviest | 21 % | 15 % |
+| Two SPECTRA tracks | 48 % | 35 % |
+| SPACE | 7 % | 5 % |
+
+- **RESON runs its bank, detector and dust at 22 kHz**, on each pair of samples, and interpolates its output back. The bands reach 9.9 kHz, above the top band's 4800 Hz even shifted an octave up (+FREQ +SHIFT at the top are capped there). Pings, dust and droplets sound as before; levels match within about 2 dB.
+- **SPECTRA leaves out the bins above its source's Nyquist** (11 kHz at MID, 5.5 kHz at LO, moved by the pitch): there is nothing there to process. HI captures are processed in full.
+- **The reverb runs at 22 kHz** with its delays halved, so it has the same times and a top end that stops at 11 kHz. It frees 3.1 KB of RAM.
+- **The CPU guard steps in at 75 %** of a block, from 90 %, and steps back below 50 %.
+- **The screen draws ~10 frames a second, from ~30, while the guard eases or the audio takes over 60 %**: it shares the core with the audio, and the knobs stay quick.
+- **Changed:** 1.0's projects (format 6) load in the emulator only now, for flash; shorter hints.
+
 ## 1.1.3 — out of safe mode with PLAY; LFO opens the LFO
 
 - **Safe mode can be left:** press **PLAY** in safe mode to start Viscera anyway. Safe mode now takes three starts that never ran well (from two), and a start counts as good after 4 s (from 8 s stopped). A safe-mode start still clears the count after 4 s, so the next power-on starts Viscera.

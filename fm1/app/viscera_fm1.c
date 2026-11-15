@@ -92,17 +92,18 @@ FM1_AUDIO_CODE int vsc_fm1_render(int32_t *out)
     uint32_t used = ticks_between(t0, FM1_AUDIO_TIMER_COUNT);
     render_ticks = used;
     if (used > render_peak_ticks) render_peak_ticks = used;
-    /* CPU guard, in steps as Ravel's: above 90% of a block two blocks running, ease
+    /* CPU guard, in steps as Ravel's: above 75% of a block two blocks running, ease
+     * (early: the FM-1 has proved slower than the emulator these shares come from)
      * (relief 1: SPACE's reverb rests; 2: also RESON's analysis bank and half of the new
      * grains). Still over at relief 2 for three such pairs: rest for about a second
      * (the audio interrupt must never starve the USB and control tasks, which carry
-     * the update protocol). Below 60% for about 3 s: one step back. (No division
+     * the update protocol). Below 50% for about 3 s: one step back. (No division
      * here: the compiler's divide helpers live in flash; 32-bit: a block is far
      * below 2^28 ticks.) */
 #ifdef VSC_BENCH
     if (0) {
 #else
-    if (block_period && used < 0x10000000u && used * 10u > block_period * 9u) {
+    if (block_period && used < 0x10000000u && used * 4u > block_period * 3u) {
 #endif
         calm_blocks = 0;
         if (++over_count >= 2) {
@@ -112,7 +113,7 @@ FM1_AUDIO_CODE int vsc_fm1_render(int32_t *out)
         }
     } else {
         over_count = 0;
-        if (block_period && used * 10u < block_period * 6u) {
+        if (block_period && used * 2u < block_period) {
             hard_count = 0;
             if (vsc_relief && ++calm_blocks >= 1000u) { calm_blocks = 0; vsc_relief = (uint8_t)(vsc_relief - 1); }
         } else calm_blocks = 0;
@@ -216,7 +217,7 @@ CTRL int vsc_fm1_slot_info(unsigned slot, char name[12])
     uint32_t head[4];
     if (fm1_flash_read(slot_offset(slot), head, sizeof head)) return 0;
     /* this format only: 0.x projects were made for the old engine */
-    if (head[0] != VSC_MAGIC || !((head[1] == VSC_FORMAT && head[2] == sizeof(struct vsc_project)) || (head[1] == 6u && head[2] == VSC_PROJECT6_BYTES))) return 0;
+    if (head[0] != VSC_MAGIC || head[1] != VSC_FORMAT || head[2] != sizeof(struct vsc_project)) return 0;
     if (fm1_flash_read(slot_offset(slot) + 16u, name, 12)) return 0;
     return 1;
 }
@@ -243,8 +244,8 @@ CTRL int vsc_fm1_load(unsigned slot)
     if (slot >= VSC_PROJECTS) return -1;
     uint32_t base = slot_offset(slot), head[4];
     if (fm1_flash_read(base, head, sizeof head)) return -3;
-    int old = head[1] == 6u && head[2] == VSC_PROJECT6_BYTES;   /* 1.0's: RESON comes in at its defaults */
-    if (head[0] != VSC_MAGIC || !(old || (head[1] == VSC_FORMAT && head[2] == sizeof(struct vsc_project)))) return -4;
+    /* (1.0's projects, format 6, load in the emulator only: flash for the FM-1's CPU guards) */
+    if (head[0] != VSC_MAGIC || head[1] != VSC_FORMAT || head[2] != sizeof(struct vsc_project)) return -4;
     uint8_t buf[256];
     uint32_t c = 0xffffffffu, at = offsetof(struct vsc_project, name), end = head[2];
     while (at < end) {
@@ -260,7 +261,6 @@ CTRL int vsc_fm1_load(unsigned slot)
     vsc_event(EV_STOP, 0, 0, 0);
     vsc_event(EV_PANIC, 0, 0, 0);
     if (fm1_flash_read(base, &vsc, end)) return -3;
-    if (old) (void)vsc_project_upgrade6(&vsc);
     vsc_learn_release();
     return 0;
 }

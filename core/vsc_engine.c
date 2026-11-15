@@ -104,7 +104,8 @@ static uint8_t is_enum[VSC_NP];   /* built at init: the parameter table stays in
 #define balls_allowed(t) ((unsigned)vsc.t[(t)][P_RCOUNT] % VSC_BALLS + 1u)
 static uint8_t capture[VSC_TRACKS][VSC_CAP_FRAMES];   /* each track's putty, 8-bit mu-law */
 static uint8_t delay_line[VSC_DELAY_FRAMES];   /* mu-law, as the captures (RAM is short) */
-enum { RV_C0 = 557, RV_C1 = 593, RV_C2 = 641, RV_C3 = 677, RV_A0 = 277, RV_A1 = 221, RV_A2 = 289, RV_A3 = 233 };
+/* the reverb runs at 22 kHz: half the lengths of the 44.1 kHz ones (557, 593, 641, 677; 277, 221, 289, 233) */
+enum { RV_C0 = 279, RV_C1 = 297, RV_C2 = 321, RV_C3 = 339, RV_A0 = 139, RV_A1 = 111, RV_A2 = 145, RV_A3 = 117 };
 static int16_t rv_buf[RV_C0 + RV_C1 + RV_C2 + RV_C3 + RV_A0 + RV_A1 + RV_A2 + RV_A3];
 
 /* --------------------------------------------------------------- events */
@@ -180,7 +181,7 @@ static float gv[VSC_NG];
 static float main_prev[VSC_BLOCK];
 static float space_l[VSC_BLOCK], space_r[VSC_BLOCK];
 static uint32_t dl_w; static float dl_lp; static uint8_t dl_half;
-static uint32_t rv_idx[8]; static float rv_lp[4];
+static uint32_t rv_idx[8]; static float rv_lp[4], rvl, rvr;   /* rvl, rvr: the reverb's last 22 kHz output */
 static float main_gain_s = 0.f;
 
 /* Sequencer. */
@@ -1104,6 +1105,10 @@ static VSC_HOT void spectra(unsigned t, const struct srcv *s, float a, float wl,
         float r = exp2a(semis * (1.f / 12.f)) * rr;
         float pos = a + k->ph;
         voc_frame(k, s, pos, r, fa);
+        /* the source has nothing above its own Nyquist (5.5 or 11 kHz at LO and MID, moved
+         * by the pitch): the bins above it are left out of the work (and silent) */
+        const float kf = (float)FH * r + 4.f;
+        const unsigned kmax = kf < (float)FH ? (unsigned)kf : FH;
         float cross = k->e[P_CROSS];
         unsigned u = VSC_PARTNER(t);
         struct srcv ps;
@@ -1126,15 +1131,15 @@ static VSC_HOT void spectra(unsigned t, const struct srcv *s, float a, float wl,
         /* identity phase locking (Laroche and Dolson): each spectral peak keeps moving by
          * what it moved over the hop; the bins around it keep their place relative to it,
          * as the analysis had them, so a partial's bins stay together (no phasiness) */
-        for (unsigned kb = 1; kb < FH; ++kb) { float m1s = fa[2 * kb] * fa[2 * kb] + fa[2 * kb + 1] * fa[2 * kb + 1]; fm[kb] = m1s * rsqrta(m1s + 1e-20f); }
+        for (unsigned kb = 1; kb < kmax; ++kb) { float m1s = fa[2 * kb] * fa[2 * kb] + fa[2 * kb + 1] * fa[2 * kb + 1]; fm[kb] = m1s * rsqrta(m1s + 1e-20f); }
         fm[0] = 0.f;
         uint8_t peaks[FH / 2]; unsigned np = 0;
-        for (unsigned kb = 2; kb + 1 < FH && np < FH / 2; ++kb)
+        for (unsigned kb = 2; kb + 1 < kmax && np < FH / 2; ++kb)
             if (fm[kb] > fm[kb - 1] && fm[kb] >= fm[kb + 1] && fm[kb] > 1e-7f) peaks[np++] = (uint8_t)kb;
         if (!np) peaks[np++] = 1;
         for (unsigned pi = 0; pi < np; ++pi) {
             unsigned p = peaks[pi];
-            unsigned lo = pi ? (peaks[pi - 1] + p) / 2u + 1u : 1u, hi = pi + 1 < np ? (p + peaks[pi + 1]) / 2u : FH - 1u;
+            unsigned lo = pi ? (peaks[pi - 1] + p) / 2u + 1u : 1u, hi = pi + 1 < np ? (p + peaks[pi + 1]) / 2u : kmax - 1u;
             float xr = fa[2 * p], xi = fa[2 * p + 1], i1 = fm[p] > 1e-12f ? 1.f / fm[p] : 0.f;
             /* the peak's true frequency, between bins, from its log magnitudes (a parabola);
              * its phase moves on by that over the hop: no second frame needed */
@@ -1162,6 +1167,7 @@ static VSC_HOT void spectra(unsigned t, const struct srcv *s, float a, float wl,
             }
         }
         for (unsigned kb = 1; kb < FH; ++kb) {
+            if (kb >= kmax) { fa[2 * kb] = fa[2 * kb + 1] = 0.f; vo->M[kb] = 0.f; continue; }
             const int16_t *S = &vo->S[2 * kb];
             float mag = fm[kb];
             if (have_p) {   /* CROSS: toward the partner's magnitude, through their geometric mean */
@@ -1234,7 +1240,7 @@ static struct {
     float exc, exc_dec;                       /* the exciter: a decaying burst */
     float lq[2], lqt[2], lqs[2];              /* LIQUID's walks: value, target, step */
     float hp, lp, ef, es, act;                /* the detector */
-    float osc, fb, dc;                        /* the oscillator's phase; feedback and its DC blocker */
+    float osc, fb, dc, yh;                    /* the oscillator's phase; feedback and its DC blocker; the bank's last output */
     float pend;                               /* a quantised ping waiting for the grid */
     float grid;                               /* frames into the current grid slot, when stopped */
     int qidx;
@@ -1274,13 +1280,13 @@ static VSC_HOT_SMALL void reson_control(unsigned n)
         float mv = liq * (rb_w1[b] * rs.lq[0] + rb_w2[b] * rs.lq[1]);
         float f = rb_hz[b] * rexp2((shift + gv[G_BF0 + b] - 64.f) * (1.f / 64.f)) * (1.f + 0.03f * mv);
         float T = 0.01f * rexp2(t0 + (gv[G_BD0 + b] - 64.f) * (1.f / 32.f)) * (1.f + 0.3f * liq * rb_w2[b] * rs.lq[1]);
-        float g = svf_g(f), g2 = g * g, kk = 2.2f / (f * T);         /* T60 = 6.91 / (pi f k) */
+        float g = svf_g(2.f * f), g2 = g * g, kk = 2.2f / (f * T);   /* (the bank runs at half the rate); T60 = 6.91 / (pi f k) */
         kk = clampf(kk, 0.004f, 1.6f);
         float ia = 1.f / (1.f + g * kk + g2);
         rs.rd1[b] = 2.f * (g2 - 1.f) * ia; rs.rd2[b] = (1.f - g * kk + g2) * ia; rs.rb0[b] = g * kk * ia;
         /* a narrow band passes little of a broad sound: bring it up (as the bandwidth
          * shrinks, by its square root); an impulse rings a band at about w/fs */
-        rs.pn[b] = 2.5f * (float)VSC_SR / (6.2831853f * f * kk);
+        rs.pn[b] = 1.25f * (float)VSC_SR / (6.2831853f * f * kk);
         /* the sound itself goes through a band no narrower than Q 8, made up as Grains
          * does (x4 at Q 8, less when wider): a 2 s ring would leave a broad sound thin */
         float kc = kk > kw ? kk : kw, ic = 1.f / (1.f + g * kc + g2);
@@ -1353,13 +1359,13 @@ static VSC_HOT_SMALL void reson(unsigned t, unsigned off, unsigned n, unsigned s
     /* eased by the guard: the band itself is the modulator, no analysis bank */
     const int other = !vsc_relief && (vm == BV_INPUT || vm == BV_PARTNER || vm == BV_OSC || vm == BV_NOISE);
     /* the detector's band: HIGH above ~3 kHz, LOW below ~200 Hz */
-    const float hpk = 0.35f, lpk = 0.03f;
+    const float hpk = 0.5775f, lpk = 0.0591f;   /* (it runs with the bank, at 22 kHz) */
     const float sens = gv[G_BSENS] * (1.f / 127.f), th = 0.25f * exp2a(-sens * 9.f);
-    const float fa = 1.f / (0.001f * (float)VSC_SR), fr = 1.f / (0.015f * (float)VSC_SR), sa = 1.f / (0.06f * (float)VSC_SR), sr = 1.f / (0.3f * (float)VSC_SR);
+    const float fa = 2.f / (0.001f * (float)VSC_SR), fr = 2.f / (0.015f * (float)VSC_SR), sa = 2.f / (0.06f * (float)VSC_SR), sr = 2.f / (0.3f * (float)VSC_SR);
     /* the particles: dust, which COHES gathers around the hits; droplets of the wet sound */
     const float dust = gv[G_BDUST] * (1.f / 127.f), cohes = gv[G_BCOHES] * (1.f / 127.f);
     const float drop = vsc_relief >= 2 ? 0.f : gv[G_BDROP] * (1.f / 127.f), migr = gv[G_BMIGR] * (1.f / 127.f);
-    const float dust_p = vm == BV_NOISE ? 0.f : dust * dust * (300.f / (float)VSC_SR);
+    const float dust_p = vm == BV_NOISE ? 0.f : dust * dust * (600.f / (float)VSC_SR);
     unsigned live = 0;
     float pk = 0.f, opk[VSC_RBANDS];
     /* the bands with gain: a silent band costs nothing. Eased by the guard: only the
@@ -1377,20 +1383,27 @@ static VSC_HOT_SMALL void reson(unsigned t, unsigned off, unsigned n, unsigned s
     const unsigned self = !other && vm != BV_OUTPUT;
     for (unsigned i = 0; i < n; ++i) {
         float in = x[i], m = mod[i];
+        rs.exc *= rs.exc_dec;
+        /* the bank (and the detector, and the dust) run every other sample (22 kHz: the
+         * bands reach 9.9 kHz), on the pair's average; the output is interpolated back */
+        float y = rs.yh;
+        if (!(i & 1u)) {
+        const unsigned i1 = i + 1u < n ? i + 1u : i;
+        const float inh = 0.5f * (in + x[i1]), mh = 0.5f * (m + mod[i1]);
         /* detector: fast against slow envelope of the chosen band; a ping on the rise */
-        rs.lp += (m - rs.lp) * lpk; rs.hp += (m - rs.hp) * hpk;
-        float d = trig == BT_HIGH ? m - rs.hp : trig == BT_LOW ? rs.lp : m;
+        rs.lp += (mh - rs.lp) * lpk; rs.hp += (mh - rs.hp) * hpk;
+        float d = trig == BT_HIGH ? mh - rs.hp : trig == BT_LOW ? rs.lp : mh;
         float a = absf(d);
         rs.ef += (a - rs.ef) * (a > rs.ef ? fa : fr);
         rs.es += (a - rs.es) * (a > rs.es ? sa : sr);
         float nov = rs.ef - 1.8f * rs.es, tha = th + 0.4f * rs.es;   /* a rise well over what was there: not a steady sound */
-        rs.act += ((nov > th ? 1.f : 0.f) - rs.act) * 0.0005f;
+        rs.act += ((nov > th ? 1.f : 0.f) - rs.act) * 0.001f;
         if (rs.refr) --rs.refr;
         if (trig >= BT_HIGH && trig <= BT_LOW) {
             if (nov > tha && rs.armed && !rs.refr) {
                 float vel = clampf(nov / th * 0.2f, 0.15f, 1.f);
                 if (vsc.g[G_BQUANT]) rs.pend = vel > rs.pend ? vel : rs.pend; else reson_ping(vel);
-                rs.armed = 0; rs.refr = (uint16_t)(0.04f * VSC_SR);
+                rs.armed = 0; rs.refr = (uint16_t)(0.02f * VSC_SR);
             } else if (nov < tha * 0.5f) rs.armed = 1;
         }
         /* dust: specks into one band each; COHES ties them to the hits */
@@ -1398,12 +1411,11 @@ static VSC_HOT_SMALL void reson(unsigned t, unsigned off, unsigned n, unsigned s
             unsigned b = rnd() & 7u;
             rs.inj[b] += (rndc() * 2.f - 1.f) * rs.pn[b] * (0.15f + 2.f * rs.ef);
         }
-        rs.exc *= rs.exc_dec;
-        const float e = rs.exc, fb = rs.fb * fdbk;
+        const float e = rs.exc * (1.f + rs.exc_dec), fb = rs.fb * fdbk;   /* the pair's burst */
         /* each band a bandpass biquad; the two shared inputs' x - x[-2] once */
-        const float dc_ = in - rs.cx2, dm = m - rs.mx2;
-        rs.cx2 = rs.cx1; rs.cx1 = in; rs.mx2 = rs.mx1; rs.mx1 = m;
-        float y = 0.f;
+        const float dc_ = inh - rs.cx2, dm = mh - rs.mx2;
+        rs.cx2 = rs.cx1; rs.cx1 = inh; rs.mx2 = rs.mx1; rs.mx1 = mh;
+        float yc = 0.f;
         const int upd = (i & (RS_EV - 1u)) == 0;
         for (unsigned b = 0; b < VSC_RBANDS; ++b) {
             if (!(on >> b & 1u)) continue;
@@ -1428,7 +1440,9 @@ static VSC_HOT_SMALL void reson(unsigned t, unsigned off, unsigned n, unsigned s
                 rs.gg[b] = gg;
                 float ao = absf(sb * gg); if (ao > opk[b]) opk[b] = ao;
             } else gg = rs.gg[b];
-            y += sb * gg;
+            yc += sb * gg;
+        }
+        y = 0.5f * (rs.yh + yc); rs.yh = yc;
         }
         /* feedback: the wet sound, DC-blocked and held soft, back into the bank (none: no work) */
         if (fdbk > 0.f) {
@@ -1461,7 +1475,7 @@ static VSC_HOT_SMALL void reson(unsigned t, unsigned off, unsigned n, unsigned s
                 float uu = (float)q->t * q->du, w = 4.f * uu * (1.f - uu);
                 float v = ulaw_table[rs.ring[ip]] * w * q->amp;
                 dsum += v;
-                rs.inj[q->dest] += v * migr * 3.f;
+                rs.inj[q->dest] += v * migr * 1.5f;   /* (summed over the pair) */
                 q->pos += q->inc; if (q->pos >= (float)RS_RING) q->pos -= (float)RS_RING;
                 if (++q->t >= q->len) q->on = 0;
             }
@@ -1656,16 +1670,17 @@ static VSC_HOT void space(float *l, float *r, unsigned n)
     float dlev = gv[G_DLEVEL] * (1.f / 127.f);
     float rfb = 0.70f + 0.28f * gv[G_RSIZE] * (1.f / 127.f);
     float damp = 0.05f + 0.6f * gv[G_RDAMP] * (1.f / 127.f);
+    damp *= damp;   /* (its pole, per 22 kHz sample) */
     float rlev = gv[G_RLEVEL] * (1.f / 127.f);
     /* FREEZE: no new input, the delay recirculates and the reverb holds */
     float in_gain = 1.f;
-    if (space_frozen) { in_gain = 0.f; fb = 1.f; rfb = 0.997f; damp = 0.05f; }
+    if (space_frozen) { in_gain = 0.f; fb = 1.f; rfb = 0.997f; damp = 0.0025f; }
     /* the reverb rests at level 0, and under relief 1 (not while frozen: it is the held sound);
      * coming back it starts clean */
     static uint8_t rv_rest;
     int rv_on = space_frozen || (rlev > 0.002f && vsc_relief < 1);
     if (!rv_on) rv_rest = 1;
-    else if (rv_rest) { rv_rest = 0; vsc_memset(rv_buf, 0, sizeof rv_buf); for (unsigned b = 0; b < 4; ++b) rv_lp[b] = 0.f; }
+    else if (rv_rest) { rv_rest = 0; vsc_memset(rv_buf, 0, sizeof rv_buf); for (unsigned b = 0; b < 4; ++b) rv_lp[b] = 0.f; rvl = rvr = 0.f; }
     for (unsigned i = 0; i < n; ++i) {
         float in = (space_l[i] + space_r[i]) * 0.5f * in_gain;
         /* delay */
@@ -1684,8 +1699,11 @@ static VSC_HOT void space(float *l, float *r, unsigned n)
             delay_line[dl_w] = ulaw_enc(w);
             if (++dl_w >= VSC_DELAY_FRAMES) dl_w = 0;
         }
-        if (!rv_on) { l[i] += tap * dlev; r[i] += tap2 * dlev; continue; }
-        /* reverb, fed by the dry send and the delay */
+        l[i] += tap * dlev; r[i] += tap2 * dlev;
+        if (!rv_on) continue;
+        /* reverb, fed by the dry send and the delay: every other sample (22 kHz), its
+         * output interpolated back */
+        if (i & 1u) { l[i] += rvl * rlev; r[i] += rvr * rlev; continue; }
         float rin = (in + tap * 0.4f) * 0.3f;
         unsigned o = 0;
         float c = rv_tap(0, RV_C0, o, rin, rfb, damp); o += RV_C0;
@@ -1697,8 +1715,8 @@ static VSC_HOT void space(float *l, float *r, unsigned n)
         yl = rv_ap(5, RV_A1, o, yl); o += RV_A1;
         float yr = rv_ap(6, RV_A2, o, sum * 0.7f + diff * 0.3f); o += RV_A2;
         yr = rv_ap(7, RV_A3, o, yr);
-        l[i] += tap * dlev + yl * rlev;
-        r[i] += tap2 * dlev + yr * rlev;
+        l[i] += (rvl + yl) * 0.5f * rlev; r[i] += (rvr + yr) * 0.5f * rlev;
+        rvl = yl; rvr = yr;
     }
 }
 

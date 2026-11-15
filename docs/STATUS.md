@@ -48,6 +48,8 @@ Hardware, 1.1.0 (the first report from an FM-1): it started (a safe-mode start o
 
 Budget at 1.1.1: app image 453,896 of 453,921 bytes; heap 118,892 bytes.
 
+Budget at 1.2.0: app image 453,896 of 453,921 bytes; heap 122,028 bytes. CPU (fm1-emu, the FM-1's timing): two SPECTRA, dense SHARDS, HANDS and SPACE 73 % (88 % at 1.1.3); RESON 11-15 % of a block (16-21 %). Watch: building a bench (benchbuild.sh) overwrites build/: rebuild the release before checking the package.
+
 ## Next
 
 - Browser emulator (wasm build of `core/` with the same UI).

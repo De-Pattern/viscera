@@ -860,6 +860,7 @@ static void draw_bounce(void)
     char b[24];
     unsigned src = 0, dst = 0;
     int e = vsc_bounce_plan(&src, &dst);
+    if (vsc_meter.bounce) { e = BE_NONE; dst = vsc_meter.bounce_dst; }   /* (printing: where it goes, now it isn't empty) */
     header("BOUNCE", vsc_meter.bounce ? "PRINTING" : e ? "" : "READY", vsc_meter.bounce ? C_RED : C_DEEP, vsc_meter.bounce ? C_BODY : C_AMBER);
     if (IN_BAND(20, 124)) {
         text(6, 21, "FROM", C_DIM);
@@ -1097,14 +1098,17 @@ static void eq_curve_make(void)
     eq_curve_key = key;
     for (int x = 0; x < 220; ++x) {
         float f = 20.f; { float e = (float)x / 219.f * 9.965784f; int i = (int)e; f = 20.f * (float)(1u << i) * (1.f + (e - (float)i) * (0.6565f + (e - (float)i) * 0.3435f)); }
-        float w = 6.2831853f * f / (float)VSC_SR, c1 = fcos(w), c2 = fcos(2.f * w), s1 = fsin(w), s2 = fsin(2.f * w);
+        /* |H|^2 in the form that stays exact near 0 Hz (phi = sin^2 of half the angle) */
+        float sh = fsin(3.1415927f * f / (float)VSC_SR), phi = sh * sh;
         float db = 0.f;
         for (unsigned b = 0; b < 4; ++b) {
             if (!(vsc_eq_live >> b & 1u)) continue;
             const float *k = vsc_eq_coef[b];
-            float nr = k[0] + k[1] * c1 + k[2] * c2, ni = -(k[1] * s1 + k[2] * s2);
-            float dr = 1.f + k[3] * c1 + k[4] * c2, di = -(k[3] * s1 + k[4] * s2);
-            float m = (nr * nr + ni * ni) / (dr * dr + di * di + 1e-12f);
+            float s0 = k[0] + k[1] + k[2], d0 = 1.f + k[3] + k[4];
+            float num = s0 * s0 - 4.f * (k[0] * k[1] + 4.f * k[0] * k[2] + k[1] * k[2]) * phi + 16.f * k[0] * k[2] * phi * phi;
+            float den = d0 * d0 - 4.f * (k[3] + 4.f * k[4] + k[3] * k[4]) * phi + 16.f * k[4] * phi * phi;
+            float m = num / (den > 1e-20f ? den : 1e-20f);
+            if (m < 1e-12f) m = 1e-12f;
             /* 10 log10 m */
             int e = 0; while (m >= 2.f) { m *= 0.5f; ++e; } while (m < 1.f && e > -60) { m *= 2.f; --e; }
             db += 3.0103f * ((float)e + (m - 1.f) * (1.4425f - 0.4425f * (m - 1.f)));

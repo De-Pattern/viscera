@@ -895,7 +895,7 @@ static VSC_HOT_SMALL void bounce_start(void)
     w->pred = 0; w->idx = 0; w->on = 1; w->ending = 0; w->acc = 0.f; w->cnt = 0;
     vsc_meter.has[dst] = 1;
     bounce_on = 1; bounce_done = 0;
-    vsc_meter.bounce = 1;
+    vsc_meter.bounce = 1; vsc_meter.bounce_dst = (uint8_t)dst;
 }
 
 /* ---------------------------------------------------------- the intro

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.3 — two screens drawn right
+
+- **The master EQ's curve** drew a low cut wrongly near the bottom of the range (a dip that rose again); the sound was right. It's now worked out in the form that stays exact at low frequencies.
+- **BOUNCE while printing** showed "TO -" and NO FREE TRACK; it shows where the print goes.
+
 ## 2.4.2 — mute and solo on the mixer; a quieter title
 
 - **On the MIXER (EDIT), the track keys mute** (F3, G3, A3, B3: tracks 1–4; lit while muted) instead of arming, and **the next four white keys solo** (C4, D4, E4, F4; lit while soloed). With any track soloed, the others are silent; solo more than one to hear them together. The strip's button shows M and S. Elsewhere the track keys still arm.

@@ -566,6 +566,11 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
     for (unsigned kk = 0; kk < 27; ++kk) {
         if (!(kdown & B(kk))) continue;
         unsigned k = key_track(kk), band = key_band(kk);
+        if (page == PG_MIXER && !save_held && !clr_held && !home_held) {   /* the mixer: F3-B3 mute, C4-F4 solo */
+            int w = white_of(kk);
+            if (w >= 0 && w < 4) { vsc.p[P_TRK(w, S_MUTE)] ^= 1u; continue; }
+            if (w >= 4 && w < 8) { vsc_solo ^= (uint8_t)(1u << (w - 4)); continue; }
+        }
         if (page == PG_SLICE) { int w = white_of(kk); if (w >= 0 && vsc_slice_n) vsc_event(EV_SLICE, (unsigned)w % vsc_slice_n, 100); continue; }
         if (k < VSC_TRACKS) {
             if (save_held) { learn_arm(1, ACT_ARM1 + k, "ARM: SEND A NOTE"); continue; }
@@ -790,9 +795,10 @@ static void draw_mixer(void)
             char c[2] = {(char)('1' + t), 0};
             text(x + 23, 209, c, armed ? C_CREAM : C_DIM);
             if (vsc.p[P_TRK(t, S_MUTE)]) text(x + 30, 209, "M", C_AMBER);
+            if (vsc_solo >> t & 1u) text(x + 37, 209, "S", C_GREEN);
         }
     }
-    footer(view == 0 ? "KNOBS 1-4: LEVELS  EDIT: NEXT" : view == 1 ? "KNOBS 1-4: TRIM INTO PREAMP" : "KNOBS 1-4: PAN  EDIT: INPUT");
+    footer(view == 0 ? "F3-B3 MUTE  C4-F4 SOLO  EDIT: NEXT" : view == 1 ? "KNOBS 1-4: TRIM INTO PREAMP" : "KNOBS 1-4: PAN  EDIT: INPUT");
 }
 
 /* ---- INPUT */
@@ -1313,6 +1319,10 @@ void vsc_ui_leds(uint8_t out[41])
         else *o = vsc.p[P_TRK(t, S_ARM)] ? 2 : glow;
     }
     if (page == PG_SLICE) for (unsigned i = 0; i < 16; ++i) out[14 + white_key[i]] = i < vsc_slice_n ? 2 : glow;
+    if (page == PG_MIXER) for (unsigned t = 0; t < VSC_TRACKS; ++t) {
+        out[14 + white_key[t]] = vsc.p[P_TRK(t, S_MUTE)] ? 2 : glow;
+        out[14 + white_key[4 + t]] = vsc_solo >> t & 1u ? 2 : glow;
+    }
     if (page == PG_RESON) for (unsigned k = 0; k < VSC_RBANDS; ++k) out[14 + band_key[k]] = k == rsel || vsc_meter.rb_level[k] > 30 ? 2 : glow;
     for (unsigned k = 0; k < 27; ++k) if (prev_keys & (1u << k)) out[14 + k] = 2;
 }

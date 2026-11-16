@@ -302,6 +302,14 @@ press(B.REC, 1 << B.ARP); ctl(); ok(x.has(1) === 0, 'ARP + REC clears the take t
 press(B.HOME); ctl();
 sound(run(100), 'leaving SLICE: track 1 plays again');
 
+// 12e. the mixer's keys: F3-B3 mute, C4-F4 solo
+press(B.EDIT); enc(0, -5);
+gen = silence; x.set_param(TRK(0, S.MUTE), 0);
+key(0); ok(x.get_param(TRK(0, S.MUTE)) === 1, 'on the mixer, F3 mutes track 1'); quiet(run(60), 'muted: track 1 silent');
+key(0); ok(x.get_param(TRK(0, S.ARM)) === 0, 'and doesn\'t arm it');
+key(7); sound(run(60), 'C4 solos track 1: it plays');
+key(7); key(9); quiet(run(60), 'D4 solos (empty) track 2 alone: track 1 is silent');
+key(9); sound(run(60), 'solo off: track 1 plays');
 // 13. every page and view drawn, every knob both ways, nothing breaks
 gen = music;
 for (const b of [B.HOME, B.EDIT, B.FX, B.SCL, B.SEQ, B.ENV, B.LFO, B.SAVE, B.GLO]) {

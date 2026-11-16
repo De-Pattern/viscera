@@ -143,6 +143,8 @@ extern volatile uint8_t vsc_slice_n;
 unsigned vsc_tape_env(unsigned t, uint32_t from, uint32_t to, uint8_t *env, unsigned max);
 /* MOTION: lanes the UI is writing now (bits): they don't play back while they're written */
 extern volatile uint8_t vsc_motion_hold;
+/* SOLO (the mixer's keys): soloed tracks, bits; with any, the rest are silent */
+extern volatile uint8_t vsc_solo;
 float vsc_motion_value(unsigned lane);   /* a lane's value where the loop is now */   /* EV_INTRO a: 1 play the start-up music, 0 stop it */
 /* EV_PLAY a: 0 toggle, 1 start. EV_CLEAR: track a. EV_ARM: track a toggled.
  * EV_LOOP: the loop length moves by a (signed) twentieths of a second. */

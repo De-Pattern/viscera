@@ -301,6 +301,7 @@ static VSC_HOTDATA const uint8_t rtarget[VSC_RTARGETS] = {
     P_STRIP + 0 * VSC_TP + S_PITCH, P_STRIP + 1 * VSC_TP + S_PITCH, P_STRIP + 2 * VSC_TP + S_PITCH, P_STRIP + 3 * VSC_TP + S_PITCH,
 };
 volatile uint8_t vsc_motion_hold;
+volatile uint8_t vsc_solo;   /* soloed tracks (bits): with any, the others are silent */
 /* a lane's value where the loop is (the master's place), between its points */
 static VSC_HOT_SMALL float motion_at(unsigned m)
 {
@@ -930,7 +931,7 @@ static VSC_HOT_SMALL void intro(float *l, float *r, unsigned n)
             in_noise ^= in_noise << 13; in_noise ^= in_noise >> 17; in_noise ^= in_noise << 5;
             float h = (step & 1u) && pos < 900u ? ((float)(in_noise >> 24) * (1.f / 128.f) - 1.f) * 0.25f * (1.f - (float)pos / 900.f) : 0.f;
             float v = (k + b + a + h) * 0.32f * fade;
-            v = (float)(int)(v * 8.f + (v >= 0.f ? 0.5f : -0.5f)) * (1.f / 8.f);   /* 4 bits */
+            v = (float)(int)(v * 8.f + (v >= 0.f ? 0.5f : -0.5f)) * (1.f / 8.f) * 0.6f;   /* 4 bits; at 60 % */
             l[j] += v; r[j] += v;
             ++in_n; ++pos;
             if (pos >= IN_STEP) { pos = 0; step = in_n / IN_STEP; in_kp = 0.f; }
@@ -1230,7 +1231,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
     float g_trim[VSC_TRACKS], g_l[VSC_TRACKS], g_r[VSC_TRACKS];
     for (unsigned t = 0; t < VSC_TRACKS; ++t) {
         g_trim[t] = trim_gain(pf[P_TRK(t, S_TRIM)]);
-        float lv = vsc.p[P_TRK(t, S_MUTE)] ? 0.f : level_gain(pf[P_TRK(t, S_LEVEL)]), pan = (pf[P_TRK(t, S_PAN)] - 64.f) * (1.f / 64.f);
+        float lv = vsc.p[P_TRK(t, S_MUTE)] || (vsc_solo && !(vsc_solo >> t & 1u)) ? 0.f : level_gain(pf[P_TRK(t, S_LEVEL)]), pan = (pf[P_TRK(t, S_PAN)] - 64.f) * (1.f / 64.f);
         pan = clampf(pan, -1.f, 1.f);
         g_l[t] = lv * (pan > 0.f ? 1.f - pan : 1.f); g_r[t] = lv * (pan < 0.f ? 1.f + pan : 1.f);
     }

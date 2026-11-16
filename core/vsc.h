@@ -127,7 +127,7 @@ void vsc_render(const struct vsc_inputs *in, float *out);
 
 /* Events from control or MIDI into the audio context (lock-free queue). */
 enum { EV_NOTE_ON, EV_NOTE_OFF, EV_PLAY, EV_STOP, EV_REC, EV_CLEAR, EV_ERASE, EV_BOUNCE,
-       EV_ARM, EV_CC, EV_PANIC, EV_LOOP };
+       EV_ARM, EV_CC, EV_PANIC, EV_LOOP, EV_INTRO };   /* EV_INTRO a: 1 play the start-up music, 0 stop it */
 /* EV_PLAY a: 0 toggle, 1 start. EV_CLEAR: track a. EV_ARM: track a toggled.
  * EV_LOOP: the loop length moves by a (signed) twentieths of a second. */
 void vsc_event(unsigned type, unsigned a, unsigned b);
@@ -217,6 +217,8 @@ struct vsc_host_status {
 };
 extern struct vsc_host_status vsc_host;
 void vsc_ui_init(void);
+/* the start-up animation and its music (any button skips it); the platform calls it once the engine runs */
+void vsc_ui_intro(void);
 /* Feed one control snapshot. Returns a HOST_* request (and its argument). */
 unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg);
 void vsc_ui_notice(const char *text, uint32_t ms);

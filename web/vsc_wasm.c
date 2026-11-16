@@ -16,6 +16,7 @@ W_EXPORT(input_buffer) float *w_input(void) { return in_bt; }
 W_EXPORT(usb_buffer) float *w_usb(void) { return in_usb; }
 W_EXPORT(output_buffer) float *w_output(void) { return out_buf; }
 W_EXPORT(init) void w_init(void) { vsc_init(); vsc_project_defaults(&vsc); vsc_ui_init(); vsc_host.cpu = 255; vsc_host.bt_audio = 1; }
+W_EXPORT(intro) void w_intro(unsigned now) { (void)vsc_ui_update(&(struct vsc_ui_input){0, 0, {0}, now}, &(unsigned){0}); vsc_ui_intro(); }
 /* has_input: bit 0 the page's live input (as Bluetooth), bit 1 the USB buffer */
 W_EXPORT(render) void w_render(int has_input)
 {

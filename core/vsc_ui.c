@@ -163,7 +163,9 @@ static uint32_t now_ms, notice_until, touch_at[4];
 static const char *notice;
 static char notice_buf[32];
 static uint32_t prev_buttons, prev_keys;
-static uint8_t learn_seen, used_mod;   /* a held modifier was used */
+static uint8_t learn_seen, used_mod;
+static uint32_t intro_at, frame_ms;   /* frame_ms: the time a frame is drawn at (one picture, however long its bands take) */
+static uint8_t intro_on, intro_fresh;   /* the start-up animation is on screen; its start time not yet taken from the clock */   /* a held modifier was used */
 /* a knob slot: a parameter, or one of the page's own controls */
 enum { K_NONE = 200, K_LOOP, K_BTAUDIO, K_BTMIDI, K_LIGHT, K_KNOBCC, K_BLE, K_CLEARMAP, K_BAND, K_START };
 static unsigned slot(unsigned k)
@@ -315,7 +317,6 @@ void vsc_ui_init(void)
     prev_buttons = prev_keys = 0;
     learn_seen = vsc_learn_seen;
     g_rec = -1;
-    vsc_ui_notice("VISCERA 4-TRACK " VSC_VERSION, 1500);
 #ifdef VSC_BENCH
     { void vsc_bench_setup(void); vsc_bench_setup(); }
 #endif
@@ -343,11 +344,18 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
 {
     unsigned req = HOST_NONE;
     now_ms = in->now_ms;
+    if (intro_fresh) { intro_fresh = 0; intro_at = now_ms; }
     const uint32_t down = in->buttons & ~prev_buttons, up = ~in->buttons & prev_buttons;
     const uint32_t kdown = in->keys & ~prev_keys;
     const int home_held = (in->buttons & B(BTN_HOME)) != 0, save_held = (in->buttons & B(BTN_SAVE)) != 0;
     const int clr_held = (in->buttons & B(BTN_ARP)) != 0;   /* ARP is CLEAR */
     if (vsc_learn_seen != learn_seen) { learn_seen = vsc_learn_seen; vsc_ui_notice("LEARNED", 900); }
+    if (intro_on) {   /* a button pressed after the first quarter second skips the intro (and does nothing else);
+                       * until it ends, the panel does nothing (its first scans can read a press) */
+        if (down && now_ms - intro_at > 250u) { intro_on = 0; vsc_event(EV_INTRO, 0, 0); }
+        prev_buttons = in->buttons; prev_keys = in->keys;
+        return HOST_NONE;
+    }
     if (!(prev_buttons & (B(BTN_HOME) | B(BTN_SAVE) | B(BTN_ARP)))) used_mod = 0;
     if ((up & B(BTN_ARP)) && !used_mod) vsc_ui_notice("HOLD ARP: KEY CLEARS, PLAY ERASES", 1500);
 
@@ -991,6 +999,80 @@ static void draw_master(void)
     footer(view == 4 ? "AFTER RAVEL'S GLUE COMP" : "KEY: WHAT IT LISTENS TO");
 }
 
+/* ---- the intro: VISCERA: TAPE in a different face every beat, red on black mostly, now and
+ * then in a green box or on a magenta slab (after the title cards of a certain film), over three
+ * seconds of music; then the name held. Any button skips it. */
+#define INTRO_MS 3300u
+#define C_IRED  RGB(200, 16, 22)
+#define C_IGRN  RGB(200, 255, 200)
+#define C_IMAG  RGB(190, 40, 190)
+#define C_NIGHT RGB(0, 0, 0)
+static unsigned hash3(int a, int b, unsigned c)
+{
+    unsigned h = (unsigned)a * 374761393u + (unsigned)b * 668265263u + c * 2246822519u;
+    h = (h ^ (h >> 13)) * 1274126177u;
+    return h ^ (h >> 16);
+}
+/* one character, each pixel of the 5x7 glyph sx wide and sy tall; style 1 hollow, 2 slanted, 3 dots */
+static void glyph(int x, int y, char ch, int sx, int sy, int style, uint16_t c)
+{
+    if (!IN_BAND(y, y + 7 * sy)) return;
+    int code = (unsigned char)ch; if (code < 32 || code > 95) code = '?';
+    const uint8_t *g = font[code - 32];
+    for (int cx = 0; cx < 5; ++cx)
+        for (int cy = 0; cy < 7; ++cy) {
+            if (!(g[cx] >> cy & 1)) continue;
+            int px0 = x + cx * sx + (style == 2 ? (6 - cy) * sx / 3 : 0), py0 = y + cy * sy;
+            if (style == 3) { rect(px0 + sx / 4, py0 + sy / 4, sx - sx / 2 > 0 ? sx - sx / 2 : 1, sy - sy / 2 > 0 ? sy - sy / 2 : 1, c); continue; }
+            if (style == 1) {   /* hollow: only the outline of the glyph's pixels */
+                int up = cy > 0 && (g[cx] >> (cy - 1) & 1), dn = cy < 6 && (g[cx] >> (cy + 1) & 1);
+                int lf = cx > 0 && (g[cx - 1] >> cy & 1), rt = cx < 4 && (g[cx + 1] >> cy & 1);
+                if (!up) rect(px0, py0, sx, 1, c);
+                if (!dn) rect(px0, py0 + sy - 1, sx, 1, c);
+                if (!lf) rect(px0, py0, 1, sy, c);
+                if (!rt) rect(px0 + sx - 1, py0, 1, sy, c);
+                continue;
+            }
+            rect(px0, py0, sx, sy, c);
+        }
+}
+static int word_w(const char *w, int sx, int gap) { int n = (int)vsc_strlen(w); return n * 5 * sx + (n - 1) * gap; }
+static void word(int cy, const char *w, int sx, int sy, int gap, int style, uint16_t c)
+{
+    int x = 120 - word_w(w, sx, gap) / 2, y = cy - 7 * sy / 2;
+    for (; *w; ++w, x += 5 * sx + gap) glyph(x, y, *w, sx, sy, style, c);
+}
+/* the cards: the word, its face (pixel width, height, gap, style), colour, and a frame or slab */
+struct icard { uint8_t w, sx, sy, gap, style, col, deco; };
+static const char *const iwords[4] = {"VISCERA:", "TAPE", "VISCERA", "4-TRACK"};
+static const struct icard icards[] = {
+    {0, 5, 12, 3, 0, 0, 0}, {1, 9, 10, 4, 0, 0, 0}, {2, 3, 16, 2, 0, 0, 0}, {1, 8, 8, 6, 1, 1, 1},
+    {0, 4, 7, 2, 2, 0, 0}, {3, 4, 9, 3, 0, 2, 2}, {1, 10, 14, 2, 3, 0, 0}, {2, 5, 6, 1, 0, 0, 0},
+    {1, 6, 18, 3, 0, 0, 0}, {0, 4, 9, 4, 1, 0, 0}, {2, 4, 4, 2, 3, 3, 0}, {1, 9, 9, 3, 2, 0, 0},
+    {3, 5, 6, 1, 0, 0, 1}, {0, 3, 20, 2, 0, 0, 0}, {1, 7, 12, 5, 1, 1, 0}, {2, 4, 10, 2, 0, 2, 2},
+    {1, 10, 10, 3, 0, 0, 0}, {0, 5, 8, 2, 3, 0, 0}, {3, 4, 14, 3, 2, 0, 0}, {1, 9, 16, 4, 0, 0, 0},
+};
+void vsc_ui_intro(void) { intro_on = 1; intro_at = now_ms; intro_fresh = 1; vsc_event(EV_INTRO, 1, 0); }
+static void draw_intro(void)
+{
+    uint32_t t = frame_ms - intro_at;
+    if (t < 2700u) {
+        const struct icard *c = &icards[(t / 180u) % (sizeof icards / sizeof icards[0])];
+        static const uint16_t col[4] = {C_IRED, C_IGRN, C_NIGHT, RGB(230, 230, 230)};
+        const char *w = iwords[c->w];
+        int ww = word_w(w, c->sx, c->gap), hh = 7 * c->sy;
+        if (c->deco == 1) frame(120 - ww / 2 - 8, 120 - hh / 2 - 8, ww + 16, hh + 16, C_IGRN);
+        if (c->deco == 2) { rect(120 - ww / 2 - 12, 120 - hh / 2 - 10, ww + 24, hh + 20, C_IMAG);
+                            for (int i = 0; i < 24; ++i) { unsigned h = hash3(i, (int)(t / 180u), 7u); rect(120 - ww / 2 - 14 + (int)(h % (unsigned)(ww + 28)), 120 - hh / 2 - 12 + (int)((h >> 8) % (unsigned)(hh + 24)), 3, 2, C_IMAG); } }
+        word(120, w, c->sx, c->sy, c->gap, c->style, col[c->col]);
+        return;
+    }
+    /* held: the name */
+    word(96, "VISCERA:", 4, 9, 3, 0, C_IRED);
+    word(146, "TAPE", 9, 7, 5, 0, C_IRED);
+    if (IN_BAND(196, 206)) text_c(120, 198, VSC_VERSION, RGB(110, 20, 24));
+}
+
 static void draw_notice(void)
 {
     if (!notice || (int32_t)(notice_until - now_ms) <= 0 || !*notice) return;
@@ -1003,7 +1085,8 @@ static void draw_notice(void)
 
 void vsc_ui_frame(uint32_t now)
 {
-    now_ms = now;
+    now_ms = frame_ms = now;
+    if (intro_fresh) { intro_fresh = 0; intro_at = now_ms; }
     /* the reels turn with the tape: a turn about every 1.6 s of tape at 1x */
     uint32_t p = vsc_meter.pos;
     if (vsc_meter.playing) {
@@ -1017,6 +1100,11 @@ void vsc_ui_frame(uint32_t now)
 void vsc_ui_paint_band(unsigned y0, uint16_t *pixels)
 {
     band = pixels; by0 = (int)y0;
+    if (intro_on) {
+        for (unsigned i = 0; i < VSC_SCREEN_W * VSC_BAND; ++i) pixels[i] = C_NIGHT;
+        if ((int32_t)(frame_ms - intro_at) < (int32_t)INTRO_MS) { draw_intro(); return; }
+        intro_on = 0;
+    }
     for (unsigned i = 0; i < VSC_SCREEN_W * VSC_BAND; ++i) pixels[i] = C_BODY;
     switch (page) {
     case PG_MIXER: draw_mixer(); break;

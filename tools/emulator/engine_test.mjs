@@ -54,6 +54,13 @@ const screen = () => new Uint16Array(mem(), x.screen(), 240 * 240);
 function paintCheck(label) { x.paint(now); const s = screen(); let lit = 0; for (let i = 0; i < s.length; i++) if (s[i] !== s[0]) lit++; ok(lit > 3000, 'screen drawn: ' + label + ' (' + lit + ')'); }
 const has = () => [0, 1, 2, 3].map(t => x.has(t));
 
+// 0. the intro: music, title cards, then any button skips it
+x.intro(now); gen = silence;
+{ const r = run(150); ok(!r.nan && r.rms > 0.01 && r.peak <= 1, 'the intro plays music ' + JSON.stringify(r)); }
+now += 400; x.paint(now); wait(15); { const s = screen(); let lit = 0; for (let i = 0; i < s.length; i++) if (s[i]) lit++; ok(lit > 200, 'the intro draws a card'); }
+press(B.PLAY); ok(x.transport() === 0, 'a button skips the intro and does nothing else');
+quiet(run(50), 'the intro\'s music stops when skipped');
+gen = music;
 // 1. the first take: track 1 is armed; REC starts it, REC ends it and the loop plays
 x.set_param(P.IMON, 0);
 ok(x.get_param(TRK(0, S.ARM)) === 1, 'track 1 armed at the start');

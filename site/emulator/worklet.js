@@ -8,6 +8,7 @@ class Viscera extends AudioWorkletProcessor {
     this.x = new WebAssembly.Instance(options.processorOptions.module, {}).exports;
     this.x.init();
     this.start = currentTime;
+    this.x.intro(0);
     this.devGen = this.x.device_changed();
     this.port.onmessage = e => this.message(e.data);
   }

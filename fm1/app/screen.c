@@ -136,7 +136,7 @@ static void open_last(void)
 {
     unsigned s = vsc_dev.last_slot;
     if (vsc_dev.start_blank || !s || s > VSC_PROJECTS) return;
-    if (start_tries != 0) { vsc_ui_notice("AFTER A RESET: NEW PROJECT", 2500); return; }
+    if (start_tries != 0) { vsc_ui_notice("AFTER A RESET: NEW PROJECT", 6000); return; }
     int r = vsc_fm1_load(s - 1u);
     if (r == 0) {
         const char *a = "OPENED ";
@@ -145,8 +145,8 @@ static void open_last(void)
         open_msg[i++] = (char)('0' + s); open_msg[i++] = ' ';
         for (unsigned k = 0; k < 11 && vsc.name[k]; ++k) open_msg[i++] = vsc.name[k];
         open_msg[i] = 0;
-        vsc_ui_notice(open_msg, 2500);
-    } else if (r == -4) vsc_ui_notice("LAST PROJECT DAMAGED: NEW", 2500);
+        vsc_ui_notice(open_msg, 6000);
+    } else if (r == -4) vsc_ui_notice("LAST PROJECT DAMAGED: NEW", 6000);
 }
 /* the engine and the rest; from safe mode too, when PLAY is pressed */
 static void run_engine(void)
@@ -157,6 +157,7 @@ static void run_engine(void)
     vsc_ui_init();
     configure_bt(FM1_BT_AUDIO | FM1_BT_MIDI);
     refresh_slots();
+    vsc_ui_intro();
     open_last();
 }
 

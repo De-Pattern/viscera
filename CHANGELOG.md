@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.0 — a start-up title
+
+- **At power-on, VISCERA: TAPE flashes up in a different face every beat** (block, condensed, wide, hollow, slanted, dotted; red on black, now and then in a green box or on a magenta slab), over three seconds of original 4-bit chip music: a four-on-the-floor kick, a buzzing bass, a pulse arpeggio and noise hats. Then the name holds for a moment. Any button or key skips it. Drawn and played by the firmware itself (no pictures, no samples), so it costs almost nothing.
+- START WITH's message ("OPENED 3 ...") stays up long enough to be read after the title.
+
 ## 2.1.1 — the backlight, as Ravel's
 
 - **Backlit buttons and keys**: the ones that aren't lit glow dimly so you can find them in the dark; what's lit is lit fully. The panel's own scan does it (one frame in six at LOW, three at MID, two at HIGH), as Ravel does, so it is steady however busy the FM-1 is. Before, the glow came from the control loop and often didn't show. GLO › SETTINGS › LIGHT sets it (OFF, LOW, MID, HIGH); it is kept through power-off.

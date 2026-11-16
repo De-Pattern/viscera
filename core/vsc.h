@@ -10,7 +10,7 @@
 /* ---- Parameters -------------------------------------------------------
  * Every parameter is a uint8_t from 0 to its max. Continuous ones run 0..127 and a
  * robot can move them; enums cannot. One flat list: the tracks' strips are in it. */
-#define VSC_TP 5                              /* parameters per track strip */
+#define VSC_TP 8                              /* parameters per track strip */
 enum vsc_param {
     /* TAPE: varispeed (pitch and time together), the decoupled pitch shift, the loop
      * length for the first take (0: free), the tape's level, the TAPE SPEED switch */
@@ -18,7 +18,8 @@ enum vsc_param {
     /* INPUT: where it comes from, its trim and the preamp's drive, monitoring, and
      * whether a pass adds to the tape (DUB) or replaces it */
     P_ISRC, P_ITRIM, P_IDRIVE, P_IMON, P_IREC,
-    /* the strips: TRIM (into the channel's preamp), PAN, LEVEL, MUTE, ARM */
+    /* the strips: TRIM (into the channel's preamp), PAN, LEVEL, MUTE, ARM, the track's own
+     * SPEED and PITCH, and DUB (how much of what is there a DUB pass keeps) */
     P_STRIP,
     /* BOUNCE: which tracks (bits), to which (AUTO: the first free), through RESON,
      * the drive, the level, and whether the sources are cleared after */
@@ -27,11 +28,19 @@ enum vsc_param {
      * width, the whole bank's shift, dust, and the eight bands' gains */
     P_RTGT, P_RPROF, P_RMIX, P_RDECAY, P_RWIDTH, P_RSHIFT, P_RDUST,
     P_RG0, P_RG1, P_RG2, P_RG3, P_RG4, P_RG5, P_RG6, P_RG7,
+    /* MASTER: a four-band EQ (each band FREQ, GAIN, Q, TYPE; the first and last can shelve or
+     * cut) and the bus compressor (after Ravel's COMP: threshold, ratio, attack, release,
+     * makeup, mix, what it listens to, on) */
+    P_EQ0,
+    P_CTHR = P_EQ0 + 16, P_CRATIO, P_CATK, P_CREL, P_CMAKE, P_CMIX, P_CKEY, P_CON,
     /* ROBOTS: two, each a target, a rate, a shape, its skew and depth */
     P_ROB0,
     VSC_NP = P_ROB0 + VSC_ROBOTS * 5
 };
-enum { S_TRIM, S_PAN, S_LEVEL, S_MUTE, S_ARM };
+enum { S_TRIM, S_PAN, S_LEVEL, S_MUTE, S_ARM, S_SPEED, S_PITCH, S_DUB };
+enum { E_FREQ, E_GAIN, E_Q, E_TYPE };
+#define P_EQ(b, k) (P_EQ0 + (b) * 4 + (k))
+enum { EQ_BELL, EQ_SHELF, EQ_CUT };
 #define P_TRK(t, k) (P_STRIP + (t) * VSC_TP + (k))
 enum { R_TARGET, R_RATE, R_SHAPE, R_SKEW, R_DEPTH };
 #define P_ROB(r, k) (P_ROB0 + (r) * 5 + (k))
@@ -54,7 +63,7 @@ const struct vsc_pinfo *vsc_param_info(unsigned p);
 /* Writes a short value label (up to 7 chars) into out. */
 void vsc_param_label(unsigned p, unsigned value, char out[8]);
 /* A robot's target: an index into this list of parameters (continuous ones) */
-#define VSC_RTARGETS 16
+#define VSC_RTARGETS 24
 unsigned vsc_robot_target(unsigned i);   /* the parameter, or VSC_NP for none */
 void vsc_target_name(unsigned i, char out[8]);
 
@@ -76,7 +85,7 @@ struct vsc_project {
     uint16_t gest_ms[VSC_ROBOTS];             /* how long it lasts */
 };
 #define VSC_MAGIC 0x34435356u /* "VSC4" */
-#define VSC_FORMAT 8          /* 8: the 4-track */
+#define VSC_FORMAT 9          /* 9: per-track speed, pitch, dub; the master EQ and compressor */
 /* MIDI learn: a CC (or a note, for an action) on a channel. kind 0: CC to a parameter;
  * 1: a note to an action. */
 struct vsc_learn { uint8_t ch, cc, kind, param; };
@@ -86,7 +95,8 @@ enum { ACT_REC, ACT_PLAY, ACT_ARM1, ACT_ARM2, ACT_ARM3, ACT_ARM4, ACT_BOUNCE, AC
 enum { BACKLIGHT_OFF, BACKLIGHT_LOW, BACKLIGHT_MID, BACKLIGHT_HIGH };
 struct vsc_device {
     uint32_t magic, version, bytes, crc;
-    uint8_t backlight, knob_cc, pad[2];
+    uint8_t backlight, knob_cc;
+    uint8_t start_blank, last_slot;   /* START WITH: 0 the last project saved or loaded (last_slot, 1..8; 0 none), 1 a blank one */
     struct vsc_learn learn[VSC_LEARN];
 };
 #define VSC_DEV_MAGIC 0x44435356u   /* 'VSCD' */
@@ -156,9 +166,14 @@ struct vsc_meter {
     uint8_t rb_level[VSC_RBANDS];
     uint32_t rb_pings;
     uint8_t rb_drops, playing;
+    uint32_t tpos[VSC_TRACKS];               /* each track's own place on the tape (its SPEED) */
+    float comp_gr, comp_in;                  /* the compressor: reduction now (dB), the level it hears (dB) */
 };
 extern struct vsc_project vsc;   /* the live project */
 extern struct vsc_meter vsc_meter;
+/* the master EQ's bands as they are now (b0 b1 b2 a1 a2), and which do something: for the picture */
+extern float vsc_eq_coef[4][5];
+extern uint8_t vsc_eq_live;
 
 /* ---- Control helpers --------------------------------------------------- */
 void vsc_project_defaults(struct vsc_project *p);

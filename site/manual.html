@@ -108,7 +108,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
   </header>
 
   <div class="top">
-    <p class="eyebrow">Manual · Viscera 2.0.0 · 4-Track</p>
+    <p class="eyebrow">Manual · Viscera 2.1.0 · 4-Track</p>
     <h1>Guide</h1>
     <p>Viscera 4-Track turns the M-VAVE FM-1 into an overdubbing tape machine. Four tracks of tape in its memory, a 424-style preamp on the input and every channel, VU meters, and RESON to print a bounce through. This page covers installing it safely, getting sound in, how the sound flows, and what every page and control does.</p>
   </div>
@@ -123,6 +123,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
       <a href="#tape">The tape</a>
       <a href="#record">Recording</a>
       <a href="#mixer">Mixer</a>
+      <a href="#master">Master</a>
       <a href="#input">Input</a>
       <a href="#bounce">Bounce</a>
       <a href="#reson">RESON</a>
@@ -179,7 +180,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
       <section id="audio">
         <p class="eyebrow">03</p>
         <h2>Getting audio in</h2>
-        <p>The FM-1 has no analogue input. Sound gets in two ways, and Viscera can use both at once. Everything about it is on one page: <b>INPUT</b> (<kbd>FX</kbd>, or <kbd>EDIT</kbd> after the mixer).</p>
+        <p>The FM-1 has no analogue input. Sound gets in two ways, and Viscera can use both at once. Everything about it is on one page: <b>INPUT</b> (<kbd>EDIT</kbd>, after the mixer's three views).</p>
         <div class="tbl"><table>
           <tr><th>Input</th><th>How</th></tr>
           <tr><td>BT</td><td>A phone, tablet or computer plays music to the FM-1 as a Bluetooth speaker. Pair from the phone's Bluetooth settings and press play. Choosing BT (or BOTH) on the INPUT page switches Bluetooth audio on if it was off.</td></tr>
@@ -215,12 +216,13 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
           <tr><th>Control</th><th>What it does</th></tr>
           <tr><td>KNOB 1–4</td><td>The four knobs on screen.</td></tr>
           <tr><td>SELECT</td><td>The page's next view.</td></tr>
-          <tr><td>ALGORITHM</td><td>Where RESON sits (on RESON), the robot (on ROBOTS).</td></tr>
+          <tr><td>ALGORITHM</td><td>The selected track (TAPE, MIXER), where RESON sits (RESON), the robot (ROBOTS).</td></tr>
           <tr><td>PRESETS</td><td>The page's own: TAPE SPEED (TAPE), DUB or REPLACE (INPUT), where a bounce goes (BOUNCE), RESON's band, a robot's target, a project slot, a Bluetooth device.</td></tr>
           <tr><td>MASTER</td><td>Output level.</td></tr>
-          <tr><td>HOME</td><td>TAPE. Held: turn a knob to record a robot gesture; a track's key clears that track; PLAY erases the whole tape.</td></tr>
+          <tr><td>HOME</td><td>TAPE, then (HOME again) TRACK: the selected track's own SPEED, PITCH, DUB and LEVEL. Held: a track's key selects it (without arming it); turn a knob to record a robot gesture.</td></tr>
+          <tr><td>ARP (CLEAR)</td><td>Held: a track's key clears that track; PLAY erases the whole tape.</td></tr>
           <tr><td>EDIT</td><td>MIXER (levels, then trims, then pans), then INPUT.</td></tr>
-          <tr><td>FX</td><td>INPUT.</td></tr>
+          <tr><td>FX</td><td>MASTER: the four-band EQ (a view per band), then the compressor.</td></tr>
           <tr><td>SEQ</td><td>BOUNCE.</td></tr>
           <tr><td>ENV</td><td>RESON.</td></tr>
           <tr><td>LFO</td><td>ROBOTS and MIDI learn.</td></tr>
@@ -243,6 +245,8 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
           <tr><td>LOOP</td><td>Before the first take: a length to stop at (FREE: when you press REC again). After: trims or extends the loop, a twentieth of a second a click.</td></tr>
           <tr><td>LEVEL</td><td>The tape's level into the mix.</td></tr>
         </table></div>
+        <h3>TRACK (HOME again)</h3>
+        <p>The selected track (hold HOME and press its key, or turn ALGORITHM): its own <b>SPEED</b> (half to double, on top of the tape's), <b>PITCH</b> (±12 semitones, on top of the tape's), <b>DUB</b> level and <b>LEVEL</b>. Tracks at different speeds drift against each other round the loop; PLAY from stopped lines them up again. In the first take and in a bounce's print the tracks run at the tape's speed. At HI the tape and a track together reach double speed at most.</p>
         <h3>TAPE SPEED (PRESETS)</h3>
         <div class="tbl"><table>
           <tr><th>Speed</th><th>Rate</th><th>Per track</th></tr>
@@ -262,7 +266,8 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
           <li><b>Punching</b>: while the loop plays, REC punches the armed tracks in, REC again punches them out. Stopped, REC starts the tape and punches in.</li>
           <li><b>DUB or REPLACE</b> (INPUT, PRESETS): DUB adds to what's on the track, REPLACE records over it (you hear only the input while punched in). A hot DUB is taken softly by the tape.</li>
           <li><b>Monitoring</b> (INPUT, K4): AUTO hears the input while a track is armed; ON always; OFF never.</li>
-          <li><b>Clearing</b>: hold HOME and press a track's key. Hold HOME and press PLAY to erase the whole tape (and the loop length).</li>
+          <li><b>Clearing</b>: hold ARP (CLEAR) and press a track's key. Hold ARP and press PLAY to erase the whole tape (and the loop length).</li>
+          <li><b>DUB level</b> (HOME, TRACK view): how much of what's on the track a DUB pass keeps. 100 %: all of it (sound on sound); lower lets older passes fade each time round; 0 %: each pass replaces.</li>
         </ul>
         <p>Each pass is re-encoded, so a part that is overdubbed many times picks up a little hiss, as tape does.</p>
       </section>
@@ -274,9 +279,19 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
         <p><b>TRIM</b> drives the channel's preamp: 0 dB is clean; push it until the lamp glows for warmth, further for grit.</p>
       </section>
 
+      <section id="master">
+        <p class="eyebrow">08b</p>
+        <h2>Master (FX)</h2>
+        <p>On everything you hear: the tape's mix and the monitored input.</p>
+        <h3>EQ (the first four views)</h3>
+        <p>Four bands, each FREQ (20 Hz to 20 kHz), GAIN (±15 dB), Q and TYPE. Bands 2 and 3 are bells; band 1 can be a bell, a low shelf or a LO CUT, band 4 a bell, a high shelf or a HI CUT (Q sets a cut's resonance). The screen draws the curve; a band at 0 dB is out of the way.</p>
+        <h3>COMP (the last two views)</h3>
+        <p>Ravel's glue compressor, after the SSL G bus compressor: <b>COMP</b> on or off, <b>THRESH</b> (−30 to 0 dB), <b>RATIO</b> (2:1, 4:1, 10:1), <b>MAKEUP</b>; then <b>ATTACK</b> (0.1 to 30 ms), <b>RELEASE</b> (0.1 to 1.2 s, or AUTO, two-stage), <b>MIX</b> (below 100 % the dry sound under it) and <b>KEY</b> (what it listens to: the mix, or one track, so a track can push the rest down). The bar shows the gain reduction; the dot on the curve is the level going in.</p>
+      </section>
+
       <section id="input">
         <p class="eyebrow">09</p>
-        <h2>Input (FX)</h2>
+        <h2>Input (EDIT, after the mixer)</h2>
         <div class="tbl"><table>
           <tr><th>Control</th><th></th></tr>
           <tr><td>SOURCE (K1)</td><td>BT, USB or BOTH.</td></tr>
@@ -305,7 +320,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
           <tr><td>CLEAR</td><td>YES clears the sources after the print, so they're free for more.</td></tr>
           <tr><td>TO, RESON (SELECT)</td><td>Where it goes, and RESON in or out.</td></tr>
         </table></div>
-        <p>The sources' levels set the balance in the print. "NO FREE TRACK" means every track not being bounced holds something: clear one (HOME + its key).</p>
+        <p>Only the picked tracks go into the print (nothing else, such as the monitored input). The sources' levels, speeds and pitches set what's printed. "NO FREE TRACK" means every track not being bounced holds something: clear one (ARP + its key).</p>
       </section>
 
       <section id="reson">
@@ -354,6 +369,8 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
         <p class="eyebrow">14</p>
         <h2>Projects (SAVE)</h2>
         <p>Eight slots for the desk: every knob, the robots and their gestures. Not the tape, which stays in memory until the FM-1 switches off. PRESETS picks a slot; REC loads it, or saves into it if it's empty; SAVE + PLAY saves over it. Saving writes flash, so it only happens while stopped.</p>
+        <h3>START WITH (GLO › SETTINGS)</h3>
+        <p><b>LAST</b> (the default) opens the project you last saved or loaded when the FM-1 switches on, and says what opened ("OPENED 3 ..."). It is the project as you last saved it, not what was playing when you switched off: there is no autosave. <b>BLANK</b> starts with the defaults. If the last start never ran properly (a crash or a hang), the next one starts blank and says "AFTER A RESET: NEW PROJECT", so a project can never stop the FM-1 starting; expect that once after an update too. A damaged slot starts blank and says so.</p>
       </section>
 
       <section id="settings">
@@ -361,8 +378,8 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
         <h2>Settings (GLO)</h2>
         <div class="tbl"><table>
           <tr><th>View</th><th></th></tr>
-          <tr><td>PANEL</td><td>BT AUDIO and BT MIDI on or off, the backlight, KNOB CC. The CPU load: the tape and desk, RESON, the rest, and whether the guard is easing.</td></tr>
-          <tr><td>BLUETOOTH MIDI</td><td>The role (peripheral or central); PRESETS picks a device, REC scans and connects.</td></tr>
+          <tr><td>PANEL</td><td>BT AUDIO and BT MIDI on or off, the backlight, START WITH (LAST or BLANK). The CPU load: the tape and desk, RESON, the rest, and whether the guard is easing.</td></tr>
+          <tr><td>BLUETOOTH MIDI</td><td>The role (peripheral or central) and KNOB CC; PRESETS picks a device, REC scans and connects.</td></tr>
         </table></div>
       </section>
 
@@ -378,7 +395,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
         <h3>Nothing records</h3>
         <p>Check INPUT: a green lamp on the source, the VU moving, and a track armed (the header says TO TRK n). REC on an empty tape with nothing armed says so.</p>
         <h3>Trying it without an FM-1</h3>
-        <p>The <a href="emulator/">browser emulator</a> runs the same code, with a demo loop, an audio file, your computer's sound or a microphone as the input.</p>
+        <p>The <a href="emulator/">browser emulator</a> runs the same code, with an audio file, your computer's sound or a microphone as the input.</p>
       </section>
     </main>
   </div>

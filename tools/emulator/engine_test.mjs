@@ -12,12 +12,14 @@ let fails = 0;
 const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } };
 // the parameters, in vsc.h's order
 const P = {SPEED: 0, PITCH: 1, LOOP: 2, TLEVEL: 3, TAPESPD: 4, ISRC: 5, ITRIM: 6, IDRIVE: 7, IMON: 8, IREC: 9,
-  BSRC: 30, BDST: 31, BRESON: 32, BDRIVE: 33, BLEVEL: 34, BCLEAR: 35,
-  RTGT: 36, RPROF: 37, RMIX: 38, RDECAY: 39, RWIDTH: 40, RSHIFT: 41, RDUST: 42, RG0: 43, ROB0: 51};
-const TRK = (t, k) => 10 + t * 5 + k, S = {TRIM: 0, PAN: 1, LEVEL: 2, MUTE: 3, ARM: 4};
+  BSRC: 42, BDST: 43, BRESON: 44, BDRIVE: 45, BLEVEL: 46, BCLEAR: 47,
+  RTGT: 48, RPROF: 49, RMIX: 50, RDECAY: 51, RWIDTH: 52, RSHIFT: 53, RDUST: 54, RG0: 55, EQ0: 63,
+  CTHR: 79, CRATIO: 80, CATK: 81, CREL: 82, CMAKE: 83, CMIX: 84, CKEY: 85, CON: 86, ROB0: 87};
+const TRK = (t, k) => 10 + t * 8 + k, S = {TRIM: 0, PAN: 1, LEVEL: 2, MUTE: 3, ARM: 4, SPEED: 5, PITCH: 6, DUB: 7};
+const EQ = (b, k) => P.EQ0 + b * 4 + k;
 const ROB = (r, k) => P.ROB0 + r * 5 + k, R = {TARGET: 0, RATE: 1, SHAPE: 2, SKEW: 3, DEPTH: 4};
 const EV = {NOTE_ON: 0, NOTE_OFF: 1, PLAY: 2, STOP: 3, REC: 4, CLEAR: 5, ERASE: 6, BOUNCE: 7, ARM: 8, CC: 9, PANIC: 10, LOOP: 11};
-ok(x.np() === 61, 'parameter count: ' + x.np());
+ok(x.np() === 97, 'parameter count: ' + x.np());
 x.init();
 const inbuf = new Float32Array(mem(), x.input_buffer(), 256), usbbuf = new Float32Array(mem(), x.usb_buffer(), 256);
 let fr = 0;
@@ -90,8 +92,8 @@ x.set_param(TRK(0, S.MUTE), 0);
 
 // 4. the tape gives back what went on it: a sine, REPLACE, at each speed
 function fidelity(spd) {
-  press(B.HOME); press(B.PLAY, 1 << B.HOME);   // HOME + PLAY: erase
-  ok(x.loop() === 0 && has().every(h => !h), 'HOME + PLAY erases the tape');
+  press(B.HOME); press(B.PLAY, 1 << B.ARP);   // ARP (CLEAR) + PLAY: erase
+  ok(x.loop() === 0 && has().every(h => !h), 'ARP + PLAY erases the tape');
   x.set_param(P.TAPESPD, spd); x.set_param(P.IDRIVE, 0); x.set_param(P.IREC, 1);
   for (let t = 0; t < 4; t++) x.set_param(TRK(t, S.ARM), t === 0 ? 1 : 0);
   let ph = 0; gen = () => { for (let i = 0; i < 128; i++) { inbuf[2 * i] = inbuf[2 * i + 1] = 0.3 * Math.sin(ph); ph += 2 * Math.PI * 300 / 44100; } };
@@ -110,7 +112,7 @@ ok(fid[0].loop > fid[1].loop && fid[1].loop > fid[2].loop, 'faster tape: more sa
 x.set_param(P.IREC, 0); x.set_param(P.TAPESPD, 1);
 
 // 5. a set loop length closes the first take by itself; the LOOP knob trims it after
-press(B.HOME); press(B.PLAY, 1 << B.HOME);
+press(B.HOME); press(B.PLAY, 1 << B.ARP);
 x.set_param(P.LOOP, 20);   // 1.0 s
 gen = music; press(B.REC); wait(80);
 ok(x.transport() === 1 && Math.abs(x.loop() - 16000) < 300, 'LOOP 1.0 s closes the take at 1 s: ' + x.loop());
@@ -124,7 +126,10 @@ const capOk = x.cap() > 40000; ok(capOk, 'tape capacity per track: ' + x.cap());
 x.set_param(TRK(1, S.ARM), 1); x.set_param(TRK(0, S.ARM), 0);
 press(B.REC); wait(10); press(B.REC);
 ok(x.has(1) === 1, 'track 2 recorded');
-key(TK[1], 1 << B.HOME); ctl(); ok(x.has(1) === 0 && x.has(0) === 1, 'HOME + key 2 clears track 2 only');
+key(TK[1], 1 << B.ARP); ctl(); ok(x.has(1) === 0 && x.has(0) === 1, 'ARP + key 2 clears track 2 only');
+key(TK[2], 1 << B.HOME); ctl(); ok(x.get_param(TRK(2, S.ARM)) === 0, 'HOME + key 3 selects track 3 without arming it');
+enc(2, 20); ok(x.get_param(TRK(2, S.SPEED)) > 64, 'HOME, TRACK view: KNOB 1 is the selected track\'s SPEED');
+x.set_param(TRK(2, S.SPEED), 64); press(B.HOME);
 
 // 7. varispeed, pitch, the preamps
 gen = silence;
@@ -149,7 +154,7 @@ let u = {peak: 0}; for (let b = 0; b < 50; b++) { x.render(2); } ok(x.vu(4) > 0.
 x.set_param(P.ISRC, 2); x.set_param(TRK(0, S.ARM), 0);
 
 // 9. bounces: 1 + 2 to a free track, through RESON; the errors
-press(B.HOME); press(B.PLAY, 1 << B.HOME);
+press(B.HOME); press(B.PLAY, 1 << B.ARP);
 gen = music;
 x.set_param(TRK(0, S.ARM), 1); press(B.REC); wait(40); press(B.REC);
 x.set_param(TRK(0, S.ARM), 0); x.set_param(TRK(1, S.ARM), 1); press(B.REC); wait(40); press(B.REC);
@@ -217,11 +222,48 @@ ok(x.recording() !== rec0 || x.transport() !== tr0, 'a learned note works REC');
 x.midi(0x90, 36, 100); run(2);
 x.set_param(TRK(3, S.ARM), 0);
 
+// 12b. each track at its own speed; DUB level; the master EQ and compressor
+press(B.HOME); press(B.PLAY, 1 << B.ARP);
+gen = music; x.set_param(TRK(0, S.ARM), 1); x.set_param(TRK(3, S.ARM), 0); press(B.REC); wait(40); press(B.REC);
+x.set_param(TRK(0, S.ARM), 0); x.set_param(TRK(1, S.ARM), 1); press(B.REC); wait(40); press(B.REC); x.set_param(TRK(1, S.ARM), 0);
+gen = silence;
+x.set_param(TRK(1, S.SPEED), 127); run(200);
+const tp0 = x.loop(); // (positions: through the meter's tpos via the screen is not exported; check the sound instead)
+sound(run(200), 'track 2 at double speed plays');
+x.set_param(TRK(1, S.SPEED), 0); sound(run(200), 'track 2 at half speed plays');
+x.set_param(TRK(1, S.SPEED), 64);
+x.set_param(TRK(0, S.PITCH), 24); x.set_param(TRK(1, S.PITCH), 0); sound(run(200), 'per-track pitch, up and down');
+x.set_param(TRK(0, S.PITCH), 12); x.set_param(TRK(1, S.PITCH), 12);
+// DUB 0: a DUB pass keeps nothing of what was there (track 2 punched with silence goes quiet)
+x.set_param(TRK(1, S.DUB), 0); x.set_param(TRK(1, S.ARM), 1); x.set_param(TRK(0, S.MUTE), 1);
+press(B.PLAY); press(B.PLAY); press(B.REC); run(Math.ceil(tp0 / 16000 * 44100 / 128) + 40); press(B.REC);
+x.set_param(TRK(1, S.ARM), 0);
+const dub0 = run(300); ok(dub0.rms < 0.01, 'DUB at 0 with silence in: the track is wiped ' + JSON.stringify(dub0));
+x.set_param(TRK(1, S.DUB), 127); x.set_param(TRK(0, S.MUTE), 0);
+// the EQ: a low cut at the top of the range thins the sound; a +15 dB bell louder
+const flat = run(200);
+x.set_param(EQ(0, 3), 2); x.set_param(EQ(0, 0), 110); const cut = run(200);
+ok(cut.rms < flat.rms * 0.7, 'EQ band 1 LO CUT high up takes the body out: ' + flat.rms.toFixed(4) + ' > ' + cut.rms.toFixed(4));
+x.set_param(EQ(0, 3), 0); x.set_param(EQ(0, 0), 30);
+x.set_param(EQ(1, 1), 127); x.set_param(EQ(1, 0), 30); clean(run(200), 'EQ +15 dB stays in range');
+x.set_param(EQ(1, 1), 64);
+for (let b = 0; b < 4; b++) for (const ty of [0, 1, 2]) { x.set_param(EQ(b, 3), ty); x.set_param(EQ(b, 1), 100); x.set_param(EQ(b, 2), 127); clean(run(20), 'EQ band ' + b + ' type ' + ty); }
+for (let b = 0; b < 4; b++) { x.set_param(EQ(b, 3), 0); x.set_param(EQ(b, 1), 64); x.set_param(EQ(b, 2), 31); }
+// the compressor: on, a low threshold, 10:1: the level drops
+x.set_param(TRK(0, S.TRIM), 110); x.set_param(TRK(1, S.TRIM), 110);
+const open_ = run(300);
+x.set_param(P.CON, 1); x.set_param(P.CTHR, 0); x.set_param(P.CRATIO, 2); x.set_param(P.CATK, 0);
+const comp = run(300);
+ok(comp.rms < open_.rms * 0.8, 'the compressor pulls the level down: ' + open_.rms.toFixed(4) + ' > ' + comp.rms.toFixed(4));
+x.set_param(P.CKEY, 1); clean(run(200), 'keyed by track 1');
+press(B.FX); paintCheck('master, EQ'); for (let v = 0; v < 6; v++) { paintCheck('master view ' + v); enc(0, 1); }
+x.set_param(P.CON, 0); x.set_param(P.CKEY, 0); x.set_param(TRK(0, S.TRIM), 80); x.set_param(TRK(1, S.TRIM), 80);
+
 // 13. every page and view drawn, every knob both ways, nothing breaks
 gen = music;
 for (const b of [B.HOME, B.EDIT, B.FX, B.SEQ, B.ENV, B.LFO, B.SAVE, B.GLO]) {
   press(b); paintCheck('page ' + b);
-  for (let v = 0; v < 3; v++) {
+  for (let v = 0; v < 6; v++) {
     for (let k = 2; k < 6; k++) { enc(k, 5); enc(k, -9); enc(k, 4); }
     enc(6, 1); enc(6, -1);
     paintCheck('page ' + b + ' view ' + v);

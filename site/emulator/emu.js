@@ -20,7 +20,7 @@
   /* ---------- panel: the FM-1's own layout ---------- */
   /* encoder indices as the FM-1 reports them: 0 SELECT, 1 ALGORITHM, 2-5 KNOB 1-4, 6 PRESETS */
   const ENC_FN = ['view', 'reson · robot', 'param 1', 'param 2', 'param 3', 'param 4', 'page\'s own'];
-  const BTN_FN = {FX: 'input', ENV: 'reson', LFO: 'robots', EDIT: 'mixer', GLO: 'settings',
+  const BTN_FN = {FX: 'master', ARP: 'clear', ENV: 'reson', LFO: 'robots', EDIT: 'mixer', GLO: 'settings',
     HOME: 'tape', SAVE: 'projects', SEQ: 'bounce', REC: 'rec · punch'};
   const ROW1 = ['FX', 'SEL', 'ENV', 'LFO', 'EDIT', 'GLO'], ROW2 = ['HOME', 'SAVE', 'ARP', 'SEQ', 'PLAY', 'REC'];
   let master = 0.8;
@@ -206,7 +206,7 @@
   const fromB64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 
   /* ---------- live input ---------- */
-  const KINDS = ['none', 'demo', 'file', 'pc', 'mic'];
+  const KINDS = ['none', 'file', 'pc', 'mic'];
   function setInput(kind) {
     KINDS.forEach(k => $('in-' + k).setAttribute('aria-pressed', String(k === kind)));
     inputKind = kind; hostStatus();
@@ -228,48 +228,7 @@
   }
   const CATCH = ' REC starts the first take on the armed track, REC again loops it.';
 
-  /* the demo: made here, at the FM-1's default 110 BPM, four bars of drums, bass and a chord that
-     moves, so there is always something worth catching (no file, nothing to set up) */
-  let demoBuf = null;
-  function demoLoop() {
-    if (demoBuf) return demoBuf;
-    const sr = ctx.sampleRate, n = Math.round(sr * 16 * 60 / 110), L = new Float32Array(n), R = new Float32Array(n);
-    let seed = 7; const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296) * 2 - 1;
-    const beat = sr * 60 / 110, step = beat / 4;
-    const add = (at, len, f, pan = 0) => { for (let i = 0; i < len && at + i < n; i++) { const v = f(i / sr, i); L[at + i] += v * (1 - pan) ; R[at + i] += v * (1 + pan); } };
-    const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
-    for (let s = 0; s < 64; s++) {
-      const at = Math.round(s * step), bar = s >> 4, pos = s & 15;
-      if (pos === 0 || pos === 6 || pos === 10 || (bar === 3 && pos === 14))                         // kick
-        add(at, sr * 0.35, t => 0.8 * Math.exp(-t * 9) * Math.sin(2 * Math.PI * (45 * t + 90 * (1 - Math.exp(-t * 35)) / 35)));
-      if (pos === 4 || pos === 12)                                                                   // snare
-        add(at, sr * 0.25, t => Math.exp(-t * 18) * (0.35 * rnd() + 0.25 * Math.sin(2 * Math.PI * 185 * t)), 0.1);
-      if (pos % 2 === 1 || (bar & 1 && pos % 4 === 2))                                               // hats
-        add(at, sr * 0.06, t => 0.16 * Math.exp(-t * 70) * rnd(), pos % 4 === 1 ? 0.4 : -0.4);
-      const bassNotes = [36, 36, 43, 41], bn = bassNotes[bar];                                      // bass
-      if (pos % 4 === 0 || pos === 7 || pos === 14)
-        add(at, step * (pos === 7 ? 1 : 2.6), t => 0.28 * Math.exp(-t * 3) * Math.tanh(2.5 * Math.sin(2 * Math.PI * mtof(bn + (pos === 14 ? 12 : 0)) * t)));
-    }
-    const chords = [[60, 63, 67, 70], [60, 63, 67, 72], [62, 67, 70, 74], [60, 65, 68, 72]];          // pad
-    chords.forEach((c, bar) => add(Math.round(bar * 4 * beat), Math.round(4 * beat), t => {
-      const env = Math.min(1, t * 6) * Math.exp(-t * 0.5);
-      return env * 0.05 * c.reduce((a, m, k) => a + Math.sin(2 * Math.PI * mtof(m) * t * (1 + 0.002 * (k - 1.5))), 0);
-    }, 0.2));
-    const bells = [79, 82, 77, 74, 75, 79, 84, 82];                                                    // bells
-    bells.forEach((m, k) => add(Math.round((k * 4 + 2.5) * beat / 1), Math.round(sr * 1.2), t => 0.12 * Math.exp(-t * 4) * Math.sin(2 * Math.PI * mtof(m) * t) * (1 + 0.5 * Math.sin(2 * Math.PI * mtof(m) * 3.01 * t)), k & 1 ? 0.5 : -0.5));
-    let pk = 0; for (let i = 0; i < n; i++) pk = Math.max(pk, Math.abs(L[i]), Math.abs(R[i]));
-    const g = 0.8 / pk;
-    demoBuf = ctx.createBuffer(2, n, sr);
-    demoBuf.getChannelData(0).set(L.map(v => v * g)); demoBuf.getChannelData(1).set(R.map(v => v * g));
-    return demoBuf;
-  }
-  function useDemo() {
-    setInput('demo');
-    return useSource(async () => { const b = ctx.createBufferSource(); b.buffer = demoLoop(); b.loop = true; b.start(); return b; },
-      'Demo loop: drums, bass, chords and bells, 110 BPM (the FM-1\'s tempo).' + CATCH);
-  }
   $('in-none').addEventListener('click', () => { setInput('none'); useSource(async () => null, 'No live input.'); });
-  $('in-demo').addEventListener('click', useDemo);
 
   /* microphone, or any input device: a virtual cable brings in a DAW or any app */
   async function useMic() {
@@ -349,8 +308,8 @@
       (function loop() { if (!pending && node) { pending = true; node.port.postMessage({type: 'paint'}); } setTimeout(loop, 33); })();
       setInterval(send, 50);       /* keeps held-button timings (like a long REC) moving */
       midiIn();
-      await useDemo();
-      note('Viscera 4-Track is on, with a demo loop playing in. Tap REC for the first take on track 1.');
+      setInput('none');
+      note('Viscera 4-Track is on. Choose an input (a file, your computer\'s audio or a microphone), then REC for the first take on track 1.');
     } catch (e) {
       $('power-on').disabled = false;
       note('Could not start audio in this browser: ' + (e && e.message ? e.message : e));

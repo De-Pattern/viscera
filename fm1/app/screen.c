@@ -116,15 +116,37 @@ void groove_screen_init(void)
 /* First control pass: the FM-1's settings, the start guard, then the engine (or safe
  * mode, after two starts that never ran well). */
 static void run_engine(void);
+static int start_tries;   /* starts since the last good one (the guard's count) */
 static void start(void)
 {
     started = 1;
     vsc_fm1_device_load();                       /* the settings first: the guard may rewrite their sector */
     int tries = vsc_fm1_boot_begin();
+    start_tries = tries;
     boot_pending = tries >= 0;
     if (tries >= (int)BOOT_FAILED_STARTS) safe_mode = 1;
     if (safe_mode) { vsc_ui_notice("SAFE MODE  PLAY: START", 0x7fffffffu); return; }
     run_engine();
+}
+/* START WITH LAST: the project last saved or loaded opens, unless the last start never ran
+ * well (a crash or a hang: a project it can't open can never stop it starting); then it
+ * starts blank and says so */
+static char open_msg[32];
+static void open_last(void)
+{
+    unsigned s = vsc_dev.last_slot;
+    if (vsc_dev.start_blank || !s || s > VSC_PROJECTS) return;
+    if (start_tries != 0) { vsc_ui_notice("AFTER A RESET: NEW PROJECT", 2500); return; }
+    int r = vsc_fm1_load(s - 1u);
+    if (r == 0) {
+        const char *a = "OPENED ";
+        unsigned i = 0;
+        while (*a) open_msg[i++] = *a++;
+        open_msg[i++] = (char)('0' + s); open_msg[i++] = ' ';
+        for (unsigned k = 0; k < 11 && vsc.name[k]; ++k) open_msg[i++] = vsc.name[k];
+        open_msg[i] = 0;
+        vsc_ui_notice(open_msg, 2500);
+    } else if (r == -4) vsc_ui_notice("LAST PROJECT DAMAGED: NEW", 2500);
 }
 /* the engine and the rest; from safe mode too, when PLAY is pressed */
 static void run_engine(void)
@@ -135,6 +157,7 @@ static void run_engine(void)
     vsc_ui_init();
     configure_bt(FM1_BT_AUDIO | FM1_BT_MIDI);
     refresh_slots();
+    open_last();
 }
 
 /* A start that has run for 4 s is a good one: mark it (one byte of flash, no erase).

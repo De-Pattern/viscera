@@ -36,7 +36,7 @@ It's built on M-VAVE's official FM1 Open SDK (V14), so Bluetooth, USB audio and 
 
 ## Try it in the browser
 
-The [emulator](https://de-pattern.github.io/viscera/emulator/) runs the firmware's own C core, compiled to WebAssembly: the engine, the screen and the controls, with a demo loop, an audio file or your microphone standing in for Bluetooth and USB audio in.
+The [emulator](https://de-pattern.github.io/viscera/emulator/) runs the firmware's own C core, compiled to WebAssembly: the engine, the screen and the controls, with an audio file, your computer's sound or your microphone standing in for Bluetooth and USB audio in.
 
 ## Install
 

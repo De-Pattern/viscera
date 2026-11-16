@@ -157,19 +157,24 @@ static void secs(char *o, float s)   /* "2.9S" */
 }
 
 /* ------------------------------------------------------------- pages */
-enum { PG_TAPE, PG_MIXER, PG_INPUT, PG_BOUNCE, PG_RESON, PG_ROBOTS, PG_SAVE, PG_SETTINGS, PG_COUNT };
-static unsigned page, view, rsel = 1, rob, learn_sel, slot_sel, ble_sel;
+enum { PG_TAPE, PG_MIXER, PG_INPUT, PG_BOUNCE, PG_RESON, PG_ROBOTS, PG_SAVE, PG_SETTINGS, PG_MASTER, PG_COUNT };
+static unsigned page, view, rsel = 1, rob, learn_sel, slot_sel, ble_sel, sel;   /* sel: the selected track */
 static uint32_t now_ms, notice_until, touch_at[4];
 static const char *notice;
 static char notice_buf[32];
 static uint32_t prev_buttons, prev_keys;
 static uint8_t learn_seen, used_mod;   /* a held modifier was used */
 /* a knob slot: a parameter, or one of the page's own controls */
-enum { K_NONE = 200, K_LOOP, K_BTAUDIO, K_BTMIDI, K_LIGHT, K_KNOBCC, K_BLE, K_CLEARMAP, K_BAND };
+enum { K_NONE = 200, K_LOOP, K_BTAUDIO, K_BTMIDI, K_LIGHT, K_KNOBCC, K_BLE, K_CLEARMAP, K_BAND, K_START };
 static unsigned slot(unsigned k)
 {
     switch (page) {
-    case PG_TAPE: { static const uint8_t s[4] = {P_SPEED, P_PITCH, K_LOOP, P_TLEVEL}; return s[k]; }
+    case PG_TAPE:
+        if (view == 1) { static const uint8_t s[4] = {S_SPEED, S_PITCH, S_DUB, S_LEVEL}; return P_TRK(sel, s[k]); }
+        { static const uint8_t s[4] = {P_SPEED, P_PITCH, K_LOOP, P_TLEVEL}; return s[k]; }
+    case PG_MASTER:
+        if (view < 4) return P_EQ(view, k);
+        { static const uint8_t s[2][4] = {{P_CON, P_CTHR, P_CRATIO, P_CMAKE}, {P_CATK, P_CREL, P_CMIX, P_CKEY}}; return s[view - 4][k]; }
     case PG_MIXER: return P_TRK(k, view == 0 ? S_LEVEL : view == 1 ? S_TRIM : S_PAN);
     case PG_INPUT: { static const uint8_t s[4] = {P_ISRC, P_ITRIM, P_IDRIVE, P_IMON}; return s[k]; }
     case PG_BOUNCE: {
@@ -184,7 +189,7 @@ static unsigned slot(unsigned k)
         if (view >= VSC_ROBOTS) return k == 3 ? K_CLEARMAP : K_NONE;
         return P_ROB(view, k == 0 ? R_RATE : k == 1 ? R_SHAPE : k == 2 ? R_SKEW : R_DEPTH);
     case PG_SETTINGS: {
-        static const uint8_t s[2][4] = {{K_BTAUDIO, K_BTMIDI, K_LIGHT, K_KNOBCC}, {K_BLE, K_NONE, K_NONE, K_NONE}};
+        static const uint8_t s[2][4] = {{K_BTAUDIO, K_BTMIDI, K_LIGHT, K_START}, {K_BLE, K_KNOBCC, K_NONE, K_NONE}};
         return s[view & 1][k];
     }
     default: return K_NONE;
@@ -192,7 +197,7 @@ static unsigned slot(unsigned k)
 }
 static unsigned views(void)
 {
-    return page == PG_MIXER ? 3 : page == PG_BOUNCE || page == PG_RESON || page == PG_SETTINGS ? 2 : page == PG_ROBOTS ? VSC_ROBOTS + 1 : 1;
+    return page == PG_MASTER ? 6 : page == PG_TAPE ? 2 : page == PG_MIXER ? 3 : page == PG_BOUNCE || page == PG_RESON || page == PG_SETTINGS ? 2 : page == PG_ROBOTS ? VSC_ROBOTS + 1 : 1;
 }
 static float tape_hz(void) { return vsc_tape_hz(vsc.p[P_TAPESPD] % 3u); }
 static void slot_text(unsigned s, char name[10], char val[10])
@@ -215,6 +220,7 @@ static void slot_text(unsigned s, char name[10], char val[10])
     case K_LIGHT: { static const char *const l[4] = {"OFF", "LOW", "MID", "HIGH"}; cpy(name, "LIGHT"); cpy(val, l[vsc_dev.backlight & 3]); break; }
     case K_KNOBCC: cpy(name, "CC 110"); cpy(val, vsc_dev.knob_cc ? "KNOBS" : "OFF"); break;
     case K_BLE: cpy(name, "BLE"); cpy(val, vsc_host.ble_role ? "CENTRL" : "PERIPH"); break;
+    case K_START: cpy(name, "START"); cpy(val, vsc_dev.start_blank ? "BLANK" : "LAST"); break;
     case K_CLEARMAP: cpy(name, "CLEAR"); cpy(val, ">"); break;
     case K_BAND: { char b[8]; cpy(name, "BAND "); b[0] = (char)('1' + rsel); b[1] = 0; cat(name, b); vsc_param_label(P_RG0 + rsel, vsc.p[P_RG0 + rsel], val); break; }
     default: break;
@@ -226,6 +232,7 @@ static float slot_frac(unsigned s)
     if (s == K_LOOP) return vsc_meter.loop && vsc_meter.cap ? (float)vsc_meter.loop / (float)vsc_meter.cap : (float)vsc.p[P_LOOP] / 127.f;
     if (s == K_BAND) return (float)vsc.p[P_RG0 + rsel] / 127.f;
     if (s == K_LIGHT) return (float)vsc_dev.backlight / 3.f;
+    if (s == K_START) return vsc_dev.start_blank ? 0.f : 1.f;
     return 0.f;
 }
 void vsc_ui_notice(const char *t, uint32_t ms) { notice = t; notice_until = now_ms + ms; }
@@ -292,6 +299,7 @@ static void edit(unsigned s, int d, unsigned *req, unsigned *arg)
     case K_BTMIDI: *req = HOST_BT_MIDI; *arg = d > 0; break;
     case K_LIGHT: vsc_dev.backlight = (uint8_t)clampi((int)vsc_dev.backlight + d, 0, BACKLIGHT_HIGH); ++vsc_dev_changed; break;
     case K_KNOBCC: vsc_dev.knob_cc = d > 0; ++vsc_dev_changed; break;
+    case K_START: vsc_dev.start_blank = d < 0; ++vsc_dev_changed; break;
     case K_BLE: *req = HOST_BLE_ROLE; *arg = d > 0; break;
     case K_CLEARMAP:
         if (d > 0 && vsc_dev.learn[learn_sel].param != 255) { vsc_dev.learn[learn_sel].param = 255; ++vsc_dev_changed; vsc_ui_notice("MAPPING CLEARED", 900); }
@@ -338,14 +346,16 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
     const uint32_t down = in->buttons & ~prev_buttons, up = ~in->buttons & prev_buttons;
     const uint32_t kdown = in->keys & ~prev_keys;
     const int home_held = (in->buttons & B(BTN_HOME)) != 0, save_held = (in->buttons & B(BTN_SAVE)) != 0;
+    const int clr_held = (in->buttons & B(BTN_ARP)) != 0;   /* ARP is CLEAR */
     if (vsc_learn_seen != learn_seen) { learn_seen = vsc_learn_seen; vsc_ui_notice("LEARNED", 900); }
-    if (!(prev_buttons & (B(BTN_HOME) | B(BTN_SAVE)))) used_mod = 0;
+    if (!(prev_buttons & (B(BTN_HOME) | B(BTN_SAVE) | B(BTN_ARP)))) used_mod = 0;
+    if ((up & B(BTN_ARP)) && !used_mod) vsc_ui_notice("HOLD ARP: KEY CLEARS, PLAY ERASES", 1500);
 
     /* the pages */
     if ((up & B(BTN_HOME)) && !used_mod) open_page(PG_TAPE);
     if ((up & B(BTN_SAVE)) && !used_mod) open_page(PG_SAVE);
     if (down & B(BTN_EDIT)) { if (page == PG_MIXER) { if (++view >= views()) { page = PG_INPUT; view = 0; } } else if (page == PG_INPUT) { page = PG_MIXER; view = 0; } else { page = PG_MIXER; view = 0; } }
-    if (down & B(BTN_FX)) open_page(PG_INPUT);
+    if (down & B(BTN_FX)) open_page(PG_MASTER);
     if (down & B(BTN_ENV)) open_page(PG_RESON);
     if (down & B(BTN_SEQ)) open_page(PG_BOUNCE);
     if (down & B(BTN_LFO)) open_page(PG_ROBOTS);
@@ -356,7 +366,7 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
     if (down & B(BTN_PLAY)) {
         if (save_held && page == PG_SAVE) { *arg = slot_sel; req = HOST_SAVE; used_mod = 1; }
         else if (save_held) learn_arm(1, ACT_PLAY, "PLAY: SEND A NOTE");
-        else if (home_held) { vsc_event(EV_ERASE, 0, 0); vsc_ui_notice("TAPE ERASED", 1100); used_mod = 1; }
+        else if (clr_held) { vsc_event(EV_ERASE, 0, 0); vsc_ui_notice("TAPE ERASED", 1100); used_mod = 1; }
         else vsc_event(EV_PLAY, 0, 0);
     }
     if (down & B(BTN_REC)) {
@@ -385,6 +395,7 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
     if (in->enc[1]) {
         int d = in->enc[1];
         if (page == PG_RESON) vsc.p[P_RTGT] = (uint8_t)clampi((int)vsc.p[P_RTGT] + d, 0, RT_INPUT);
+        else if (page == PG_TAPE || page == PG_MIXER) { sel = (unsigned)clampi((int)sel + d, 0, VSC_TRACKS - 1); if (page == PG_TAPE) view = 1; }
         else if (page == PG_ROBOTS) view = (unsigned)clampi((int)view + d, 0, VSC_ROBOTS);
     }
     if (in->enc[6]) {
@@ -423,7 +434,8 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
         unsigned k = key_track(kk), band = key_band(kk);
         if (k < VSC_TRACKS) {
             if (save_held) { learn_arm(1, ACT_ARM1 + k, "ARM: SEND A NOTE"); continue; }
-            if (home_held) { vsc_event(EV_CLEAR, k, 0); say("CLEARED TRACK ", (const char[]){(char)('1' + k), 0}, 1000); used_mod = 1; continue; }
+            if (clr_held) { vsc_event(EV_CLEAR, k, 0); say("CLEARED TRACK ", (const char[]){(char)('1' + k), 0}, 1000); used_mod = 1; continue; }
+            if (home_held) { sel = k; used_mod = 1; if (page == PG_TAPE) view = 1; say("TRACK ", (const char[]){(char)('1' + k), 0}, 700); continue; }
             if (page == PG_BOUNCE) { vsc.p[P_BSRC] ^= (uint8_t)(1u << k); continue; }
             vsc_event(EV_ARM, k, 0);
             continue;
@@ -528,7 +540,8 @@ static uint32_t reel_pos;
 static void draw_tape(void)
 {
     char b[24];
-    header("VISCERA 4-TRACK", "TAPE", C_AMBER, C_BODY);
+    if (view == 1) { cpy(b, "TRACK "); char c[2] = {(char)('1' + sel), 0}; cat(b, c); }
+    header("VISCERA 4-TRACK", view == 1 ? b : "TAPE", C_AMBER, C_BODY);
     /* the cassette window and its reels: the tape winds from left to right over the loop */
     if (IN_BAND(18, 118)) {
         box(6, 19, 228, 98, C_BLACK); frame(6, 19, 228, 98, C_LINE);
@@ -575,7 +588,8 @@ static void draw_tape(void)
         box(x, 140, w, 32, C_DARK);
         if (armed) frame(x, 140, w, 32, recn ? C_RED : C_REDK);
         char c[2] = {(char)('1' + t), 0};
-        text(x + 5, 144, c, vsc_meter.has[t] ? C_CREAM : C_DIM);
+        if (t == sel) { box(x + 3, 142, 9, 11, view == 1 ? C_AMBER : C_DEEP); }
+        text(x + 5, 144, c, t == sel && view == 1 ? C_BODY : vsc_meter.has[t] ? C_CREAM : C_DIM);
         disc(x + w - 8, 148, 3, armed ? (recn && (now_ms / 200u) & 1u ? C_REDK : C_RED) : C_REDK);
         if (armed) text(x + 13, 144, recn ? "REC" : "ARM", C_RED);
         else if (vsc.p[P_TRK(t, S_MUTE)]) text(x + 13, 144, "MUTE", C_DIM);
@@ -583,14 +597,14 @@ static void draw_tape(void)
             /* its shape over the loop, and where the tape is */
             for (int i = 0; i < 46; ++i) { unsigned v = vsc_meter.overview[t][i * 60 / 46] / 3u; vline(x + 4 + i, 160 - (int)v, (int)v * 2 + 1, C_HUB2); }
             uint32_t e = vsc_meter.loop ? vsc_meter.loop : vsc_meter.cap;
-            int ph = e ? (int)((uint64_t)vsc_meter.pos * 46u / e) : 0;
+            int ph = e ? (int)((float)vsc_meter.tpos[t] * 46.f / (float)e) : 0;
             vline(x + 4 + ph, 154, 13, C_AMBER);
             float lv = vsc_meter.pk[t]; int lw = (int)(lv * 46.f); lw = lw > 46 ? 46 : lw;
             rect(x + 4, 168, lw, 2, lv > 0.85f ? C_AMBER : C_GREEN);
         } else text(x + 6, 158, "EMPTY", C_DIMR);
     }
     knob_row(177);
-    footer(vsc_meter.loop ? "KEYS F3-B3: ARM  REC: PUNCH" : "KEYS F3-B3: ARM  REC: FIRST TAKE");
+    footer(view == 1 ? "HOME+KEY OR ALGO: TRACK" : vsc_meter.loop ? "KEYS F3-B3: ARM  REC: PUNCH" : "KEYS F3-B3: ARM  REC: FIRST TAKE");
 }
 
 /* ---- MIXER */
@@ -886,6 +900,97 @@ static void draw_settings(void)
     footer(view == 0 ? "SELECT: BLUETOOTH MIDI" : "REC: SCAN / CONNECT");
 }
 
+/* ---- MASTER: the EQ's curve, the compressor's reduction and curve */
+static int8_t eq_curve[220];          /* the response, in half-dBs, one a column */
+static uint32_t eq_curve_key = ~0u;
+static void eq_curve_make(void)
+{
+    uint32_t key = vsc_eq_live;
+    for (unsigned i = 0; i < 16; ++i) key = key * 31u + vsc.p[P_EQ0 + i];
+    if (key == eq_curve_key) return;
+    eq_curve_key = key;
+    for (int x = 0; x < 220; ++x) {
+        float f = 20.f; { float e = (float)x / 219.f * 9.965784f; int i = (int)e; f = 20.f * (float)(1u << i) * (1.f + (e - (float)i) * (0.6565f + (e - (float)i) * 0.3435f)); }
+        float w = 6.2831853f * f / (float)VSC_SR, c1 = fcos(w), c2 = fcos(2.f * w), s1 = fsin(w), s2 = fsin(2.f * w);
+        float db = 0.f;
+        for (unsigned b = 0; b < 4; ++b) {
+            if (!(vsc_eq_live >> b & 1u)) continue;
+            const float *k = vsc_eq_coef[b];
+            float nr = k[0] + k[1] * c1 + k[2] * c2, ni = -(k[1] * s1 + k[2] * s2);
+            float dr = 1.f + k[3] * c1 + k[4] * c2, di = -(k[3] * s1 + k[4] * s2);
+            float m = (nr * nr + ni * ni) / (dr * dr + di * di + 1e-12f);
+            /* 10 log10 m */
+            int e = 0; while (m >= 2.f) { m *= 0.5f; ++e; } while (m < 1.f && e > -60) { m *= 2.f; --e; }
+            db += 3.0103f * ((float)e + (m - 1.f) * (1.4425f - 0.4425f * (m - 1.f)));
+        }
+        db = db < -30.f ? -30.f : db > 30.f ? 30.f : db;
+        eq_curve[x] = (int8_t)(db * 2.f);
+    }
+}
+static void draw_master(void)
+{
+    char b[24], c[8];
+    if (view < 4) {
+        cpy(b, "EQ BAND "); c[0] = (char)('1' + view); c[1] = 0; cat(b, c);
+        header("MASTER", b, C_DEEP, C_AMBER);
+        eq_curve_make();
+        if (IN_BAND(18, 168)) {
+            box(6, 19, 228, 148, C_BLACK); frame(6, 19, 228, 148, C_LINE);
+            /* the grid: 100 Hz, 1 kHz, 10 kHz; +-12 dB */
+            static const int16_t gx[3] = {51, 124, 197};   /* (log position of 100, 1k, 10k over 20..20k) */
+            for (unsigned i = 0; i < 3; ++i) vline(gx[i], 24, 138, C_PANEL);
+            for (int d = -12; d <= 12; d += 6) hline(16, 93 - d * 3, 208, d ? C_PANEL : C_DEEP);
+            text(gx[0] - 8, 155, "100", C_DIMR); text(gx[1] - 5, 155, "1K", C_DIMR); text(gx[2] - 8, 155, "10K", C_DIMR);
+            text(10, 54, "+12", C_DIMR); text(10, 126, "-12", C_DIMR);
+            int py = 0;
+            for (int x = 0; x < 220; ++x) {
+                int y = 93 - eq_curve[x] * 3 / 2; y = y < 22 ? 22 : y > 164 ? 164 : y;
+                if (x) { line(10 + x - 1, py, 10 + x, y, C_AMBER); line(10 + x - 1, py + 1, 10 + x, y + 1, C_AMBER); }
+                py = y;
+            }
+            for (unsigned k = 0; k < 4; ++k) {
+                int x = 10 + vsc.p[P_EQ(k, E_FREQ)] * 219 / 127;
+                int y = 93 - eq_curve[x - 10 < 0 ? 0 : x - 10 > 219 ? 219 : x - 10] * 3 / 2;
+                y = y < 26 ? 26 : y > 160 ? 160 : y;
+                disc(x, y, k == view ? 6 : 5, k == view ? C_AMBER : C_DEEP);
+                c[0] = (char)('1' + k); c[1] = 0; text(x - 2, y - 3, c, k == view ? C_BODY : C_CREAM);
+            }
+        }
+        knob_row(172);
+        footer("SELECT: BAND, THEN COMP");
+        return;
+    }
+    header("MASTER", "COMP", vsc.p[P_CON] ? C_AMBER : C_DEEP, vsc.p[P_CON] ? C_BODY : C_DIM);
+    if (IN_BAND(18, 168)) {
+        box(6, 19, 228, 148, C_BLACK); frame(6, 19, 228, 148, C_LINE);
+        /* the reduction: 0..20 dB down */
+        float gr = vsc_meter.comp_gr; gr = gr < 0.f ? 0.f : gr > 20.f ? 20.f : gr;
+        int h = (int)(gr * 120.f / 20.f);
+        box(16, 26, 22, 124, C_PANEL);
+        if (h > 0) rect(18, 28, 18, h, gr > 10.f ? C_RED : C_AMBER);
+        for (int i = 0; i <= 20; i += 5) { int y = 28 + i * 120 / 20; hline(40, y, 4, C_DIM); num(c, i); text(46, y - 3, c, C_DIMR); }
+        text(14, 155, "GR", C_DIM);
+        /* the curve: in -40..0 dB across, out up */
+        const int x0 = 84, y0 = 26, sz = 124;
+        frame(x0, y0, sz, sz, C_LINE);
+        static const float sl[3] = {0.5f, 0.75f, 0.9f};
+        float thr = (float)vsc.p[P_CTHR] - 30.f, slope = sl[vsc.p[P_CRATIO] % 3];
+        int px_ = x0 + (int)((thr + 40.f) * (float)sz / 40.f);
+        line(x0, y0 + sz, px_, y0 + sz - (px_ - x0), C_DIM);
+        line(px_, y0 + sz - (px_ - x0), x0 + sz, y0 + sz - (px_ - x0) - (int)((float)(x0 + sz - px_) * (1.f - slope)), C_AMBER);
+        float in = vsc_meter.comp_in;
+        if (vsc.p[P_CON] && in > -40.f) {
+            float o = in > thr ? thr + (in - thr) * (1.f - slope) : in; if (in > 0.f) in = 0.f;
+            disc(x0 + (int)((in + 40.f) * (float)sz / 40.f), y0 + sz - (int)((o + 40.f) * (float)sz / 40.f), 2, C_CREAM);
+        }
+        text(x0, y0 + sz + 4, "IN", C_DIMR); text(x0 + sz + 4, y0, "OUT", C_DIMR);
+        vsc_param_label(P_CKEY, vsc.p[P_CKEY], c); cpy(b, "KEY "); cat(b, c);
+        text_r(x0 + sz, y0 + sz + 4, vsc.p[P_CKEY] ? b : "THE MIX", vsc.p[P_CKEY] ? C_AMBER : C_DIMR);
+    }
+    knob_row(172);
+    footer(view == 4 ? "AFTER RAVEL'S GLUE COMP" : "KEY: WHAT IT LISTENS TO");
+}
+
 static void draw_notice(void)
 {
     if (!notice || (int32_t)(notice_until - now_ms) <= 0 || !*notice) return;
@@ -921,6 +1026,7 @@ void vsc_ui_paint_band(unsigned y0, uint16_t *pixels)
     case PG_ROBOTS: draw_robots(); break;
     case PG_SAVE: draw_save(); break;
     case PG_SETTINGS: draw_settings(); break;
+    case PG_MASTER: draw_master(); break;
     default: draw_tape(); break;
     }
     draw_notice();
@@ -931,9 +1037,8 @@ void vsc_ui_leds(uint8_t out[41])
 {
     uint8_t glow = vsc_dev.backlight ? 1 : 0;
     for (unsigned i = 0; i < 41; ++i) out[i] = glow;
-    static const uint8_t page_btn[PG_COUNT] = {BTN_HOME, BTN_EDIT, BTN_EDIT, BTN_SEQ, BTN_ENV, BTN_LFO, BTN_SAVE, BTN_GLO};
+    static const uint8_t page_btn[PG_COUNT] = {BTN_HOME, BTN_EDIT, BTN_EDIT, BTN_SEQ, BTN_ENV, BTN_LFO, BTN_SAVE, BTN_GLO, BTN_FX};
     out[page_btn[page]] = 2;
-    if (page == PG_INPUT) out[BTN_FX] = 2;
     if (vsc_meter.playing) out[BTN_PLAY] = 2;
     if (vsc_meter.transport == TR_FIRST || vsc_meter.bounce) out[BTN_REC] = 2;
     else if (vsc_meter.recording) out[BTN_REC] = (now_ms / 250u) & 1u ? 2 : 0;

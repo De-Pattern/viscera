@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.1.0 — tracks of their own, a master section, START WITH
+
+- **Each track has its own SPEED, PITCH and DUB level** (HOME, then HOME again: TRACK). Tracks at different speeds drift against each other round the loop. DUB sets how much of a track a DUB pass keeps (100 %: all of it; lower: older passes fade). The tape's SPEED and PITCH still move everything.
+- **Selecting a track without arming it**: hold HOME and press its key, or turn ALGORITHM on TAPE or MIXER.
+- **CLEAR is ARP**: hold ARP and press a track's key to clear that track, or PLAY to erase the tape (it was HOME, which now selects).
+- **MASTER (FX)**: a four-band EQ on everything you hear (bells; band 1 also a low shelf or LO CUT, band 4 a high shelf or HI CUT), drawn as a curve; then Ravel's glue compressor (threshold, ratio, attack, release with AUTO, makeup, mix, and KEY: the mix or one track), with a gain-reduction bar and its curve.
+- **START WITH** (GLO › SETTINGS): LAST opens the project last saved or loaded at power-on and says what opened; BLANK starts fresh. After a start that never ran properly it starts blank and says "AFTER A RESET: NEW PROJECT".
+- INPUT is now the last view of EDIT (after the mixer). The browser emulator has no demo loop any more: choose a file, your computer's audio or a microphone.
+- Projects from 2.0.0 don't load (the desk has new parameters). CPU (fm1-emu): four tracks all pitch-shifted, with an overdub, 22 %; with RESON 33 %.
+
 ## 2.0.0 — 4-Track
 
 A new firmware: an overdubbing four-track tape looper, in the spirit of a TASCAM Portastudio. Everything of 1.x but RESON is gone; 1.x stays on the install page, and its projects don't load here.

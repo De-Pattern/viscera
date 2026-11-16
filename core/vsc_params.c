@@ -20,7 +20,9 @@ static const char *const n_rshape[] = {"SINE", "TRI", "SAW", "SQUARE", "S+H", "D
 #define C(n, d) {n, 127, d, 0}
 #define B(n, d) {n, 127, d, VSC_PF_BIPOLAR}
 #define E(n, max, d) {n, max, d, VSC_PF_ENUM}
-#define STRIP(lv, arm) C("TRIM", 80), B("PAN", 64), C("LEVEL", lv), E("MUTE", 1, 0), E("ARM", 1, arm)
+#define STRIP(lv, arm) C("TRIM", 80), B("PAN", 64), C("LEVEL", lv), E("MUTE", 1, 0), E("ARM", 1, arm), \
+    B("SPEED", 64), {"PITCH", 24, 12, VSC_PF_BIPOLAR}, C("DUB", 127)
+#define BAND(f, ty) C("FREQ", f), B("GAIN", 64), C("Q", 31), E("TYPE", ty, 0)
 #define ROBOT(tg) E("TARGET", VSC_RTARGETS - 1, tg), C("RATE", 40), E("SHAPE", RS_COUNT - 1, RS_SINE), B("SKEW", 64), C("DEPTH", 0)
 static const struct vsc_pinfo info[VSC_NP] = {
     B("SPEED", 64), {"PITCH", 24, 12, VSC_PF_BIPOLAR}, C("LOOP", 0), C("LEVEL", 100), E("TAPE", TS_LO, TS_MID),
@@ -29,6 +31,8 @@ static const struct vsc_pinfo info[VSC_NP] = {
     {"FROM", 15, 7, VSC_PF_ENUM}, E("TO", 4, 0), E("RESON", 1, 1), C("DRIVE", 30), C("LEVEL", 100), E("CLEAR", 1, 0),
     E("ON", RT_INPUT, RT_OFF), E("MODE", RP_COUNT - 1, RP_DUST), C("MIX", 100), C("DECAY", 100), C("WIDTH", 76), B("SHIFT", 64), C("DUST", 70),
     C("BAND 1", 85), C("BAND 2", 95), C("BAND 3", 90), C("BAND 4", 88), C("BAND 5", 92), C("BAND 6", 86), C("BAND 7", 95), C("BAND 8", 84),
+    BAND(30, EQ_CUT), BAND(55, 0), BAND(89, 0), BAND(110, EQ_CUT),
+    {"THRESH", 30, 20, 0}, E("RATIO", 2, 0), E("ATTACK", 5, 4), E("RELEAS", 4, 4), {"MAKEUP", 15, 0, 0}, C("MIX", 127), E("KEY", VSC_TRACKS, 0), E("COMP", 1, 0),
     ROBOT(0), ROBOT(1),
 };
 const struct vsc_pinfo *vsc_param_info(unsigned p) { return p < VSC_NP ? &info[p] : &info[0]; }
@@ -39,10 +43,13 @@ static const uint8_t rtargets[VSC_RTARGETS] = {
     P_TRK(0, S_LEVEL), P_TRK(1, S_LEVEL), P_TRK(2, S_LEVEL), P_TRK(3, S_LEVEL),
     P_TRK(0, S_PAN), P_TRK(1, S_PAN), P_TRK(2, S_PAN), P_TRK(3, S_PAN),
     P_RMIX, P_RDECAY, P_RWIDTH, P_RSHIFT,
+    P_TRK(0, S_SPEED), P_TRK(1, S_SPEED), P_TRK(2, S_SPEED), P_TRK(3, S_SPEED),
+    P_TRK(0, S_PITCH), P_TRK(1, S_PITCH), P_TRK(2, S_PITCH), P_TRK(3, S_PITCH),
 };
 static const char *const rtarget_name[VSC_RTARGETS] = {
     "SPEED", "PITCH", "TAPE", "DRIVE", "LVL 1", "LVL 2", "LVL 3", "LVL 4",
     "PAN 1", "PAN 2", "PAN 3", "PAN 4", "R.MIX", "R.DCY", "R.WIDE", "R.SHFT",
+    "SPD 1", "SPD 2", "SPD 3", "SPD 4", "PIT 1", "PIT 2", "PIT 3", "PIT 4",
 };
 unsigned vsc_robot_target(unsigned i) { return i < VSC_RTARGETS ? rtargets[i] : VSC_NP; }
 static void put_str(char *o, const char *s) { unsigned i = 0; while (s[i] && i < 7) { o[i] = s[i]; ++i; } o[i] = 0; }
@@ -124,6 +131,26 @@ void vsc_param_label(unsigned p, unsigned v, char out[8])
     case P_RDECAY: { float s = 0.01f * pexp2((float)v * (8.f / 127.f)); put_fix2(out, (int)(s * 100.f + 0.5f), "S"); return; }
     default: break;
     }
+    if (p >= P_EQ0 && p < P_CTHR) {
+        unsigned b = (p - P_EQ0) / 4, k = (p - P_EQ0) % 4;
+        if (k == E_FREQ) { int hz = (int)(20.f * pexp2((float)v * (9.965784f / 127.f)) + 0.5f);
+                           if (hz >= 1000) put_fix2(out, hz / 10, "K"); else put_unit(out, hz, "HZ"); return; }
+        if (k == E_GAIN) { int d = ((int)v - 64) * 15 / 64; if (d > 0) { out[0] = '+'; put_unit(out + 1, d, "DB"); } else put_unit(out, d, "DB"); return; }
+        if (k == E_Q) { float q = 0.3f * pexp2((float)v * (5.f / 127.f)); put_fix2(out, (int)(q * 100.f + 0.5f), ""); return; }
+        static const char *const lo[3] = {"BELL", "SHELF", "LO CUT"}, *const hi[3] = {"BELL", "SHELF", "HI CUT"};
+        put_str(out, b == 0 ? lo[v % 3] : b == 3 ? hi[v % 3] : "BELL");
+        return;
+    }
+    switch (p) {
+    case P_CTHR: put_unit(out, (int)v - 30, "DB"); return;
+    case P_CRATIO: { static const char *const r[3] = {"2:1", "4:1", "10:1"}; put_str(out, r[v % 3]); return; }
+    case P_CATK: { static const char *const a[6] = {"0.1MS", "0.3MS", "1MS", "3MS", "10MS", "30MS"}; put_str(out, a[v % 6]); return; }
+    case P_CREL: { static const char *const r[5] = {"0.1S", "0.3S", "0.6S", "1.2S", "AUTO"}; put_str(out, r[v % 5]); return; }
+    case P_CMAKE: out[0] = '+'; put_unit(out + 1, (int)v, "DB"); return;
+    case P_CKEY: if (!v) put_str(out, "MIX"); else { put_str(out, "TRK "); out[4] = (char)('0' + v); out[5] = 0; } return;
+    case P_CON: put_str(out, v ? "ON" : "OFF"); return;
+    default: break;
+    }
     if (p >= P_RG0 && p <= P_RG7) { if (v < 1) put_str(out, "OFF"); else put_unit(out, -60 + (int)v * 66 / 127, "DB"); return; }
     if (p >= P_ROB0) {
         unsigned k = (p - P_ROB0) % 5;
@@ -141,6 +168,8 @@ void vsc_param_label(unsigned p, unsigned v, char out[8])
     if (p >= P_STRIP && p < P_BSRC) {
         unsigned k = (p - P_STRIP) % VSC_TP;
         if (k == S_MUTE || k == S_ARM) { put_str(out, n_off_on[v & 1]); return; }
+        if (k == S_SPEED) { vsc_param_label(P_SPEED, v, out); return; }
+        if (k == S_PITCH) { vsc_param_label(P_PITCH, v, out); return; }
         if (k == S_PAN) { int d = (int)v - 64; if (!d) put_str(out, "C"); else { out[0] = d < 0 ? 'L' : 'R'; put_int(out + 1, d < 0 ? -d : d); } return; }
     }
     if (p == P_IDRIVE || p == P_BDRIVE) {

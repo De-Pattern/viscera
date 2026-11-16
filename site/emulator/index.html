@@ -132,7 +132,7 @@ nav a:hover{color:var(--ink)}
 .panel{border-top:1px solid var(--line);padding-top:16px}
 .panel h3{font:400 10px/1 var(--mono);letter-spacing:.24em;text-transform:uppercase;color:var(--grey);margin:0 0 12px}
 .panel p{font-size:13px;color:var(--ink-soft);margin:0 0 10px}
-.seg{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--ink)}
+.seg{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--ink)}
 .seg button{font:400 10px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;padding:10px 4px;border:0;background:transparent;color:var(--ink);cursor:pointer}
 .seg button+button{border-left:1px solid var(--ink)}
 .seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
@@ -229,7 +229,7 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
       <p class="eyebrow">Emulator · 4-TRACK</p>
       <h1>Play it before<br>you flash it.</h1>
     </div>
-    <p>The same code the FM-1 runs, compiled for the browser: the engine, the screen and the controls. A demo loop, an audio file, your computer's audio or a microphone stands in for Bluetooth and USB audio in.</p>
+    <p>The same code the FM-1 runs, compiled for the browser: the engine, the screen and the controls. An audio file, your computer's audio or a microphone stands in for Bluetooth and USB audio in.</p>
   </div>
 
   <div class="stage">
@@ -243,7 +243,7 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
           <div class="knobs4" id="knobs4"></div>
           <div class="tray"><div class="btns" id="btnrow1"></div><div class="btns" id="btnrow2"></div></div>
           <div class="meters" id="meters" aria-label="Track meters"></div>
-          <div class="now"><b>KNOBS</b><span id="now">Keys F3–B3 (the first four white keys) arm tracks 1–4. REC starts the first take, REC again loops it; then REC punches in and out. On TAPE: SPEED, PITCH, LOOP, LEVEL. Hold HOME and turn one for a robot.</span></div>
+          <div class="now"><b>KNOBS</b><span id="now">Keys F3–B3 (the first four white keys) arm tracks 1–4. REC starts the first take, REC again loops it; then REC punches in and out. On TAPE: SPEED, PITCH, LOOP, LEVEL. HOME again: the selected track's speed, pitch, dub. Hold ARP and press a track's key to clear it.</span></div>
         </div>
       </div>
       <div class="keybed"><div class="krow" id="blackrow"></div><div class="krow" id="whiterow"></div></div>
@@ -253,8 +253,7 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
       <div class="panel">
         <h3>Live input (Bluetooth / USB)</h3>
         <div class="seg" role="group" aria-label="Live input">
-          <button id="in-none" aria-pressed="false">None</button>
-          <button id="in-demo" aria-pressed="true">Demo</button>
+          <button id="in-none" aria-pressed="true">None</button>
           <button id="in-file" aria-pressed="false">File</button>
           <button id="in-pc" aria-pressed="false" title="Share a browser tab's audio, or (Chrome or Edge on Windows) the whole computer's">PC audio</button>
           <button id="in-mic" aria-pressed="false">Mic</button>
@@ -263,7 +262,7 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
           <select id="in-dev"><option value="">Default</option></select>
         </label>
         <input type="file" id="in-file-pick" accept="audio/*" hidden>
-        <p id="in-name" style="margin:8px 0 0;font-size:12px">A demo loop plays in. REC starts the first take on track 1, REC again loops it.</p>
+        <p id="in-name" style="margin:8px 0 0;font-size:12px">No live input yet: choose a file, your computer's audio or a microphone.</p>
         <p class="hint" style="margin:6px 0 0;font-size:11px;color:var(--dim,#8a857c)">PC audio: in the share dialog pick a tab (or Entire screen on Windows) and turn on “Share audio”. Input device: a virtual cable (BlackHole on a Mac, VB-Cable on Windows) brings in a DAW or any app.</p>
       </div>
       <div class="panel" id="help">
@@ -271,16 +270,18 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
         <dl>
           <dt>Turning</dt><dd>drag up and down, scroll, or focus and use the arrow keys</dd>
           <dt>REC</dt><dd>on an empty tape: the first take (into the armed tracks), REC or PLAY again loops it; then REC punches in and out of the armed tracks; on BOUNCE: print one loop</dd>
-          <dt>PLAY</dt><dd>plays and stops (back to the start); HOME + PLAY erases the tape</dd>
-          <dt>HOME</dt><dd>TAPE: the reels, the counter, the four tracks; SPEED (pitch and time, as tape), PITCH (pitch only), LOOP, LEVEL; PRESETS: the tape speed (HI, MID, LO); hold HOME and turn a knob to record a robot gesture; HOME + a key clears that track</dd>
+          <dt>PLAY</dt><dd>plays and stops (back to the start); ARP + PLAY erases the tape</dd>
+          <dt>HOME</dt><dd>TAPE: the reels, the counter, the four tracks; SPEED (pitch and time, as tape), PITCH (pitch only), LOOP, LEVEL; PRESETS: the tape speed (HI, MID, LO); HOME again: the selected track's own SPEED, PITCH, DUB and LEVEL; hold HOME and press a track's key to select it, or turn a knob to record a robot gesture</dd>
+          <dt>ARP</dt><dd>CLEAR: hold it and press a track's key to clear that track, or PLAY to erase the tape</dd>
           <dt>EDIT</dt><dd>MIXER: four strips with VU meters; KNOB 1–4 the levels, then (EDIT again) the trims into the 424-style preamps, then the pans; then INPUT</dd>
-          <dt>FX</dt><dd>INPUT: the source (BT, USB, both), trim, drive, monitoring; PRESETS: DUB or REPLACE</dd>
+          <dt>FX</dt><dd>MASTER: a four-band EQ (the end bands shelve or cut), then Ravel's glue compressor</dd>
+          <dt>EDIT, last view</dt><dd>INPUT: the source (BT, USB, both), trim, drive, monitoring; PRESETS: DUB or REPLACE</dd>
           <dt>SEQ</dt><dd>BOUNCE: keys 1–4 pick the tracks, REC prints one loop through RESON and the drive to a free track</dd>
           <dt>ENV</dt><dd>RESON: ALGORITHM puts it on a track or the input; MODE (LIQUID, GLASS, THROAT, DUST, RADIO, DROPS), MIX, DECAY, WIDTH; keys 5–12 pick a band</dd>
           <dt>LFO</dt><dd>ROBOTS: two, each a target (PRESETS), rate, shape, skew and depth; then the MIDI learn list</dd>
           <dt>SAVE</dt><dd>projects (the desk; the tape stays in RAM): REC loads or saves, SAVE + PLAY saves over; hold SAVE and turn a knob (or press REC, PLAY or a key 1–4) for MIDI learn</dd>
           <dt>GLO</dt><dd>SETTINGS: Bluetooth, the backlight, the CPU load</dd>
-          <dt>SELECT · ALGORITHM · PRESETS</dt><dd>the page's views · RESON's place, the robot · the page's own</dd>
+          <dt>SELECT · ALGORITHM · PRESETS</dt><dd>the page's views · the track, RESON's place, the robot · the page's own</dd>
           <dt>Pads</dt><dd>click, or type Z X C V… / and Q W E R T Y; sharps on S D F H J… and 3 4 6</dd>
           <dt>Space</dt><dd>PLAY</dd>
           <dt>MIDI</dt><dd>notes play RESON; learned CCs and notes; start and stop run the tape</dd>

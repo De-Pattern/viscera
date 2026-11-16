@@ -26,7 +26,7 @@
 #define VSC_GEST          48       /* points of a recorded gesture */
 #define VSC_LEARN         16
 
-#define VSC_SHIFT_RING    2048     /* the pitch shifter's memory per side (46 ms) */
+#define VSC_SHIFT_RING    1024     /* each track's pitch shifter's memory (23 ms) */
 
 /* Placement. On the FM-1 every function and table the audio interrupt
  * touches must sit in RAM, because flash programming stalls code that runs

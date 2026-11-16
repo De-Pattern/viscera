@@ -194,6 +194,7 @@ CTRL int vsc_fm1_save(unsigned slot)
     for (uint32_t o = 0; o < SLOT_BYTES; o += FM1_FLASH_SECTOR_BYTES)
         if (fm1_flash_erase(base + o)) return -3;
     if (fm1_flash_write(base, &vsc, sizeof vsc)) return -3;
+    if (vsc_dev.last_slot != slot + 1u) { vsc_dev.last_slot = (uint8_t)(slot + 1u); ++vsc_dev_changed; }   /* START WITH LAST */
     return 0;
 }
 /* Loading checks the stored project's CRC straight from flash, then copies it. */
@@ -220,6 +221,7 @@ CTRL int vsc_fm1_load(unsigned slot)
     vsc_event(EV_PANIC, 0, 0);
     if (fm1_flash_read(base, &vsc, end)) return -3;
     vsc_learn_release();
+    if (vsc_dev.last_slot != slot + 1u) { vsc_dev.last_slot = (uint8_t)(slot + 1u); ++vsc_dev_changed; }   /* START WITH LAST */
     return 0;
 }
 

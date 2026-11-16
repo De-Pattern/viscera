@@ -130,6 +130,12 @@ struct wr { int32_t pred, idx; float acc; uint16_t cnt; uint8_t on, ending; };
 struct trk {
     struct rd r;
     struct wr w;
+    float tp, inc;            /* its own place on the tape (its SPEED), and its step a frame */
+    float dg;                 /* DUB: how much of what is there a pass keeps */
+    uint8_t cr[VSC_SUB];      /* this sub-block: where it moved on a sample */
+    int16_t sh[VSC_SHIFT_RING];   /* its pitch shifter's memory */
+    uint32_t shw;
+    float shph, shmix;
     float lp;                 /* the head's gentle low-pass */
     float dc;                 /* the preamp's DC blocker */
     float vu, pk, buf[VSC_SUB];
@@ -137,8 +143,7 @@ struct trk {
     uint32_t oldn[VSC_SUB];
 };
 static struct trk tk[VSC_TRACKS];
-static uint8_t cross[VSC_SUB];
-static float tp;              /* the playhead, in samples at the tape's rate */
+static float tp;              /* the master playhead (SPEED only): the loop's time, the first take, bounces */
 static uint32_t loop_len;     /* 0: no loop yet */
 static uint8_t transport, bounce_on, bounce_dst, bounce_src, bounce_clear;
 static uint32_t bounce_done;  /* samples of the loop printed */
@@ -215,14 +220,14 @@ static VSC_HOT void wr_put(unsigned t, uint32_t n, float old, float in, int repl
 {
     struct wr *w = &tk[t].w;
     if (!(n & (VSC_TAPE_BLK - 1u))) { hpred[t][n / VSC_TAPE_BLK] = (int16_t)w->pred; hidx[t][n / VSC_TAPE_BLK] = (uint8_t)w->idx; }
-    float v = w->ending ? old : replace ? in : old + in;
+    float v = w->ending ? old : replace ? in : old * tk[t].dg + in;
     enc(tape[t], n, tape_soft(v), &w->pred, &w->idx);
     if (w->ending && wr_last(n)) w->on = w->ending = 0;
 }
 static VSC_HOT_SMALL void wr_start(unsigned t)
 {
     struct trk *k = &tk[t];
-    if (!k->r.on) { k->r.on = 1; rd_seek(t, (uint32_t)tp < loop_end() ? (uint32_t)tp : 0); }
+    if (!k->r.on) { k->r.on = 1; rd_seek(t, (uint32_t)k->tp < loop_end() ? (uint32_t)k->tp : 0); }
     if (k->w.on && !k->w.ending) return;
     if (!k->w.on) { k->w.pred = k->r.ap; k->w.idx = k->r.ai; }
     k->w.on = 1; k->w.ending = 0; k->w.acc = 0.f; k->w.cnt = 0;
@@ -242,16 +247,22 @@ static VSC_HOT_SMALL void wr_finish(unsigned t)
     }
     k->w.on = k->w.ending = 0;
 }
+/* every track to n (its own place when n is ~0u) */
 static VSC_HOT_SMALL void tape_seek_all(uint32_t n)
 {
-    for (unsigned t = 0; t < VSC_TRACKS; ++t) if (tk[t].r.on) rd_seek(t, n);
+    for (unsigned t = 0; t < VSC_TRACKS; ++t) {
+        struct trk *k = &tk[t];
+        if (n != ~0u) k->tp = (float)n;
+        if (k->tp >= (float)loop_end()) k->tp = 0.f;
+        if (k->r.on) rd_seek(t, (uint32_t)k->tp);
+    }
 }
 /* the loop's length moved: the readers read round the new one from where they are */
 static VSC_HOT_SMALL void loop_set(uint32_t len)
 {
     loop_len = len;
     if (tp >= (float)len) tp = 0.f;
-    tape_seek_all((uint32_t)tp);
+    tape_seek_all(~0u);
 }
 static VSC_HOT_SMALL void track_clear(unsigned t)
 {
@@ -273,6 +284,8 @@ static VSC_HOTDATA const uint8_t rtarget[VSC_RTARGETS] = {
     P_STRIP + 0 * VSC_TP + S_LEVEL, P_STRIP + 1 * VSC_TP + S_LEVEL, P_STRIP + 2 * VSC_TP + S_LEVEL, P_STRIP + 3 * VSC_TP + S_LEVEL,
     P_STRIP + 0 * VSC_TP + S_PAN, P_STRIP + 1 * VSC_TP + S_PAN, P_STRIP + 2 * VSC_TP + S_PAN, P_STRIP + 3 * VSC_TP + S_PAN,
     P_RMIX, P_RDECAY, P_RWIDTH, P_RSHIFT,
+    P_STRIP + 0 * VSC_TP + S_SPEED, P_STRIP + 1 * VSC_TP + S_SPEED, P_STRIP + 2 * VSC_TP + S_SPEED, P_STRIP + 3 * VSC_TP + S_SPEED,
+    P_STRIP + 0 * VSC_TP + S_PITCH, P_STRIP + 1 * VSC_TP + S_PITCH, P_STRIP + 2 * VSC_TP + S_PITCH, P_STRIP + 3 * VSC_TP + S_PITCH,
 };
 static VSC_HOT_SMALL void robots(void)
 {
@@ -612,40 +625,145 @@ static VSC_HOT void reson(float *x, const float *inp, unsigned n, unsigned where
 }
 
 /* ------------------------------------------------------------ pitch shift
- * Two read heads sweep a short memory of the tape's output, crossfaded: the pitch
- * moves, the time doesn't (SPEED moves both, as tape does). */
-static int16_t sh_ring[2][VSC_SHIFT_RING];
-static uint32_t sh_w;
-static float sh_ph;
-VSC_INL float sh_tap(const int16_t *rg, float d)
+ * Each track's: two read heads sweep a short memory of its sound, crossfaded: the pitch
+ * moves, the time doesn't (SPEED moves both, as tape does). Out of the way at 0. */
+VSC_INL float sh_tap(const int16_t *rg, uint32_t w, float d)
 {
-    float pos = (float)sh_w - d;
-    while (pos < 0.f) pos += (float)VSC_SHIFT_RING;
+    float pos = (float)w - d;
+    if (pos < 0.f) pos += (float)VSC_SHIFT_RING;
     unsigned i = (unsigned)pos; float f = pos - (float)i;
     float a = rg[i & (VSC_SHIFT_RING - 1u)], b = rg[(i + 1u) & (VSC_SHIFT_RING - 1u)];
     return (a + (b - a) * f) * (1.f / 32768.f);
 }
-static float sh_mix;   /* in and out of the way smoothly (at 0 it is bypassed) */
-static VSC_HOT void shifter(float *l, float *r, unsigned n, float semis)
+static VSC_HOT void shifter(struct trk *k, float *x, unsigned n, float semis)
 {
     const float W = (float)(VSC_SHIFT_RING - 4);
     const int want = semis > 0.05f || semis < -0.05f;
-    if (!want && sh_mix <= 0.f) return;
-    const float ratio = exp2a(semis * (1.f / 12.f)), dinc = (1.f - ratio) / W, mstep = want ? 1.f / 1024.f : -1.f / 1024.f;
+    if (!want && k->shmix <= 0.f) return;
+    const float ratio = exp2a(semis * (1.f / 12.f)), dinc = (1.f - ratio) / W, mstep = want ? 1.f / 512.f : -1.f / 512.f;
     for (unsigned i = 0; i < n; ++i) {
-        const float dl = l[i], dr = r[i];
-        sh_ring[0][sh_w & (VSC_SHIFT_RING - 1u)] = (int16_t)(clampf(l[i], -1.f, 1.f) * 32767.f);
-        sh_ring[1][sh_w & (VSC_SHIFT_RING - 1u)] = (int16_t)(clampf(r[i], -1.f, 1.f) * 32767.f);
-        sh_ph += dinc; if (sh_ph >= 1.f) sh_ph -= 1.f; else if (sh_ph < 0.f) sh_ph += 1.f;
-        float p2 = sh_ph + 0.5f; if (p2 >= 1.f) p2 -= 1.f;
-        float w1 = sh_ph < 0.5f ? 2.f * sh_ph : 2.f - 2.f * sh_ph, w2 = 1.f - w1;
-        float d1 = 2.f + sh_ph * W, d2 = 2.f + p2 * W;
-        sh_mix = clampf(sh_mix + mstep, 0.f, 1.f);
-        l[i] = dl + (sh_tap(sh_ring[0], d1) * w1 + sh_tap(sh_ring[0], d2) * w2 - dl) * sh_mix;
-        r[i] = dr + (sh_tap(sh_ring[1], d1) * w1 + sh_tap(sh_ring[1], d2) * w2 - dr) * sh_mix;
-        ++sh_w;
+        const float d = x[i];
+        k->sh[k->shw & (VSC_SHIFT_RING - 1u)] = (int16_t)(clampf(d, -1.f, 1.f) * 32767.f);
+        float ph = k->shph + dinc; if (ph >= 1.f) ph -= 1.f; else if (ph < 0.f) ph += 1.f;
+        k->shph = ph;
+        float p2 = ph + 0.5f; if (p2 >= 1.f) p2 -= 1.f;
+        float w1 = ph < 0.5f ? 2.f * ph : 2.f - 2.f * ph;
+        float y = sh_tap(k->sh, k->shw, 2.f + ph * W) * w1 + sh_tap(k->sh, k->shw, 2.f + p2 * W) * (1.f - w1);
+        k->shmix = clampf(k->shmix + mstep, 0.f, 1.f);
+        x[i] = d + (y - d) * k->shmix;
+        ++k->shw;
     }
 }
+
+/* ------------------------------------------------------------ the master
+ * A four-band EQ (biquads, after the RBJ cookbook; the first and last bands can shelve
+ * or cut), then the bus compressor after Ravel's COMP (after the SSL G bus compressor:
+ * stereo-linked, feed-forward, a hard knee, stepped ratios, attacks and releases, AUTO
+ * releasing in two stages; the level is the peak of each 16 frames, the gain worked out
+ * in dB once per 16 and swept across them). */
+float vsc_eq_coef[4][5];          /* b0 b1 b2 a1 a2 (a0 = 1), for the picture */
+uint8_t vsc_eq_live;              /* bands that do something */
+static uint8_t eq_seen[16] = {255};
+static float eq_z[4][2][2];       /* each band's two states, per side */
+VSC_INL float sin2pi(float p) { float q = p - 0.25f; return cos2pi(q < 0.f ? -q : q); }   /* p in 0..0.5 */
+static VSC_HOT_SMALL void eq_design(void)
+{
+    vsc_eq_live = 0;
+    for (unsigned b = 0; b < 4; ++b) {
+        const uint8_t *q = &vsc.p[P_EQ(b, 0)];
+        float f = 20.f * exp2a((float)q[E_FREQ] * (9.965784f / 127.f));
+        float pw = clampf(f / (float)VSC_SR, 0.0002f, 0.45f);
+        float cw = cos2pi(pw), sw = sin2pi(pw);
+        float Q = 0.3f * exp2a((float)q[E_Q] * (5.f / 127.f));
+        float gdb = ((float)q[E_GAIN] - 64.f) * (15.f / 64.f);
+        float A = exp2a(gdb * (0.16609640f * 0.5f));   /* 10^(dB/40) */
+        float al = sw / (2.f * Q), sa = 2.f * sqrta(A) * al;
+        unsigned ty = q[E_TYPE];
+        float b0, b1, b2, a0, a1, a2;
+        int on = 1;
+        if (ty == EQ_CUT) {
+            if (b == 0) { b0 = (1.f + cw) * 0.5f; b1 = -(1.f + cw); }
+            else { b0 = (1.f - cw) * 0.5f; b1 = 1.f - cw; }
+            b2 = b0; a0 = 1.f + al; a1 = -2.f * cw; a2 = 1.f - al;
+        } else if (ty == EQ_SHELF && b == 0) {
+            b0 = A * ((A + 1.f) - (A - 1.f) * cw + sa); b1 = 2.f * A * ((A - 1.f) - (A + 1.f) * cw); b2 = A * ((A + 1.f) - (A - 1.f) * cw - sa);
+            a0 = (A + 1.f) + (A - 1.f) * cw + sa; a1 = -2.f * ((A - 1.f) + (A + 1.f) * cw); a2 = (A + 1.f) + (A - 1.f) * cw - sa;
+            on = q[E_GAIN] != 64;
+        } else if (ty == EQ_SHELF) {
+            b0 = A * ((A + 1.f) + (A - 1.f) * cw + sa); b1 = -2.f * A * ((A - 1.f) + (A + 1.f) * cw); b2 = A * ((A + 1.f) + (A - 1.f) * cw - sa);
+            a0 = (A + 1.f) - (A - 1.f) * cw + sa; a1 = 2.f * ((A - 1.f) - (A + 1.f) * cw); a2 = (A + 1.f) - (A - 1.f) * cw - sa;
+            on = q[E_GAIN] != 64;
+        } else {
+            b0 = 1.f + al * A; b1 = -2.f * cw; b2 = 1.f - al * A; a0 = 1.f + al / A; a1 = -2.f * cw; a2 = 1.f - al / A;
+            on = q[E_GAIN] != 64;
+        }
+        float ia = 1.f / a0;
+        float *c = vsc_eq_coef[b];
+        c[0] = b0 * ia; c[1] = b1 * ia; c[2] = b2 * ia; c[3] = a1 * ia; c[4] = a2 * ia;
+        if (on) vsc_eq_live |= (uint8_t)(1u << b);
+        else { eq_z[b][0][0] = eq_z[b][0][1] = eq_z[b][1][0] = eq_z[b][1][1] = 0.f; }
+    }
+}
+static VSC_HOT void eq_run(float *l, float *r, unsigned n)
+{
+    int changed = 0;
+    for (unsigned i = 0; i < 16; ++i) if (eq_seen[i] != vsc.p[P_EQ0 + i]) { eq_seen[i] = vsc.p[P_EQ0 + i]; changed = 1; }
+    if (changed) eq_design();
+    for (unsigned b = 0; b < 4; ++b) {
+        if (!(vsc_eq_live >> b & 1u)) continue;
+        const float *c = vsc_eq_coef[b];
+        for (unsigned ch = 0; ch < 2; ++ch) {
+            float *x = ch ? r : l, z1 = eq_z[b][ch][0], z2 = eq_z[b][ch][1];
+            for (unsigned i = 0; i < n; ++i) {   /* transposed direct form II */
+                float in = x[i], y = c[0] * in + z1;
+                z1 = c[1] * in - c[3] * y + z2;
+                z2 = c[2] * in - c[4] * y;
+                x[i] = y;
+            }
+            if (absf(z1) < 1e-20f) z1 = 0.f;
+            if (absf(z2) < 1e-20f) z2 = 0.f;
+            if (!(z1 == z1) || !(z2 == z2)) z1 = z2 = 0.f;
+            eq_z[b][ch][0] = z1; eq_z[b][ch][1] = z2;
+        }
+    }
+}
+#define COMP_SUB 16
+static float comp_gr, comp_grs, comp_g = 1.f, comp_db = -120.f;
+static VSC_HOTDATA const float ratio_slope[3] = {0.5f, 0.75f, 0.9f};
+static VSC_HOTDATA const float atk_s[6] = {0.0001f, 0.0003f, 0.001f, 0.003f, 0.01f, 0.03f};
+static VSC_HOTDATA const float rel_s[5] = {0.1f, 0.3f, 0.6f, 1.2f, 0.12f};   /* (AUTO: its fast stage) */
+VSC_INL float coef_of(float sec) { return 1.f - exp2a(-1.442695f * (float)COMP_SUB / (sec * (float)VSC_SR)); }
+static VSC_HOT void comp_run(float *l, float *r, unsigned n, const float *key)
+{
+    if (!vsc.p[P_CON]) { comp_gr = comp_grs = 0.f; comp_g = 1.f; vsc_meter.comp_gr = 0.f; vsc_meter.comp_in = -120.f; return; }
+    unsigned rel = vsc.p[P_CREL] > 4 ? 4 : vsc.p[P_CREL];
+    const float thr = (float)vsc.p[P_CTHR] - 30.f, slope = ratio_slope[vsc.p[P_CRATIO] > 2 ? 2 : vsc.p[P_CRATIO]];
+    const float aa = coef_of(atk_s[vsc.p[P_CATK] > 5 ? 5 : vsc.p[P_CATK]]), ar = coef_of(rel_s[rel]);
+    const int autor = rel == 4;
+    const float aas = coef_of(0.6f), ars = coef_of(1.5f);
+    const float mk = (float)vsc.p[P_CMAKE], mix = (float)vsc.p[P_CMIX] * (1.f / 127.f);
+    if (!autor) comp_grs = 0.f;
+    for (unsigned i = 0; i < n; i += COMP_SUB) {
+        float pk = 0.f;
+        for (unsigned j = 0; j < COMP_SUB; ++j) {
+            float a = key ? absf(key[i + j]) : absf(l[i + j]), b = key ? 0.f : absf(r[i + j]);
+            a = a > b ? a : b; pk = a > pk ? a : pk;
+        }
+        float db = 6.0206f * log2a(pk + 1e-6f);
+        float tgt = db > thr ? (db - thr) * slope : 0.f;
+        comp_gr += (tgt - comp_gr) * (tgt > comp_gr ? aa : ar);
+        float gr = comp_gr;
+        if (autor) { comp_grs += (tgt - comp_grs) * (tgt > comp_grs ? aas : ars); gr = gr > comp_grs ? gr : comp_grs; }
+        float g1 = exp2a((mk - gr) * 0.16609640f);
+        g1 = 1.f - mix + mix * g1;
+        float dg = (g1 - comp_g) * (1.f / (float)COMP_SUB);
+        for (unsigned j = 0; j < COMP_SUB; ++j) { comp_g += dg; l[i + j] *= comp_g; r[i + j] *= comp_g; }
+        comp_db = db;
+    }
+    vsc_meter.comp_gr = comp_gr > comp_grs ? comp_gr : comp_grs;
+    vsc_meter.comp_in = comp_db;
+}
+static float key_buf[VSC_BLOCK];   /* the compressor's key, when it listens to a track */
 
 /* ------------------------------------------------------------- transport */
 static VSC_HOT_SMALL unsigned armed_mask(void)
@@ -698,6 +816,7 @@ static VSC_HOT_SMALL void rec(void)
         if (!arm) return;
         for (unsigned t = 0; t < VSC_TRACKS; ++t) if (arm >> t & 1u) track_clear(t);
         tp = 0.f; transport = TR_FIRST;
+        for (unsigned t = 0; t < VSC_TRACKS; ++t) tk[t].tp = 0.f;
         for (unsigned t = 0; t < VSC_TRACKS; ++t) if (arm >> t & 1u) { tk[t].r.on = 1; rd_seek(t, 0); wr_start(t); }
         return;
     }
@@ -866,7 +985,6 @@ __attribute__((minsize)) void vsc_init(void)
     for (unsigned p = 0; p < VSC_NP; ++p) { is_enum[p] = (vsc_param_info(p)->flags & VSC_PF_ENUM) != 0; pmax[p] = vsc_param_info(p)->max; }
     vsc_memset(tk, 0, sizeof tk);
     for (unsigned t = 0; t < VSC_TRACKS; ++t) track_clear(t);
-    vsc_memset(sh_ring, 0, sizeof sh_ring);
     rs.where = 255;
     rob_hold[0][1] = 0.3f; rob_hold[1][1] = -0.4f;
     vsc_meter.cap = TCAP;
@@ -933,6 +1051,17 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
     }
     const float tlev = level_gain(pf[P_TLEVEL]);
     const float semis = (pf[P_PITCH] - 12.f);
+    float t_semis[VSC_TRACKS];
+    /* each track's step: the tape's, times its own SPEED (all together in the first take; a
+     * bounce's print at the tape's), at most a sample a frame */
+    for (unsigned t = 0; t < VSC_TRACKS; ++t) {
+        struct trk *k = &tk[t];
+        float ts = exp2a((pf[P_TRK(t, S_SPEED)] - 64.f) * (1.f / 64.f));
+        k->inc = transport == TR_FIRST || (bounce_on && t == bounce_dst) ? inc : clampf(inc * ts, 0.f, 1.f);
+        k->dg = pf[P_TRK(t, S_DUB)] * (1.f / 127.f);
+        t_semis[t] = semis + pf[P_TRK(t, S_PITCH)] - 12.f;
+    }
+    const int keyed = vsc.p[P_CON] && vsc.p[P_CKEY] >= 1 && vsc.p[P_CKEY] <= VSC_TRACKS;
     float ibuf[VSC_SUB], bbuf[VSC_SUB];
     float iacc = 0.f, ipk = 0.f, tacc[VSC_TRACKS] = {0}, tpk[VSC_TRACKS] = {0};
     static float idc, bdc;
@@ -954,20 +1083,13 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
             reson(ibuf, ibuf, n, RT_INPUT);
             if (vsc_clock_since) t_reson += vsc_clock_since(r0);
         }
-        /* pass A: the tape moves; each track reads (a sample ahead) */
+        /* pass A: the tape moves; each track reads (a sample ahead) at its own speed */
         int moving = transport != TR_STOP, wrap_i = -1;
         for (unsigned i = 0; i < n; ++i) {
-            cross[i] = 0;
-            if (!moving) { for (unsigned t = 0; t < VSC_TRACKS; ++t) tk[t].buf[i] = 0.f; continue; }
+            if (!moving) { for (unsigned t = 0; t < VSC_TRACKS; ++t) { tk[t].buf[i] = 0.f; tk[t].cr[i] = 0; } continue; }
+            /* the master: the loop's time */
             float p = tp + inc;
             if ((uint32_t)p != (uint32_t)tp) {
-                cross[i] = 1;
-                for (unsigned t = 0; t < VSC_TRACKS; ++t) {
-                    struct trk *k = &tk[t];
-                    if (!k->r.on) continue;
-                    k->old[i] = k->r.s0; k->oldn[i] = k->r.n0;
-                    rd_fetch(t);
-                }
                 uint32_t e = loop_end();
                 if (p >= (float)e) {
                     p -= (float)e;
@@ -976,19 +1098,30 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
                     }
                     if (bounce_on && bounce_done) wrap_i = (int)i;
                 } else if (transport == TR_FIRST && vsc.p[P_LOOP] && p >= tape_hz * 0.05f * (float)vsc.p[P_LOOP]) {
-                    /* a set length: the first take closes there */
+                    /* a set length: the first take closes there (the tracks are where the master is) */
                     uint32_t l = (uint32_t)p; if (l > TCAP) l = TCAP;
                     punch_out_all(); transport = TR_PLAY;
+                    for (unsigned t = 0; t < VSC_TRACKS; ++t) tk[t].tp = tp;
                     tp = p; loop_set(l); p = tp;
                 }
                 if (bounce_on) ++bounce_done;
             }
             tp = p;
-            const float fr = tp - (float)(uint32_t)tp;
+            const uint32_t e = loop_end();
             for (unsigned t = 0; t < VSC_TRACKS; ++t) {
                 struct trk *k = &tk[t];
-                if (!k->r.on || (replace && k->w.on && !k->w.ending && !bounce_on)) { k->buf[i] = 0.f; continue; }
-                float v = k->r.s0 + (k->r.s1 - k->r.s0) * fr;
+                k->cr[i] = 0;
+                if (!k->r.on) { k->buf[i] = 0.f; continue; }
+                float q = k->tp + k->inc;
+                if ((uint32_t)q != (uint32_t)k->tp) {
+                    k->cr[i] = 1;
+                    k->old[i] = k->r.s0; k->oldn[i] = k->r.n0;
+                    rd_fetch(t);
+                    if (q >= (float)e) q -= (float)e;
+                }
+                k->tp = q;
+                if (replace && k->w.on && !k->w.ending && !bounce_on) { k->buf[i] = 0.f; continue; }
+                float v = k->r.s0 + (k->r.s1 - k->r.s0) * (q - (float)(uint32_t)q);
                 k->lp += (v - k->lp) * head;
                 k->buf[i] = k->lp;
             }
@@ -1006,12 +1139,14 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
             if (!k->r.on) continue;
             float acc = 0.f, pk = 0.f;
             const float bg = bounce_on && (bounce_src >> t & 1u) ? level_gain(pf[P_TRK(t, S_LEVEL)]) : 0.f;
+            for (unsigned i = 0; i < n; ++i) k->buf[i] = pre(k->buf[i] * g_trim[t], 0.04f, &k->dc, &thit[t]);
+            shifter(k, k->buf, n, t_semis[t]);
             for (unsigned i = 0; i < n; ++i) {
-                float v = pre(k->buf[i] * g_trim[t], 0.04f, &k->dc, &thit[t]);
-                k->buf[i] = v;
+                float v = k->buf[i];
                 float a = absf(v); acc += a; if (a > pk) pk = a;
                 bbuf[i] += v * bg;
             }
+            if (keyed && t == vsc.p[P_CKEY] - 1u) for (unsigned i = 0; i < n; ++i) key_buf[off + i] = k->buf[i];
             tacc[t] += acc; if (pk > tpk[t]) tpk[t] = pk;
         }
         if (bounce_on) {
@@ -1029,7 +1164,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
             const int bw = bounce_on && t == bounce_dst;
             const float *src = bw ? bbuf : ibuf;
             for (unsigned i = 0; i < n; ++i) {
-                if (cross[i] && k->w.on) {
+                if (k->cr[i] && k->w.on) {
                     float v = k->w.cnt ? k->w.acc / (float)k->w.cnt : 0.f;
                     wr_put(t, k->oldn[i], k->old[i], v, replace || bw);
                     k->w.acc = 0.f; k->w.cnt = 0;
@@ -1053,9 +1188,9 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
         /* the overview: each track's level where the tape is */
         if (moving) {
             uint32_t e = loop_end();
-            unsigned col = (unsigned)(tp * 60.f / (float)(e ? e : 1u));
-            if (col < 60u) for (unsigned t = 0; t < VSC_TRACKS; ++t) {
-                if (!tk[t].r.on) continue;
+            for (unsigned t = 0; t < VSC_TRACKS; ++t) {
+                unsigned col = (unsigned)(tk[t].tp * 60.f / (float)(e ? e : 1u));
+                if (!tk[t].r.on || col >= 60u) continue;
                 float m = 0.f; for (unsigned i = 0; i < n; ++i) { float a = absf(tk[t].buf[i]); if (a > m) m = a; }
                 unsigned v = (unsigned)(m * 30.f); vsc_meter.overview[t][col] = (uint8_t)(v > 15u ? 15u : v);
             }
@@ -1063,7 +1198,9 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
         /* the monitor */
         if (mon) for (unsigned i = 0; i < n; ++i) { main_l[off + i] += ibuf[i] * 0.8f; main_r[off + i] += ibuf[i] * 0.8f; }
     }
-    shifter(main_l, main_r, VSC_BLOCK, semis);
+    if (keyed && !tk[vsc.p[P_CKEY] - 1u].r.on) vsc_memset(key_buf, 0, sizeof key_buf);
+    eq_run(main_l, main_r, VSC_BLOCK);
+    comp_run(main_l, main_r, VSC_BLOCK, keyed ? key_buf : 0);
     float lacc = 0.f, racc = 0.f;
     for (unsigned i = 0; i < VSC_BLOCK; ++i) {
         float l = main_l[i], r = main_r[i];
@@ -1092,6 +1229,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
     vsc_meter.transport = transport;
     vsc_meter.playing = transport != TR_STOP;
     vsc_meter.pos = (uint32_t)tp; vsc_meter.loop = loop_len; vsc_meter.cap = TCAP;
+    for (unsigned t = 0; t < VSC_TRACKS; ++t) vsc_meter.tpos[t] = (uint32_t)tk[t].tp;
     vsc_meter.bounce_pct = bounce_on && loop_len ? (uint8_t)((float)bounce_done * 100.f / (float)loop_len) : 0;
     if (vsc_clock_since) {
         uint32_t all = vsc_clock_since(t_start);

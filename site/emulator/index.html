@@ -208,10 +208,11 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
 .key.down{background:linear-gradient(180deg,#d9c6c7,#bba7a8)}
 .now{background:#2e3034;color:#c3c6cb;box-shadow:inset 0 1px 3px rgba(0,0,0,.5)}.now b{color:#8a8d93}
 /* the meter bridge: four thin LED ladders, as on the 424 */
-.meters{background:#2a2c2f;box-shadow:inset 0 2px 5px rgba(0,0,0,.55),0 1px 0 rgba(255,255,255,.12);border-radius:10px;padding:10px 16px 8px;gap:0}
+.meters{background:#2a2c2f;box-shadow:inset 0 2px 5px rgba(0,0,0,.55),0 1px 0 rgba(255,255,255,.12);border-radius:10px;padding:10px 16px 8px;
+  justify-self:center;grid-template-columns:repeat(4,auto) auto;column-gap:22px}
 .mtr{justify-items:center;grid-template-columns:auto auto;column-gap:5px}
-.mtr .lad{width:9px;gap:2px}
-.mtr .seg{height:3px;background:#1a1b1d}
+.mtr .lad{width:16px;gap:2px}
+.mtr .seg{height:4px;background:#1a1b1d}
 .mtr .nm{font:400 9px/1 "Silkscreen",var(--mono);letter-spacing:0;color:#9a9da3}
 .mtr .lamp{width:6px;height:6px}
 .mscale{color:#6d7076;font-family:"Silkscreen",var(--mono)}

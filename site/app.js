@@ -50,6 +50,11 @@
     return btoa(s);
   }
 
+  /* 2.0 and later are the 4-track (VISCERA: TAPE); 1.x and earlier the original live-capture Viscera */
+  function nameOf(v) {
+    const ver = v.version || v.product, major = parseInt(ver, 10);
+    return (major >= 2 ? 'VISCERA: TAPE ' : 'VISCERA (original) ') + ver;
+  }
   /* firmware/versions.json (newest first) and latest.json are written by the deploy */
   function pick() {
     const v = versions[+$('ver').value] || versions[0];
@@ -70,12 +75,12 @@
       sel.innerHTML = '';
       versions.forEach((v, i) => {
         const o = document.createElement('option');
-        o.value = i; o.textContent = 'Viscera ' + (v.version || v.product) + (i === 0 ? ' · newest' : '');
+        o.value = i; o.textContent = nameOf(v) + (i === 0 ? ' · newest' : '');
         sel.appendChild(o);
       });
       sel.disabled = false;
       pick();
-      $('release-text').textContent = 'Newest: Viscera ' + (versions[0].version || versions[0].product) + ' (' + versions.length + ' version' + (versions.length > 1 ? 's' : '') + ' to choose from). Early firmware, being tested on hardware now: back up first.';
+      $('release-text').textContent = 'Newest: ' + nameOf(versions[0]) + ' (' + versions.length + ' version' + (versions.length > 1 ? 's' : '') + ' to choose from). Early firmware, being tested on hardware now: back up first.';
       $('use-latest').disabled = false;
     } catch {
       $('ver').innerHTML = '<option>No published version</option>';
@@ -86,7 +91,7 @@
   /* which published version an identity or build is */
   function versionOf(id, build) {
     const v = versions.find(m => (build && m.build_id && m.build_id.startsWith(build)) || m.product === id);
-    return v ? 'Viscera ' + v.version : '';
+    return v ? nameOf(v) : '';
   }
   function describe(meta) {
     $('pkg-meta').innerHTML = '<b>' + meta.product + '</b><br>' +

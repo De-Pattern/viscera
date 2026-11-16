@@ -15,7 +15,7 @@
 
 Viscera 4-Track records sound coming in over Bluetooth (a phone or tablet) or USB (a computer) onto four tracks of tape in the FM-1's memory, and overdubs them:
 
-- **The tape**: four mono tracks of 4-bit ADPCM, at three tape speeds (2.8, 3.9 or 5.7 s a track). The first take sets the loop; then punch in and out of the armed tracks, DUB or REPLACE. SPEED is varispeed (pitch and time together, as tape); PITCH shifts the mix without changing its time.
+- **The tape**: four mono tracks of 4-bit ADPCM, at three tape speeds (2.8, 3.8 or 5.6 s a track). The first take sets the loop; then punch in and out of the armed tracks, DUB or REPLACE. SPEED is varispeed (pitch and time together, as tape); PITCH shifts the mix without changing its time.
 - **The desk**: four channel strips with VU meters, each with a TRIM into a 424-style preamp (clean to 0 VU, then softly rounding with a little second harmonic), PAN and LEVEL; the input has its own preamp with DRIVE.
 - **Bounce**: print any tracks, through RESON and a preamp, onto a free track, one loop long.
 - **RESON**: an eight-band resonant filterbank (LIQUID, GLASS, THROAT, DUST, RADIO, DROPS) on a track, the input or a bounce.

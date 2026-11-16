@@ -33,6 +33,7 @@ static const struct vsc_pinfo info[VSC_NP] = {
     C("BAND 1", 85), C("BAND 2", 95), C("BAND 3", 90), C("BAND 4", 88), C("BAND 5", 92), C("BAND 6", 86), C("BAND 7", 95), C("BAND 8", 84),
     BAND(30, EQ_CUT), BAND(55, 0), BAND(89, 0), BAND(110, EQ_CUT),
     {"THRESH", 30, 20, 0}, E("RATIO", 2, 0), E("ATTACK", 5, 4), E("RELEAS", 4, 4), {"MAKEUP", 15, 0, 0}, C("MIX", 127), E("KEY", VSC_TRACKS, 0), E("COMP", 1, 0),
+    E("SOURCE", VSC_TRACKS - 1, 0), E("SLICES", 2, 1), E("SNAP", 1, 1), E("TO", 4, 0),
     ROBOT(0), ROBOT(1),
 };
 const struct vsc_pinfo *vsc_param_info(unsigned p) { return p < VSC_NP ? &info[p] : &info[0]; }
@@ -149,6 +150,10 @@ void vsc_param_label(unsigned p, unsigned v, char out[8])
     case P_CMAKE: out[0] = '+'; put_unit(out + 1, (int)v, "DB"); return;
     case P_CKEY: if (!v) put_str(out, "MIX"); else { put_str(out, "TRK "); out[4] = (char)('0' + v); out[5] = 0; } return;
     case P_CON: put_str(out, v ? "ON" : "OFF"); return;
+    case P_SLSRC: put_str(out, "TRK "); out[4] = (char)('1' + (v & 3u)); out[5] = 0; return;
+    case P_SLN: put_unit(out, 4 << (v % 3), ""); return;
+    case P_SLSNAP: put_str(out, v ? "HITS" : "GRID"); return;
+    case P_SLDST: put_str(out, n_bdst[v % 5]); return;
     default: break;
     }
     if (p >= P_RG0 && p <= P_RG7) { if (v < 1) put_str(out, "OFF"); else put_unit(out, -60 + (int)v * 66 / 127, "DB"); return; }

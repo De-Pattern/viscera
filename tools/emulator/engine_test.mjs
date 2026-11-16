@@ -14,12 +14,12 @@ const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } };
 const P = {SPEED: 0, PITCH: 1, LOOP: 2, TLEVEL: 3, TAPESPD: 4, ISRC: 5, ITRIM: 6, IDRIVE: 7, IMON: 8, IREC: 9,
   BSRC: 42, BDST: 43, BRESON: 44, BDRIVE: 45, BLEVEL: 46, BCLEAR: 47,
   RTGT: 48, RPROF: 49, RMIX: 50, RDECAY: 51, RWIDTH: 52, RSHIFT: 53, RDUST: 54, RG0: 55, EQ0: 63,
-  CTHR: 79, CRATIO: 80, CATK: 81, CREL: 82, CMAKE: 83, CMIX: 84, CKEY: 85, CON: 86, ROB0: 87};
+  CTHR: 79, CRATIO: 80, CATK: 81, CREL: 82, CMAKE: 83, CMIX: 84, CKEY: 85, CON: 86, SLSRC: 87, SLN: 88, SLSNAP: 89, SLDST: 90, ROB0: 91};
 const TRK = (t, k) => 10 + t * 8 + k, S = {TRIM: 0, PAN: 1, LEVEL: 2, MUTE: 3, ARM: 4, SPEED: 5, PITCH: 6, DUB: 7};
 const EQ = (b, k) => P.EQ0 + b * 4 + k;
 const ROB = (r, k) => P.ROB0 + r * 5 + k, R = {TARGET: 0, RATE: 1, SHAPE: 2, SKEW: 3, DEPTH: 4};
 const EV = {NOTE_ON: 0, NOTE_OFF: 1, PLAY: 2, STOP: 3, REC: 4, CLEAR: 5, ERASE: 6, BOUNCE: 7, ARM: 8, CC: 9, PANIC: 10, LOOP: 11};
-ok(x.np() === 97, 'parameter count: ' + x.np());
+ok(x.np() === 101, 'parameter count: ' + x.np());
 x.init();
 const inbuf = new Float32Array(mem(), x.input_buffer(), 256), usbbuf = new Float32Array(mem(), x.usb_buffer(), 256);
 let fr = 0;
@@ -273,9 +273,35 @@ x.set_param(P.CKEY, 1); clean(run(200), 'keyed by track 1');
 press(B.FX); paintCheck('master, EQ'); for (let v = 0; v < 6; v++) { paintCheck('master view ' + v); enc(0, 1); }
 x.set_param(P.CON, 0); x.set_param(P.CKEY, 0); x.set_param(TRK(0, S.TRIM), 80); x.set_param(TRK(1, S.TRIM), 80);
 
+// 12c. MOTION (SEL): REC, then a knob turned over the loop plays back each pass
+press(B.HOME); press(B.PLAY, 1 << B.ARP);
+gen = music; x.set_param(TRK(0, S.ARM), 1); press(B.REC); wait(60); press(B.REC); x.set_param(TRK(0, S.ARM), 0);
+gen = silence;
+press(B.SCL); paintCheck('motion');
+press(B.REC); ok(x.transport() === 1, 'MOTION REC plays the tape');
+for (let i = 0; i < 40; i++) enc(2, i < 20 ? 3 : -3);
+press(B.REC);
+x.set_param(P.SPEED, 64);
+{ const seen = new Set(); for (let i = 0; i < 60; i++) { run(5); seen.add(Math.round(x.rate())); }
+  ok(seen.size > 8, 'the recorded SPEED motion plays back over the loop: ' + seen.size + ' speeds'); }
+ctl(0, 1 << B.ARP); enc(2, 1, 1 << B.ARP); ctl(0, 0);
+{ const seen = new Set(); for (let i = 0; i < 30; i++) { run(5); seen.add(Math.round(x.rate())); } ok(seen.size <= 2, 'ARP + the knob erases its motion: ' + seen.size); }
+// 12d. SLICE (SEL, SEL, SEL): track 1 cut on the white keys; REC records them to a free track
+press(B.SCL); press(B.SCL); paintCheck('slice');
+x.set_param(P.SLSRC, 0); x.set_param(P.SLN, 0); ctl();
+quiet(run(60), 'the sliced track is muted on its page (nothing played)');
+key(0); sound(run(30), 'white key 1 plays slice 1');
+key(4); key(7); sound(run(30), 'more slices');
+press(B.REC); ok((x.recording() & 2) === 2, 'REC on SLICE records into the free track 2: ' + x.recording());
+for (let i = 0; i < 12; i++) { key([0, 2, 4, 6][i % 4]); wait(3); }
+press(B.REC); ok(x.has(1) === 1 && (x.recording() & 2) === 0, 'the take is on track 2');
+press(B.REC, 1 << B.ARP); ctl(); ok(x.has(1) === 0, 'ARP + REC clears the take to start over');
+press(B.HOME); ctl();
+sound(run(100), 'leaving SLICE: track 1 plays again');
+
 // 13. every page and view drawn, every knob both ways, nothing breaks
 gen = music;
-for (const b of [B.HOME, B.EDIT, B.FX, B.SEQ, B.ENV, B.LFO, B.SAVE, B.GLO]) {
+for (const b of [B.HOME, B.EDIT, B.FX, B.SCL, B.SEQ, B.ENV, B.LFO, B.SAVE, B.GLO]) {
   press(b); paintCheck('page ' + b);
   for (let v = 0; v < 6; v++) {
     for (let k = 2; k < 6; k++) { enc(k, 5); enc(k, -9); enc(k, 4); }

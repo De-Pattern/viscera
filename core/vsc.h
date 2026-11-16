@@ -33,6 +33,9 @@ enum vsc_param {
      * makeup, mix, what it listens to, on) */
     P_EQ0,
     P_CTHR = P_EQ0 + 16, P_CRATIO, P_CATK, P_CREL, P_CMAKE, P_CMIX, P_CKEY, P_CON,
+    /* SLICE: the track sliced, how many slices, whether they snap to transients, where a
+     * take goes (AUTO: a free track) */
+    P_SLSRC, P_SLN, P_SLSNAP, P_SLDST,
     /* ROBOTS: two, each a target, a rate, a shape, its skew and depth */
     P_ROB0,
     VSC_NP = P_ROB0 + VSC_ROBOTS * 5
@@ -83,9 +86,12 @@ struct vsc_project {
     uint8_t pad[(4u - (VSC_NP & 3u)) & 3u];
     int8_t gest[VSC_ROBOTS][VSC_GEST];        /* a recorded knob gesture, offsets of the target */
     uint16_t gest_ms[VSC_ROBOTS];             /* how long it lasts */
+    /* MOTION: knob moves recorded over the loop (SEL page), one lane a parameter, 64 points
+     * round the loop, played back each pass in place of the knob */
+    struct vsc_motion { uint8_t param, on, pad[2]; uint8_t v[VSC_MOTION_PTS]; } motion[VSC_MOTIONS];
 };
 #define VSC_MAGIC 0x34435356u /* "VSC4" */
-#define VSC_FORMAT 9          /* 9: per-track speed, pitch, dub; the master EQ and compressor */
+#define VSC_FORMAT 10         /* 9: per-track speed, pitch, dub; the master EQ and compressor */
 /* MIDI learn: a CC (or a note, for an action) on a channel. kind 0: CC to a parameter;
  * 1: a note to an action. */
 struct vsc_learn { uint8_t ch, cc, kind, param; };
@@ -127,7 +133,17 @@ void vsc_render(const struct vsc_inputs *in, float *out);
 
 /* Events from control or MIDI into the audio context (lock-free queue). */
 enum { EV_NOTE_ON, EV_NOTE_OFF, EV_PLAY, EV_STOP, EV_REC, EV_CLEAR, EV_ERASE, EV_BOUNCE,
-       EV_ARM, EV_CC, EV_PANIC, EV_LOOP, EV_INTRO };   /* EV_INTRO a: 1 play the start-up music, 0 stop it */
+       EV_ARM, EV_CC, EV_PANIC, EV_LOOP, EV_INTRO, EV_SLICE, EV_SLMODE, EV_SLREC };
+/* SLICE: EV_SLMODE a: the source track + 1 while the page is open (it is muted; the slices
+ * play through its strip), 0 off. EV_SLICE a: play slice a. EV_SLREC a: 1 record what the
+ * slices play into a free track (P_SLDST), 0 stop. The UI finds the slices (vsc_slice_at). */
+extern uint32_t vsc_slice_at[17];   /* the slices' starts, then the last one's end (tape samples) */
+extern volatile uint8_t vsc_slice_n;
+/* the tape's level in frames of 256 samples from..to (for finding transients; control task) */
+unsigned vsc_tape_env(unsigned t, uint32_t from, uint32_t to, uint8_t *env, unsigned max);
+/* MOTION: lanes the UI is writing now (bits): they don't play back while they're written */
+extern volatile uint8_t vsc_motion_hold;
+float vsc_motion_value(unsigned lane);   /* a lane's value where the loop is now */   /* EV_INTRO a: 1 play the start-up music, 0 stop it */
 /* EV_PLAY a: 0 toggle, 1 start. EV_CLEAR: track a. EV_ARM: track a toggled.
  * EV_LOOP: the loop length moves by a (signed) twentieths of a second. */
 void vsc_event(unsigned type, unsigned a, unsigned b);
@@ -167,6 +183,7 @@ struct vsc_meter {
     uint8_t rb_level[VSC_RBANDS];
     uint32_t rb_pings;
     uint8_t rb_drops, playing;
+    uint8_t sl_rec, sl_dst, sl_err, sl_on;   /* SLICE: recording, where to, why it couldn't (BE_*), voices playing */
     uint32_t tpos[VSC_TRACKS];               /* each track's own place on the tape (its SPEED) */
     float comp_gr, comp_in;                  /* the compressor: reduction now (dB), the level it hears (dB) */
 };

@@ -147,6 +147,7 @@ static float tp;              /* the master playhead (SPEED only): the loop's ti
 static uint32_t loop_len;     /* the loop's END (exclusive); 0: no loop yet */
 static uint32_t loop_start;   /* the loop's START */
 static uint32_t take_len;     /* the furthest a take has gone: what START and END can reach (FULL) */
+static uint8_t sl_src = 255, sl_dst = 255, sl_rec;   /* SLICE: the track sliced, where a take goes, recording */
 static uint8_t transport, bounce_on, bounce_dst, bounce_src, bounce_clear;
 static uint32_t bounce_done;  /* samples of the loop printed */
 
@@ -299,9 +300,28 @@ static VSC_HOTDATA const uint8_t rtarget[VSC_RTARGETS] = {
     P_STRIP + 0 * VSC_TP + S_SPEED, P_STRIP + 1 * VSC_TP + S_SPEED, P_STRIP + 2 * VSC_TP + S_SPEED, P_STRIP + 3 * VSC_TP + S_SPEED,
     P_STRIP + 0 * VSC_TP + S_PITCH, P_STRIP + 1 * VSC_TP + S_PITCH, P_STRIP + 2 * VSC_TP + S_PITCH, P_STRIP + 3 * VSC_TP + S_PITCH,
 };
+volatile uint8_t vsc_motion_hold;
+/* a lane's value where the loop is (the master's place), between its points */
+static VSC_HOT_SMALL float motion_at(unsigned m)
+{
+    const struct vsc_motion *mo = &vsc.motion[m];
+    float len = loop_len > loop_start ? (float)(loop_len - loop_start) : 1.f;
+    float x = (tp - (float)loop_start) / len * (float)VSC_MOTION_PTS;
+    if (x < 0.f) x = 0.f;
+    unsigned i = (unsigned)x % VSC_MOTION_PTS, j = (i + 1u) % VSC_MOTION_PTS;
+    float f = x - (float)(unsigned)x;
+    return (float)mo->v[i] + ((float)mo->v[j] - (float)mo->v[i]) * f;
+}
+float vsc_motion_value(unsigned m) { return m < VSC_MOTIONS ? motion_at(m) : 0.f; }
 static VSC_HOT_SMALL void robots(void)
 {
     for (unsigned p = 0; p < VSC_NP; ++p) pf[p] = (float)vsc.p[p];
+    /* MOTION: each lane in place of its knob (not while it's being written, nor with no loop) */
+    if (loop_len) for (unsigned m = 0; m < VSC_MOTIONS; ++m) {
+        const struct vsc_motion *mo = &vsc.motion[m];
+        if (!mo->on || mo->param >= VSC_NP || (vsc_motion_hold >> m & 1u)) continue;
+        pf[mo->param] = motion_at(m);
+    }
     for (unsigned r = 0; r < VSC_ROBOTS; ++r) {
         const uint8_t *q = &vsc.p[P_ROB(r, 0)];
         unsigned shape = q[R_SHAPE];
@@ -801,6 +821,7 @@ static VSC_HOT_SMALL void stop(void)
     for (unsigned t = 0; t < VSC_TRACKS; ++t) wr_finish(t);
     if (transport == TR_FIRST) { loop_len = (uint32_t)tp + 1u; if (loop_len >= TCAP) loop_len = TCAP; }
     bounce_end(0);
+    sl_rec = 0;
     if (transport == TR_FIRST) take_len = loop_len;
     transport = TR_STOP;
     tp = (float)loop_start;
@@ -917,6 +938,96 @@ static VSC_HOT_SMALL void intro(float *l, float *r, unsigned n)
     }
 }
 
+/* ---------------------------------------------------------- SLICE
+ * A track's loop cut into slices the keys play. While the page is open the track is muted and
+ * the slices play through its strip; REC records them into a free track (REPLACE). Two voices,
+ * so a new slice crossfades over the last; each reads the tape on its own (from its block's
+ * start, then on), at the source track's speed. */
+uint32_t vsc_slice_at[17];
+volatile uint8_t vsc_slice_n;
+struct svoice { uint32_t n, end; float fr, s0, s1, env; int32_t pred, idx; uint8_t on, fade; };
+static struct svoice sv[2];
+static uint8_t sv_next;
+static float sl_buf[VSC_SUB];
+static VSC_HOT_SMALL void slice_play(unsigned k, float vel)
+{
+    unsigned nsl = vsc_slice_n;
+    if (sl_src >= VSC_TRACKS || !vsc_meter.has[sl_src] || !nsl || k >= nsl) return;
+    uint32_t a = vsc_slice_at[k], e = vsc_slice_at[k + 1];
+    if (e <= a + 2u || e > TCAP) return;
+    for (unsigned v = 0; v < 2; ++v) if (sv[v].on) sv[v].fade = 1;   /* the last one lets go */
+    struct svoice *s = &sv[sv_next]; sv_next ^= 1u;
+    uint32_t b = a / VSC_TAPE_BLK;
+    s->pred = hpred[sl_src][b]; s->idx = hidx[sl_src][b];
+    for (uint32_t j = b * VSC_TAPE_BLK; j < a; ++j) (void)dec(tape[sl_src], j, &s->pred, &s->idx);
+    s->s0 = dec(tape[sl_src], a, &s->pred, &s->idx);
+    s->s1 = dec(tape[sl_src], a + 1u, &s->pred, &s->idx);
+    s->n = a; s->end = e; s->fr = 0.f; s->env = 0.f; s->on = 1; s->fade = 0;
+    (void)vel;
+}
+/* the voices, a sub-block: into sl_buf */
+static VSC_HOT void slice_voices(unsigned n, float inc)
+{
+    for (unsigned i = 0; i < n; ++i) sl_buf[i] = 0.f;
+    unsigned live = 0;
+    for (unsigned v = 0; v < 2; ++v) {
+        struct svoice *s = &sv[v];
+        if (!s->on) continue;
+        ++live;
+        for (unsigned i = 0; i < n; ++i) {
+            s->fr += inc;
+            while (s->fr >= 1.f) {
+                s->fr -= 1.f; ++s->n;
+                s->s0 = s->s1;
+                s->s1 = s->n + 1u < s->end ? dec(tape[sl_src], s->n + 1u, &s->pred, &s->idx) : 0.f;
+                if (s->n + 64u >= s->end) s->fade = 1;   /* its end: a short fade, then off */
+            }
+            if (s->fade) { s->env -= 1.f / 96.f; if (s->env <= 0.f) { s->env = 0.f; s->on = 0; break; } }
+            else if (s->env < 1.f) s->env += 1.f / 48.f;
+            sl_buf[i] += (s->s0 + (s->s1 - s->s0) * s->fr) * s->env;
+        }
+    }
+    vsc_meter.sl_on = (uint8_t)live;
+}
+/* where a take goes: P_SLDST (AUTO: the first empty track that isn't the source) */
+static VSC_HOT_SMALL int slice_dst(void)
+{
+    unsigned d = vsc.p[P_SLDST];
+    if (d) return d - 1u == sl_src ? -1 : (int)(d - 1u);
+    for (unsigned t = 0; t < VSC_TRACKS; ++t) if (t != sl_src && !vsc_meter.has[t]) return (int)t;
+    return -1;
+}
+static VSC_HOT_SMALL void slice_rec(int on);
+/* (control task) the tape's level in frames of 256 samples, from its block's start */
+unsigned vsc_tape_env(unsigned t, uint32_t from, uint32_t to, uint8_t *env, unsigned max)
+{
+    if (t >= VSC_TRACKS || to > TCAP || from >= to) return 0;
+    uint32_t b = from / VSC_TAPE_BLK;
+    int32_t p = hpred[t][b], x = hidx[t][b];
+    for (uint32_t j = b * VSC_TAPE_BLK; j < from; ++j) (void)dec(tape[t], j, &p, &x);
+    unsigned nf = 0; float acc = 0.f; unsigned c = 0;
+    for (uint32_t j = from; j < to && nf < max; ++j) {
+        if (!(j & (VSC_TAPE_BLK - 1u))) { p = hpred[t][j / VSC_TAPE_BLK]; x = hidx[t][j / VSC_TAPE_BLK]; }
+        acc += absf(dec(tape[t], j, &p, &x));
+        if (++c == 256u) { float v = acc * (1.f / 256.f) * 600.f; env[nf++] = (uint8_t)(v > 255.f ? 255.f : v); acc = 0.f; c = 0; }
+    }
+    return nf;
+}
+
+static VSC_HOT_SMALL void slice_rec(int on)
+{
+    if (!on) { if (sl_rec && sl_dst < VSC_TRACKS) wr_stop(sl_dst); sl_rec = 0; return; }
+    if (sl_rec || sl_src >= VSC_TRACKS || bounce_on) return;
+    if (!loop_len) { vsc_meter.sl_err = BE_NOLOOP; return; }
+    int d = slice_dst();
+    if (d < 0) { vsc_meter.sl_err = BE_NOROOM; return; }
+    vsc_meter.sl_err = BE_NONE;
+    sl_dst = (uint8_t)d;
+    if (transport == TR_STOP) play();
+    wr_start(sl_dst);
+    sl_rec = 1;
+}
+
 /* ---------------------------------------------------------- MIDI learn */
 static uint8_t learn_held[VSC_LEARN];
 static int16_t learn_last[VSC_LEARN];
@@ -1027,6 +1138,12 @@ static VSC_HOT_SMALL void handle(uint32_t e)
             loop_set((uint32_t)en);
         }
         break;
+    case EV_SLICE: slice_play(a, (float)(b & 127u) * (1.f / 127.f)); break;
+    case EV_SLMODE:
+        if (!a) { slice_rec(0); sl_src = 255; sv[0].on = sv[1].on = 0; }
+        else if (a <= VSC_TRACKS && sl_src != a - 1u) { slice_rec(0); sl_src = (uint8_t)(a - 1u); sv[0].on = sv[1].on = 0; }
+        break;
+    case EV_SLREC: slice_rec(a != 0); break;
     case EV_INTRO: in_n = 0; in_len = a ? 32u * IN_STEP : 0u; in_ph[0] = in_ph[1] = in_kp = 0.f; break;
     case EV_PANIC: rs_req = 0.f; vsc_memset(&rs, 0, offsetof(__typeof__(rs), ring)); rs.where = 255; break;
     default: break;
@@ -1189,10 +1306,17 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
                 }
                 k->tp = q;
                 if (replace && k->w.on && !k->w.ending && !bounce_on) { k->buf[i] = 0.f; continue; }
+                if (t == sl_src) continue;   /* (SLICE: the source's tape isn't heard; its slices are) */
                 float v = k->r.s0 + (k->r.s1 - k->r.s0) * (q - (float)(uint32_t)q);
                 k->lp += (v - k->lp) * head;
                 k->buf[i] = k->lp;
             }
+        }
+        /* SLICE: the voices play through the source's strip, in place of its tape */
+        const int slicing = sl_src < VSC_TRACKS;
+        if (slicing) {
+            slice_voices(n, tk[sl_src].inc > 0.f ? tk[sl_src].inc : inc);
+            for (unsigned i = 0; i < n; ++i) tk[sl_src].buf[i] = sl_buf[i];
         }
         /* RESON on a track's playback (before its strip) */
         if (rtgt >= RT_T1 && rtgt <= RT_T4 && !rs_bounce) {
@@ -1204,7 +1328,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
         for (unsigned i = 0; i < n; ++i) bbuf[i] = 0.f;
         for (unsigned t = 0; t < VSC_TRACKS; ++t) {
             struct trk *k = &tk[t];
-            if (!k->r.on) continue;
+            if (!k->r.on && !(slicing && t == sl_src)) continue;
             float acc = 0.f, pk = 0.f;
             const float bg = bounce_on && (bounce_src >> t & 1u) ? level_gain(pf[P_TRK(t, S_LEVEL)]) : 0.f;
             for (unsigned i = 0; i < n; ++i) k->buf[i] = pre(k->buf[i] * g_trim[t], 0.04f, &k->dc, &thit[t]);
@@ -1230,11 +1354,11 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
             struct trk *k = &tk[t];
             if (!k->w.on || !moving) continue;
             const int bw = bounce_on && t == bounce_dst;
-            const float *src = bw ? bbuf : ibuf;
+            const float *src = bw ? bbuf : sl_rec && t == sl_dst && slicing ? tk[sl_src].buf : ibuf;
             for (unsigned i = 0; i < n; ++i) {
                 if (k->cr[i] && k->w.on) {
                     float v = k->w.cnt ? k->w.acc / (float)k->w.cnt : 0.f;
-                    wr_put(t, k->oldn[i], k->old[i], v, replace || bw);
+                    wr_put(t, k->oldn[i], k->old[i], v, replace || bw || (sl_rec && t == sl_dst));
                     k->w.acc = 0.f; k->w.cnt = 0;
                     if (bw && (int)i == wrap_i) { k->w.on = 0; break; }   /* the bounce's last sample */
                 }
@@ -1246,7 +1370,8 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
         for (unsigned i = 0; i < n; ++i) {
             float l = 0.f, r = 0.f;
             for (unsigned t = 0; t < VSC_TRACKS; ++t) {
-                if (!tk[t].r.on || (bounce_on && ((bounce_src >> t & 1u) || t == bounce_dst))) continue;
+                if ((!tk[t].r.on && !(slicing && t == sl_src)) || (bounce_on && ((bounce_src >> t & 1u) || t == bounce_dst))) continue;
+                if (sl_rec && t == sl_dst) continue;   /* (the take: heard through the source as it's made) */
                 float v = tk[t].buf[i];
                 l += v * g_l[t]; r += v * g_r[t];
             }
@@ -1295,6 +1420,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
     unsigned recm = 0;
     for (unsigned t = 0; t < VSC_TRACKS; ++t) if (tk[t].w.on && !tk[t].w.ending) recm |= 1u << t;
     vsc_meter.recording = (uint8_t)recm;
+    vsc_meter.sl_rec = sl_rec; vsc_meter.sl_dst = sl_dst;
     vsc_meter.transport = transport;
     vsc_meter.playing = transport != TR_STOP;
     /* (for the screen: places within the loop, its length; and where it sits in the take) */

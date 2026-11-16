@@ -108,7 +108,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
   </header>
 
   <div class="top">
-    <p class="eyebrow">Manual · Viscera 2.3.0 · 4-Track</p>
+    <p class="eyebrow">Manual · Viscera 2.4.0 · 4-Track</p>
     <h1>Guide</h1>
     <p>Viscera 4-Track turns the M-VAVE FM-1 into an overdubbing tape machine. Four tracks of tape in its memory, a 424-style preamp on the input and every channel, VU meters, and RESON to print a bounce through. This page covers installing it safely, getting sound in, how the sound flows, and what every page and control does.</p>
   </div>
@@ -125,6 +125,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
       <a href="#mixer">Mixer</a>
       <a href="#master">Master</a>
       <a href="#input">Input</a>
+      <a href="#motion">Motion &amp; slice</a>
       <a href="#bounce">Bounce</a>
       <a href="#reson">RESON</a>
       <a href="#robots">Robots</a>
@@ -222,6 +223,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
           <tr><td>HOME</td><td>TAPE, then (HOME again) LOOP: START, END, SLIDE, FULL; then TRACK: the selected track's own SPEED, PITCH, DUB and LEVEL. Held: a track's key selects it (without arming it); turn a knob to record a robot gesture.</td></tr>
           <tr><td>ARP (CLEAR)</td><td>Held: a track's key clears that track; PLAY erases the whole tape.</td></tr>
           <tr><td>EDIT</td><td>MIXER (levels, then trims, then pans), then INPUT.</td></tr>
+          <tr><td>SEL</td><td>MOTION (the TAPE screen; SEL again: the selected track), then SLICE.</td></tr>
           <tr><td>FX</td><td>MASTER: the four-band EQ (a view per band), then the compressor.</td></tr>
           <tr><td>SEQ</td><td>BOUNCE.</td></tr>
           <tr><td>ENV</td><td>RESON.</td></tr>
@@ -253,8 +255,8 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
         <div class="tbl"><table>
           <tr><th>Speed</th><th>Rate</th><th>Per track</th></tr>
           <tr><td>HI</td><td>22.05 kHz</td><td>2.8 s</td></tr>
-          <tr><td>MID</td><td>16 kHz</td><td>3.9 s</td></tr>
-          <tr><td>LO</td><td>11.025 kHz</td><td>5.7 s</td></tr>
+          <tr><td>MID</td><td>16 kHz</td><td>3.8 s</td></tr>
+          <tr><td>LO</td><td>11.025 kHz</td><td>5.6 s</td></tr>
         </table></div>
         <p>Lower is longer and darker, as on a cassette. Switching with something on the tape plays it at the new speed: an octave up from LO to HI.</p>
       </section>
@@ -303,6 +305,16 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
           <tr><td>REC MODE (PRESETS)</td><td>DUB or REPLACE.</td></tr>
         </table></div>
         <p>The header says which track the input goes to. The line at the bottom says what is coming in and the tape's rate.</p>
+      </section>
+
+      <section id="motion">
+        <p class="eyebrow">09b</p>
+        <h2>Motion and slice (SEL)</h2>
+        <h3>MOTION</h3>
+        <p>The TAPE screen again, with knobs that can be recorded: SPEED, PITCH, RESON's MIX and LEVEL; SEL again for the selected track's SPEED, PITCH, PAN and LEVEL. Press <kbd>REC</kbd> (the tape plays if it was stopped) and turn knobs: each one you turn is written round the loop, following your hand, until you press <kbd>REC</kbd> again. From then on it moves by itself every pass. Up to four knobs can have motion; one that has shows an <b>M</b> before its name and its value moving. Recording again over a knob replaces its motion from where you take hold of it. <b>ARP + a knob</b> erases that knob's motion; <b>ARP + REC</b> erases all of it. Motion is saved with the project.</p>
+        <h3>SLICE</h3>
+        <p>Cuts a track's loop into slices and puts them on the <b>white keys</b> (F3 up): <b>SOURCE</b> (the track), <b>SLICES</b> (4, 8 or 16), <b>SNAP</b> (GRID: even slices; HITS: each cut moved to the strongest hit near it) and <b>TO</b> (where a take goes: FREE, or a track). The screen draws the loop and the cuts. While the page is open the source's own tape is silent, and its slices play through its strip (its level, pan, trim, pitch and speed).</p>
+        <p><kbd>REC</kbd> records what you play into the free track, round the loop, until <kbd>REC</kbd> again: a new loop made of the slices. The original stays on its track (the FM-1 has no room for a hidden copy), so <b>ARP + REC</b> clears the take to start over; when you're happy, clear the original (ARP + its key) to free its track.</p>
       </section>
 
       <section id="bounce">

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.0 — MOTION and SLICE (SEL)
+
+- **MOTION** (SEL): the TAPE screen again, its knobs SPEED, PITCH, RESON's MIX and LEVEL, then (SEL again) the selected track's SPEED, PITCH, PAN and LEVEL. Press REC and turn knobs: each one turned is recorded round the loop (64 points a pass) and plays back on every pass after REC again. Up to four knobs move at once; a knob with motion shows an M, and its value moving. ARP + a knob erases that knob's motion; ARP + REC erases all of it. Saved with the project.
+- **SLICE** (SEL a third time): a track's loop cut into 4, 8 or 16 slices on the white keys, on an even grid or (SNAP HITS) moved to the hits nearest each line; the screen draws the loop and the cuts. While the page is open the track's own tape is silent and its slices play through its strip. REC records what you play into a free track (TO: FREE, or one you pick), round the loop until REC again; the original stays on its track, so ARP + REC clears the take to start over, and clearing the original afterwards frees its track.
+- Projects from 2.3 and before don't load (the project has room for the motion now).
+- The tape is 1.5 % shorter (MID 3.8 s, LO 5.6 s a track, HI still 2.8 s): the room the new pages take from the heap M-VAVE's library starts from.
+
 ## 2.3.0 — loop START and END; one track armed at a time
 
 - **Trim the loop at both ends**: HOME's new LOOP view (HOME, then HOME again) has START and END (a hundredth and a twentieth of a second a click), SLIDE (moves the loop along the take, its length kept) and FULL (back to the whole take). The tracks show the take with what's outside the loop dimmed and START and END marked. Punches and DUB passes run round the trimmed loop cleanly, wherever START falls.

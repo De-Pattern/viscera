@@ -17,7 +17,7 @@
  * library starts USB, Bluetooth and MIDI from: with too little the FM-1 never starts.
  * tools/build_fm1.py checks the heap. */
 #ifndef VSC_TAPE_BLOCKS
-#define VSC_TAPE_BLOCKS   488      /* per track: 62,464 samples (2.8 s HI, 3.9 s MID, 5.7 s LO) */
+#define VSC_TAPE_BLOCKS   480      /* per track: 61,440 samples (2.8 s HI, 3.8 s MID, 5.6 s LO) */
 #endif
 #define VSC_TAPE_BLK      128      /* samples per ADPCM block */
 
@@ -25,6 +25,8 @@
 #define VSC_ROBOTS        2
 #define VSC_GEST          48       /* points of a recorded gesture */
 #define VSC_LEARN         16
+#define VSC_MOTIONS       4        /* motion lanes */
+#define VSC_MOTION_PTS    64       /* points round the loop */
 
 #define VSC_SHIFT_RING    1024     /* each track's pitch shifter's memory (23 ms) */
 

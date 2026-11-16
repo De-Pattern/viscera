@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.5.1 — the VU meters lit
+
+- **The VU meters glow** a warm, deep orange from inside their corners, like a lamp behind the face.
+- **The INPUT page's big meter** has a shorter needle, so its scale and numbers sit lower, clear of the frame.
+- No change to the sound.
+
 ## 2.5.0 — the LFO matrix
 
 - **Hold LFO and turn a knob** on any page: the robot (1, or the one last shown on ROBOTS) moves that knob, by as much as it's turned, either way; back to zero removes it. The knob stays where it was. PRESETS while holding LFO picks robot 1 or 2. A tap of LFO opens ROBOTS as before (now on release).

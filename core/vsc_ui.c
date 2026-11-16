@@ -715,12 +715,33 @@ static void knob_row(int y)
 static float vu_pos(float v) { float a = v * (1.f / 0.318f); return (a - 0.1f) * (1.f / 1.3125f); }
 static float db_pos(int db) { float a = 1.f; int d = db; while (d > 0) { a *= 1.122018f; --d; } while (d < 0) { a *= 0.891251f; ++d; } return (a - 0.1f) * (1.f / 1.3125f); }
 /* a VU meter: face, scale, red zone, needle */
+/* the meter lamp: a warm, deep orange glow from inside the face's corners, fading to the face */
+static void vu_glow(int x, int y, int w, int h)
+{
+    const float rg = (float)(h < w ? h : w) * 0.62f;
+    const int ri = (int)rg + 1;
+    int a = y > by0 ? y : by0, b = y + h < by0 + VSC_BAND ? y + h : by0 + VSC_BAND;
+    for (int yy = a; yy < b; ++yy) {
+        float dy0 = (float)(yy - y), dy1 = (float)(y + h - 1 - yy), dy = dy0 < dy1 ? dy0 : dy1;
+        if (dy >= rg) continue;
+        for (int xx = x; xx < x + w; ++xx) {
+            if (xx >= x + ri && xx < x + w - ri) { xx = x + w - ri - 1; continue; }
+            float dx0 = (float)(xx - x), dx1 = (float)(x + w - 1 - xx), dx = dx0 < dx1 ? dx0 : dx1;
+            float d2 = (dx * dx + dy * dy) / (rg * rg);
+            if (d2 >= 1.f) continue;
+            float t = 1.f - d2; t = t * t * 0.62f;
+            int r = (int)(246.f + (214.f - 246.f) * t), g = (int)(220.f + (98.f - 220.f) * t), bl = (int)(160.f + (26.f - 160.f) * t);
+            band[(yy - by0) * VSC_SCREEN_W + xx] = RGB(r, g, bl);
+        }
+    }
+}
 static void vu(int x, int y, int w, int h, float v, int big_one)
 {
     if (!IN_BAND(y, y + h)) return;
     box(x, y, w, h, C_AMBER); box(x + 2, y + 2, w - 4, h - 4, C_FACE);
+    vu_glow(x + 3, y + 3, w - 6, h - 6);
     int px0 = x + w / 2, py0 = y + h - 3, R = h - 9;
-    if (big_one) R = h - 14;
+    if (big_one) R = h - 22;   /* a shorter needle: the numbers sit clear of the top */
     /* the scale: -20 .. +3 dB over -48 .. +48 degrees */
     static const int8_t marks[] = {-20, -10, -7, -5, -3, -2, -1, 0, 1, 2, 3};
     for (unsigned i = 0; i < sizeof marks; ++i) {

@@ -108,6 +108,31 @@ FM1_DSP_CODE void groove_fm_factory(uint8_t p[156], unsigned program) { groove_f
           "void fm1_app_midi_received(unsigned source, const uint8_t *m, size_t n)\n{\n",
           "void fm1_app_midi_received(unsigned source, const uint8_t *m, size_t n)\n{\n    vsc_fm1_midi(source, m, n);\n")
 
+    # the backlight, as Ravel's: unlit LEDs glow dimly, lit in the panel scan's own interrupt on
+    # one frame in DIV (the scan runs several hundred frames a second, so it reads as steady);
+    # what's lit is lit fully. No extra work: the scan already writes each column's LEDs.
+    inp = os.path.join(app, "board", "fm1_input.h")
+    patch(inp, "static volatile uint8_t fm1_led[FM1_NCOL];\n",
+          "static volatile uint8_t fm1_led[FM1_NCOL];\n"
+          "static volatile uint8_t fm1_led_dim[FM1_NCOL], fm1_led_dim_div;\n"
+          "static uint8_t fm1_dim_frame;\n")
+    patch(inp, "    unsigned leds=fm1_led[column];\n",
+          "    unsigned leds=fm1_led[column];\n"
+          "    if(fm1_led_dim_div&&!fm1_dim_frame)leds|=fm1_led_dim[column];\n")
+    patch(inp, "    if(column==10)fm1_scan_decode();\n",
+          "    if(column==10){fm1_scan_decode();if(++fm1_dim_frame>=fm1_led_dim_div)fm1_dim_frame=0;}\n")
+    patch(os.path.join(app, "board", "panel.c"),
+          "void fm1_led_set(unsigned key, int on)\n{\n    fm1_led_key(key, on);\n}",
+          "void fm1_led_set(unsigned key, int on)\n{\n    fm1_led_key(key, on);\n}\n"
+          "/* Viscera: the backlight. A key's dim glow (shown while it isn't lit), and how dim: 0 off, else\n"
+          " * one scan frame in div */\n"
+          "void vsc_board_led_dim(unsigned key, int on)\n{\n"
+          "    if (key >= FM1_NKEY) return;\n"
+          "    unsigned pin = fm1_key_pin[key], column = pin >> 4, mask = 1u << (pin & 15);\n"
+          "    uint8_t v = fm1_led_dim[column];\n"
+          "    fm1_led_dim[column] = (uint8_t)(on ? v | mask : v & ~mask);\n}\n"
+          "void vsc_board_backlight(unsigned div) { fm1_led_dim_div = (uint8_t)div; }")
+
     # identity
     PRODUCT, RELEASE = identity(a.version)
     patch(os.path.join(app, "version.h"), '#define FM1_RELEASE_VERSION "V14"', f'#define FM1_RELEASE_VERSION "{RELEASE}"')

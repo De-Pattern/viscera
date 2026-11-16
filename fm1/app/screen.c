@@ -176,22 +176,21 @@ void groove_screen_mmc(unsigned command)
     else if (command == 2 && !vsc_meter.playing) vsc_event(EV_PLAY, 1, 0);
 }
 
-/* The panel's LEDs: lit ones on, the backlight's glow as a short on-time every few
- * calls. The glow only runs while this loop is fast enough not to flicker; otherwise
- * unlit keys stay dark. fm1_led_set is called only when a LED changes. */
-static uint8_t led_now[41], led_want[41];
-static uint32_t led_calls, led_ms0;
-static uint8_t glow_ok;
+/* The panel's LEDs: lit ones on; the rest glow dimly with the backlight, which the panel
+ * scan lights itself one frame in a few (as Ravel's), so it is steady however busy this loop
+ * is. fm1_led_set and the dim mask are touched only when a LED changes. */
+static uint8_t led_now[41], led_want[41], led_dim[41], back_set = 255;
 static void leds(uint32_t now)
 {
-    if (now - led_ms0 >= 1000u) { glow_ok = led_calls >= 1500u; led_calls = 0; led_ms0 = now; }   /* >= 1.5 kHz */
-    ++led_calls;
+    (void)now;
     vsc_ui_leds(led_want);
-    static const uint8_t duty[4] = {0, 1, 2, 4};               /* of 16 calls */
-    unsigned phase = led_calls & 15u, d = duty[vsc_dev.backlight & 3];
+    static const uint8_t div[4] = {0, 6, 3, 2};   /* OFF, LOW, MID, HIGH */
+    uint8_t b = vsc_dev.backlight & 3u;
+    if (b != back_set) { back_set = b; vsc_board_backlight(div[b]); }
     for (unsigned i = 0; i < 41; ++i) {
-        uint8_t on = led_want[i] == 2 || (led_want[i] == 1 && glow_ok && phase < d);
+        uint8_t on = led_want[i] == 2, dim = led_want[i] == 1;
         if (on != led_now[i]) { led_now[i] = on; fm1_led_set(i, on); }
+        if (dim != led_dim[i]) { led_dim[i] = dim; vsc_board_led_dim(i, dim); }
     }
 }
 /* the FM-1's own settings go to flash a second after the last change, while stopped */

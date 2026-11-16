@@ -28,4 +28,7 @@ int vsc_fm1_device_save(void);
 /* The start guard: starts since the last good one (-1: no flash), and marking a good one. */
 int vsc_fm1_boot_begin(void);
 int vsc_fm1_boot_good(void);
+/* the backlight (board/panel.c, patched): a key's dim glow, and how dim (0 off, else 1 frame in div) */
+void vsc_board_led_dim(unsigned key, int on);
+void vsc_board_backlight(unsigned div);
 #endif

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.1.1 — the backlight, as Ravel's
+
+- **Backlit buttons and keys**: the ones that aren't lit glow dimly so you can find them in the dark; what's lit is lit fully. The panel's own scan does it (one frame in six at LOW, three at MID, two at HIGH), as Ravel does, so it is steady however busy the FM-1 is. Before, the glow came from the control loop and often didn't show. GLO › SETTINGS › LIGHT sets it (OFF, LOW, MID, HIGH); it is kept through power-off.
+- The install page's version menu names the two firmwares: VISCERA: TAPE (2.x, the 4-track) and VISCERA (original) (1.x).
+
 ## 2.1.0 — tracks of their own, a master section, START WITH
 
 - **Each track has its own SPEED, PITCH and DUB level** (HOME, then HOME again: TRACK). Tracks at different speeds drift against each other round the loop. DUB sets how much of a track a DUB pass keeps (100 %: all of it; lower: older passes fade). The tape's SPEED and PITCH still move everything.

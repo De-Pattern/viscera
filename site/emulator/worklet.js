@@ -22,20 +22,14 @@ class Viscera extends AudioWorkletProcessor {
       x.paint(this.now());
       const px = new Uint16Array(this.mem(), x.screen(), 240 * 240).slice();
       const leds = new Uint8Array(this.mem(), x.leds(), 41).slice();
-      this.port.postMessage({type: 'screen', px, leds}, [px.buffer]);
+      const meters = {pk: [0, 1, 2, 3].map(t => x.peak(t)), rec: x.recording(), arm: [0, 1, 2, 3].reduce((m, t) => m | (x.get_param(10 + t * 5 + 4) ? 1 << t : 0), 0)};
+      this.port.postMessage({type: 'screen', px, leds, meters}, [px.buffer]);
       /* the FM-1's own settings changed: hand them to the page to keep */
       const g = x.device_changed();
       if (g !== this.devGen) {
         this.devGen = g; x.device_seal();
         this.port.postMessage({type: 'device', bytes: new Uint8Array(this.mem(), x.device(), x.device_bytes()).slice()});
       }
-    } else if (m.type === 'bank') {
-      const n = Math.min(m.pcm.length, x.bank_stage_frames());
-      new Int16Array(this.mem(), x.bank_stage(), n).set(m.pcm.subarray(0, n));
-      const name = new Uint8Array(this.mem(), x.bank_name(), 16); name.fill(0);
-      for (let i = 0; i < Math.min(15, m.name.length); i++) name[i] = m.name.charCodeAt(i) & 127;
-      const r = x.bank_commit(m.slot, n);
-      this.port.postMessage({type: 'bank', slot: m.slot, ok: r === 0});
     } else if (m.type === 'host-status') {
       x.set_host(m.input ? 1 : 0, m.input ? 1 : 0, 0);
       for (const [slot, used, name] of m.slots || []) {
@@ -50,12 +44,10 @@ class Viscera extends AudioWorkletProcessor {
     } else if (m.type === 'load') {
       const p = new Uint8Array(this.mem(), x.project(), x.project_bytes());
       const keep = p.slice();
-      // 0.x projects (another size or format) were made for the old engine: they don't load;
-      // 1.0's (format 6, fewer bytes) come in with RESON at its defaults
-      const old = m.bytes.length === x.project6_bytes();
-      if (m.bytes.length !== p.length && !old) { this.port.postMessage({type: 'loaded', ok: false}); return; }
+      // projects of the earlier firmwares (another size or format) don't load here
+      if (m.bytes.length !== p.length) { this.port.postMessage({type: 'loaded', ok: false}); return; }
       x.stop_all(); p.fill(0); p.set(m.bytes);
-      const ok = old ? x.project_upgrade() === 1 : x.project_check() === 1;
+      const ok = x.project_check() === 1;
       if (!ok) p.set(keep);
       this.port.postMessage({type: 'loaded', ok});
     } else if (m.type === 'device-load') {

@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.0.0 — 4-Track
+
+A new firmware: an overdubbing four-track tape looper, in the spirit of a TASCAM Portastudio. Everything of 1.x but RESON is gone; 1.x stays on the install page, and its projects don't load here.
+
+- **The tape**: four mono tracks of 4-bit ADPCM in RAM, at a TAPE SPEED of HI (22 kHz, 2.8 s a track), MID (16 kHz, 3.9 s) or LO (11 kHz, 5.7 s). The first take sets the loop (or LOOP sets it first); then REC punches the armed tracks in and out, DUB or REPLACE. A punch that ends mid-block runs on to the block's end, so there are no clicks where it stops.
+- **SPEED** is varispeed (half to double, pitch and time together); **PITCH** shifts the tape's mix ±12 semitones without changing its time.
+- **Preamps** after the TASCAM 424's when pushed: clean below 0 VU, then a soft knee with a little second harmonic. One on the input (TRIM and DRIVE) and one on each channel (TRIM, with a lamp).
+- **The mixer**: four strips with VU meters; KNOB 1–4 are the four levels, then trims, then pans.
+- **INPUT** on one page: BT, USB or BOTH with each one's state and a live lamp, a big VU meter, monitoring (AUTO while armed), DUB or REPLACE. Choosing BT switches Bluetooth audio on.
+- **BOUNCE**: the picked tracks, through RESON and a preamp, onto a free track, one loop; the sources kept or cleared.
+- **RESON lite**: the eight bands with six profiles on MODE (LIQUID, GLASS, THROAT, DUST, RADIO, DROPS), MIX, DECAY, WIDTH, SHIFT, DUST and the band levels; on a track, the input or a bounce.
+- **Robots**: two, as LFOs (sine, triangle, saw, square, S+H, drift, with skew) or as a knob gesture recorded with HOME held, on SPEED, PITCH, levels, pans or RESON.
+- **MIDI learn** for knobs (SAVE + turn) and for REC, PLAY and the arm keys (SAVE + press, then a note).
+- **The screen** is a tape machine: reels that wind with the loop, a counter, amber VU meters, aluminium knobs. The browser emulator gets a Portastudio-grey panel with a four-LED-ladder meter bridge.
+- **CPU** (fm1-emu, the FM-1's timing): four tracks playing with an overdub and PITCH 15 %; RESON adds 10–11 %.
+- Projects keep the desk, not the tape (it stays in RAM).
+
 ## 1.2.0 — lighter on the CPU
 
 The FM-1 has proved slower than the emulator these figures come from, so this version takes work out where it is hardly heard. In fm1-emu at the FM-1's timing:

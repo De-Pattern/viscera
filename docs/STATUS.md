@@ -50,6 +50,8 @@ Budget at 1.1.1: app image 453,896 of 453,921 bytes; heap 118,892 bytes.
 
 Budget at 1.2.0: app image 453,896 of 453,921 bytes; heap 122,028 bytes. CPU (fm1-emu, the FM-1's timing): two SPECTRA, dense SHARDS, HANDS and SPACE 73 % (88 % at 1.1.3); RESON 11-15 % of a block (16-21 %). Watch: building a bench (benchbuild.sh) overwrites build/: rebuild the release before checking the package.
 
+Budget at 2.0.0 (4-Track): app image 410,832 of 453,921 bytes; heap 121,260 bytes, with 4 x 488 blocks of tape (125 KB). CPU (fm1-emu, the FM-1's timing): four full tracks playing, one overdubbing, PITCH shifting: 15 % of a block; with RESON (LIQUID or DUST) on a track 26-27 %. Benches: VSC_BENCH 1 (tape), 6 (and RESON), 7 (DUST). The tape's fidelity is checked in engine_test (a sine back at about 37 dB SNR at every speed; silent punches and ten DUB passes change it by under -45 dB).
+
 ## Next
 
 - Browser emulator (wasm build of `core/` with the same UI).

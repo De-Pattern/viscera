@@ -1,5 +1,7 @@
 # Viscera: design
 
+> 2.0 replaced the live-capture engine this describes with the 4-Track (tape, desk, bounce, RESON lite, robots); see CHANGELOG.md and the Guide (site/manual.html). RESON, the CPU guard, storage and the platform layer below still apply.
+
 Viscera PUTTY (1.0) is a live-capture instrument for the M-VAVE FM-1, built on M-VAVE's official FM1 Open SDK (V14). It catches loops from the input and lets you work them like putty: two at a time, or bounced between two buffers; stretched without changing pitch, frozen, phase-vocoded, broken into glass-shard grains and rebuilt. It is its own instrument, after the spirit of a few others (Synthux Spotykach, Montreal Assembly's 856 for Zellersasn, Bastl Thyme, Make Noise Morphagene, Qu-Bit Nebulae), with no code, names or graphics from any of them. 0.x was a four-track sculpting sampler; 1.0 replaced its engine and kept the framework: four tracks, COLOR, SPACE, the modulators and matrix, scenes, macros, STEPS and CAROM, DISSECT's listener, the screen style and the install page.
 
 ## Why the SDK

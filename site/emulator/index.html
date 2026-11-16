@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Viscera Emulator</title>
-<meta name="description" content="Play Viscera PUTTY, live-capture firmware for the M-VAVE FM-1, in your browser: catch loops and work them like putty. The same code the FM-1 runs.">
+<meta name="description" content="Play Viscera 4-Track, an overdubbing tape-looper firmware for the M-VAVE FM-1, in your browser: four tracks, a 424-style preamp, bounces through RESON. The same code the FM-1 runs.">
 <link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32">
 <meta property="og:title" content="Viscera emulator">
 <meta property="og:image" content="https://de-pattern.github.io/viscera/social.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=Inter+Tight:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=Inter+Tight:wght@300;400;500&family=Silkscreen&display=swap" rel="stylesheet">
 <style>
 :root{
   --paper:#f3efe7; --beige:#e6dfd1; --sand:#d8cfbd; --stone:#a9a397; --grey:#6f6b64;
@@ -53,6 +53,17 @@ nav a:hover{color:var(--ink)}
 .righthand{display:grid;gap:14px;min-width:0;align-content:start}
 .knobs4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;justify-items:center}
 .btns{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px}
+.meters{border-radius:8px;background:#0f0e0d;box-shadow:inset 0 2px 6px rgba(0,0,0,.85),0 0 0 1px #000;padding:9px 12px 7px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:10px;align-items:end}
+.mtr{display:grid;grid-template-columns:auto 1fr;gap:3px 6px;align-items:end}
+.mtr .lad{grid-row:1;grid-column:1/-1;display:flex;flex-direction:column-reverse;gap:2px}
+.mtr .seg{height:4px;border-radius:1px;background:#231f1a}
+.mtr .seg.g.on{background:#9be36b;box-shadow:0 0 5px #7fd04c}
+.mtr .seg.a.on{background:#f2c46d;box-shadow:0 0 5px #f2a83d}
+.mtr .seg.r.on{background:#ff5a3c;box-shadow:0 0 6px #ff3c1e}
+.mtr .lamp{width:7px;height:7px;border-radius:50%;background:#3a1a14}
+.mtr .lamp.arm{background:#a33a24}.mtr .lamp.rec{background:#ff5a3c;box-shadow:0 0 6px #ff3c1e}
+.mtr .nm{font:400 8px/1 var(--mono);letter-spacing:.16em;color:#7a7368}
+.mscale{display:flex;flex-direction:column;justify-content:space-between;height:68px;font:400 7px/1 var(--mono);color:#5d574e;padding-bottom:12px}
 .now{border-radius:6px;background:#121110;box-shadow:0 0 0 1px #000 inset;padding:9px 12px;font:400 10px/1.5 var(--mono);letter-spacing:.06em;color:#a49d90;min-height:52px}
 .now b{display:block;font-weight:400;font-size:8px;letter-spacing:.22em;color:#6f695f}
 .screen{width:100%;aspect-ratio:1;border-radius:7px;background:#121110;padding:7px;box-shadow:0 0 0 1px #000 inset,0 0 0 2px #2a2926,0 0 0 3px #0b0b0a}
@@ -157,6 +168,53 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
   .holdhint{display:none}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ---- the 4-Track's panel: Portastudio grey, as the FM-1 simulator draws it ---- */
+.device{background:linear-gradient(180deg,#686b70,#595c61 55%,#55585d);border-radius:22px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18),inset 0 -2px 0 rgba(0,0,0,.25),0 30px 60px -30px rgba(26,25,23,.55),0 2px 0 rgba(26,25,23,.35)}
+.device::before{opacity:.10}
+.brand{color:#2f3135}.holdhint{color:#33363a}
+.enc .lbl{font:400 12px/1 "Silkscreen",var(--mono);letter-spacing:.02em;color:#e6e7ea;margin-bottom:8px}
+.enc .fn{color:#2e3034}
+.enc .cap{background:radial-gradient(circle at 50% 30%,#56595e 0,#3a3c40 55%,#26282b 100%);
+  box-shadow:0 0 0 2px #2a2c2f,0 0 0 4px rgba(0,0,0,.18),0 6px 10px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.15)}
+.enc .cap::after{inset:12%;background:linear-gradient(#f2f3f5,#f2f3f5) 50% 6%/3px 34% no-repeat,radial-gradient(circle at 45% 35%,#4a4d52,#33353a 75%);box-shadow:none}
+.tray{background:#3b3d41;box-shadow:inset 0 2px 5px rgba(0,0,0,.45),0 1px 0 rgba(255,255,255,.12)}
+.btn{background:linear-gradient(180deg,#4b4e53,#404247);border:1px solid #2c2e32;border-radius:8px;color:#b7bac0;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 2px 3px rgba(0,0,0,.4)}
+.btn .l{font:400 11px/1 "Silkscreen",var(--mono);letter-spacing:0;color:#b7bac0}
+.btn .f{color:#8a8d93}
+.btn.down{background:linear-gradient(180deg,#56595e,#4a4d52);box-shadow:inset 0 0 0 1px rgba(255,255,255,.2)}
+.btn.glow .l{color:#d4d6da}
+.btn.lit{background:linear-gradient(180deg,#f0ac4c,#dd9233);border-color:#8a5a1c;box-shadow:0 0 10px rgba(240,172,76,.35),0 2px 3px rgba(0,0,0,.4)}
+.btn.lit .l{color:#2a1d0c;text-shadow:none}.btn.lit .f{color:#5b3e15}
+.btn[aria-label=PLAY].lit{background:linear-gradient(180deg,#72d27c,#55b960);border-color:#2f6b36;box-shadow:0 0 0 2px #2c3a2e,0 0 12px rgba(114,210,124,.35)}
+.btn[aria-label=PLAY].lit .l{color:#123316}.btn[aria-label=PLAY].lit .f{color:#1f4d25}
+.btn.rec{background:linear-gradient(180deg,#4b4e53,#404247);border-color:#2c2e32;color:#b7bac0}
+.btn.rec .l{color:#d9a19a}.btn.rec .f{color:#8a8d93}
+.btn.rec.lit{background:linear-gradient(180deg,#f0634a,#d6452f);border-color:#7a2214;box-shadow:0 0 12px rgba(240,99,74,.45)}
+.btn.rec.lit .l{color:#fff}.btn.rec.lit .f{color:#ffd8d0}
+.btn.latched::after{background:#f0ac4c;box-shadow:0 0 6px rgba(240,172,76,.9)}
+.screen{background:#0d0d0e;padding:10px;border-radius:14px;box-shadow:0 0 0 1px #000,0 0 0 4px #151618,0 8px 18px rgba(0,0,0,.45)}
+.keybed{background:#3a3c40;border-radius:16px;box-shadow:inset 0 3px 8px rgba(0,0,0,.45),0 1px 0 rgba(255,255,255,.12)}
+.key{background:linear-gradient(180deg,#665254,#4f3f41);border:1px solid #2a2122;box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 3px 4px rgba(0,0,0,.45)}
+.key::before{top:12px;height:34px;width:3px;background:#a99597;opacity:.8}
+.key.b::before{height:28px}
+.key span{color:#d6c9ca}.key span i{color:#a99597}
+.key.glow::before{box-shadow:none;opacity:.95}
+.key.lit{background:linear-gradient(180deg,#e8a64c,#cf8a30);border-color:#7a4f17}
+.key.lit::before{background:#fff3dc;box-shadow:0 0 6px rgba(255,236,200,.9)}
+.key.lit span,.key.lit span i{color:#3a2508}
+.key.down{background:linear-gradient(180deg,#d9c6c7,#bba7a8)}
+.now{background:#2e3034;color:#c3c6cb;box-shadow:inset 0 1px 3px rgba(0,0,0,.5)}.now b{color:#8a8d93}
+/* the meter bridge: four thin LED ladders, as on the 424 */
+.meters{background:#2a2c2f;box-shadow:inset 0 2px 5px rgba(0,0,0,.55),0 1px 0 rgba(255,255,255,.12);border-radius:10px;padding:10px 16px 8px;gap:0}
+.mtr{justify-items:center;grid-template-columns:auto auto;column-gap:5px}
+.mtr .lad{width:9px;gap:2px}
+.mtr .seg{height:3px;background:#1a1b1d}
+.mtr .nm{font:400 9px/1 "Silkscreen",var(--mono);letter-spacing:0;color:#9a9da3}
+.mtr .lamp{width:6px;height:6px}
+.mscale{color:#6d7076;font-family:"Silkscreen",var(--mono)}
 </style>
 </head>
 <body>
@@ -167,7 +225,7 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
   </header>
   <div class="intro">
     <div>
-      <p class="eyebrow">Emulator · PUTTY</p>
+      <p class="eyebrow">Emulator · 4-TRACK</p>
       <h1>Play it before<br>you flash it.</h1>
     </div>
     <p>The same code the FM-1 runs, compiled for the browser: the engine, the screen and the controls. A demo loop, an audio file, your computer's audio or a microphone stands in for Bluetooth and USB audio in.</p>
@@ -183,7 +241,8 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
         <div class="righthand">
           <div class="knobs4" id="knobs4"></div>
           <div class="tray"><div class="btns" id="btnrow1"></div><div class="btns" id="btnrow2"></div></div>
-          <div class="now"><b>KNOBS</b><span id="now">Tap REC to capture the input, tap again to end it. KNOB 1–4 work it like putty; hold REC and turn one for a robot; hold OCT− or OCT+ and turn to move the pair.</span></div>
+          <div class="meters" id="meters" aria-label="Track meters"></div>
+          <div class="now"><b>KNOBS</b><span id="now">Keys F3–B3 (the first four white keys) arm tracks 1–4. REC starts the first take, REC again loops it; then REC punches in and out. On TAPE: SPEED, PITCH, LOOP, LEVEL. Hold HOME and turn one for a robot.</span></div>
         </div>
       </div>
       <div class="keybed"><div class="krow" id="blackrow"></div><div class="krow" id="whiterow"></div></div>
@@ -203,35 +262,27 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
           <select id="in-dev"><option value="">Default</option></select>
         </label>
         <input type="file" id="in-file-pick" accept="audio/*" hidden>
-        <p id="in-name" style="margin:8px 0 0;font-size:12px">A demo loop plays in. Tap REC on HANDS, tap again: A catches it. B catches what A plays.</p>
+        <p id="in-name" style="margin:8px 0 0;font-size:12px">A demo loop plays in. REC starts the first take on track 1, REC again loops it.</p>
         <p class="hint" style="margin:6px 0 0;font-size:11px;color:var(--dim,#8a857c)">PC audio: in the share dialog pick a tab (or Entire screen on Windows) and turn on “Share audio”. Input device: a virtual cable (BlackHole on a Mac, VB-Cable on Windows) brings in a DAW or any app.</p>
-      </div>
-      <div class="panel">
-        <h3>Sample bank</h3>
-        <p>Drop a WAV or MP3 on a slot, or click one to choose a file. A track set to REEL plays them (REEL S1–S16), as well as captures you KEEP.</p>
-        <div class="slots" id="slots"></div>
-        <input type="file" id="slot-pick" accept="audio/*" hidden>
       </div>
       <div class="panel" id="help">
         <h3>Controls</h3>
         <dl>
           <dt>Turning</dt><dd>drag up and down, scroll, or focus and use the arrow keys</dd>
-          <dt>REC</dt><dd>on HANDS, SHARDS, SPECTRA or SOURCE: tap to capture, tap to end; hold to overdub; hold and turn a knob for a robot; REC + PLAY clears; SAVE + REC keeps it on the reel</dd>
-          <dt>HOME</dt><dd>HANDS: stretch, pitch, position and size of the window, A and B together</dd>
-          <dt>FX</dt><dd>SHARDS: glass-shard grains, by shape, density, spray and trigger</dd>
-          <dt>SEL</dt><dd>SPECTRA: the phase vocoder; stretch, blur, shift, cross with the partner</dd>
-          <dt>EDIT</dt><dd>SOURCE (capture, reel or thru; input, rate, bounce), then MIX</dd>
-          <dt>ENV</dt><dd>COLOR: drive, comp, crush, tilt, noise</dd>
-          <dt>LFO</dt><dd>the matrix and the four modulators; hold LFO and turn a knob to map</dd>
-          <dt>GLO</dt><dd>SPACE, then DISSECT (the listener), then SETTINGS</dd>
-          <dt>ARP</dt><dd>perform: eight macros, scenes (ARP + pad)</dd>
-          <dt>SEQ</dt><dd>steps (SLICE, PITCH, LEN, PROB each) or CAROM</dd>
-          <dt>SAVE</dt><dd>projects, then sounds: REC loads or saves, SAVE + PLAY saves over; hold SAVE and turn a knob for MIDI learn</dd>
-          <dt>OCT− / OCT+</dt><dd>held with a knob: both tracks of the pair move, together or apart; both held: TEMP</dd>
-          <dt>SELECT · ALGORITHM · PRESETS</dt><dd>the page's views · the track (A–D) · the page's list</dd>
+          <dt>REC</dt><dd>on an empty tape: the first take (into the armed tracks), REC or PLAY again loops it; then REC punches in and out of the armed tracks; on BOUNCE: print one loop</dd>
+          <dt>PLAY</dt><dd>plays and stops (back to the start); HOME + PLAY erases the tape</dd>
+          <dt>HOME</dt><dd>TAPE: the reels, the counter, the four tracks; SPEED (pitch and time, as tape), PITCH (pitch only), LOOP, LEVEL; PRESETS: the tape speed (HI, MID, LO); hold HOME and turn a knob to record a robot gesture; HOME + a key clears that track</dd>
+          <dt>EDIT</dt><dd>MIXER: four strips with VU meters; KNOB 1–4 the levels, then (EDIT again) the trims into the 424-style preamps, then the pans; then INPUT</dd>
+          <dt>FX</dt><dd>INPUT: the source (BT, USB, both), trim, drive, monitoring; PRESETS: DUB or REPLACE</dd>
+          <dt>SEQ</dt><dd>BOUNCE: keys 1–4 pick the tracks, REC prints one loop through RESON and the drive to a free track</dd>
+          <dt>ENV</dt><dd>RESON: ALGORITHM puts it on a track or the input; MODE (LIQUID, GLASS, THROAT, DUST, RADIO, DROPS), MIX, DECAY, WIDTH; keys 5–12 pick a band</dd>
+          <dt>LFO</dt><dd>ROBOTS: two, each a target (PRESETS), rate, shape, skew and depth; then the MIDI learn list</dd>
+          <dt>SAVE</dt><dd>projects (the desk; the tape stays in RAM): REC loads or saves, SAVE + PLAY saves over; hold SAVE and turn a knob (or press REC, PLAY or a key 1–4) for MIDI learn</dd>
+          <dt>GLO</dt><dd>SETTINGS: Bluetooth, the backlight, the CPU load</dd>
+          <dt>SELECT · ALGORITHM · PRESETS</dt><dd>the page's views · RESON's place, the robot · the page's own</dd>
           <dt>Pads</dt><dd>click, or type Z X C V… / and Q W E R T Y; sharps on S D F H J… and 3 4 6</dd>
           <dt>Space</dt><dd>PLAY</dd>
-          <dt>MIDI</dt><dd>channels 1–4 play A–D; CCs, clock and start/stop follow</dd>
+          <dt>MIDI</dt><dd>notes play RESON; learned CCs and notes; start and stop run the tape</dd>
         </dl>
       </div>
       <p id="note" role="status" aria-live="polite"></p>

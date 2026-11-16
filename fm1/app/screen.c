@@ -76,30 +76,10 @@ static void host(unsigned req, unsigned arg)
     case HOST_BLE_CONNECT: (void)fm1_ble_connect(arg); break;
     case HOST_BLE_FORGET: if (fm1_ble_forget_bonds() == 0) vsc_ui_notice("UNPAIRED", 1500); break;
     case HOST_BLE_DISCONNECT: (void)fm1_ble_disconnect(); break;
-    case HOST_DEVICE_SAVE:   /* a sound stored: write it now (the UI only asks while stopped) */
-        dev_saved_gen = dev_seen_gen = vsc_dev_changed;
-        vsc_ui_notice(vsc_fm1_device_save() == 0 ? "SOUND SAVED" : "SAVE FAILED", 1200);
-        break;
     case HOST_SAVE:
         r = vsc_fm1_save(arg);
         vsc_ui_notice(r == 0 ? "SAVED" : r == -2 ? "STOP TO SAVE" : "SAVE FAILED", 1500);
         refresh_slots();
-        break;
-    case HOST_KEEP: {   /* the first KEEP asks again: a new reel takes the stock firmware's project space */
-        static uint32_t asked_at;
-        uint32_t now = fm1_millis();
-        int confirmed = asked_at && now - asked_at < 5000u;
-        r = vsc_fm1_reel_keep(arg, confirmed);
-        if (r == -5) { asked_at = now; vsc_ui_notice("AGAIN: ERASES STOCK PROJECTS", 5000); break; }
-        asked_at = 0;
-        vsc_ui_notice(r == 0 ? "KEPT ON THE REEL" : r == -2 ? "KEEP: PLAY IT FIRST" : r == -6 ? "REEL FULL" : "KEEP FAILED", 1300);
-        vsc_host.reel_free = (uint8_t)vsc_fm1_reel_free();
-        break;
-    }
-    case HOST_REEL_CLEAR:
-        r = vsc_fm1_reel_clear();
-        vsc_ui_notice(r == 0 ? "REEL ERASED" : "ERASE FAILED", 1200);
-        vsc_host.reel_free = (uint8_t)vsc_fm1_reel_free();
         break;
     case HOST_LOAD:
         r = vsc_fm1_load(arg);
@@ -155,7 +135,6 @@ static void run_engine(void)
     vsc_ui_init();
     configure_bt(FM1_BT_AUDIO | FM1_BT_MIDI);
     refresh_slots();
-    vsc_host.reel_free = (uint8_t)vsc_fm1_reel_free();
 }
 
 /* A start that has run for 4 s is a good one: mark it (one byte of flash, no erase).
@@ -170,8 +149,8 @@ static void boot_check(uint32_t now)
 /* MIDI Machine Control from the transport layer: 1 stop, 2 play. */
 void groove_screen_mmc(unsigned command)
 {
-    if (command == 1) vsc_event(EV_STOP, 0, 0, 0);
-    else if (command == 2 && !vsc_meter.playing) vsc_event(EV_PLAY, 0, 0, 0);
+    if (command == 1) vsc_event(EV_STOP, 0, 0);
+    else if (command == 2 && !vsc_meter.playing) vsc_event(EV_PLAY, 1, 0);
 }
 
 /* The panel's LEDs: lit ones on, the backlight's glow as a short on-time every few

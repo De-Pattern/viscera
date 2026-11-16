@@ -1,6 +1,6 @@
 /* Viscera emulator: the page. Builds the panel, turns pointer and keyboard
  * input into FM-1 control snapshots for the audio thread, draws the screen it
- * sends back, and handles the sample bank, live input and saved projects. */
+ * sends back, and handles live input and saved projects. */
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
@@ -19,9 +19,9 @@
 
   /* ---------- panel: the FM-1's own layout ---------- */
   /* encoder indices as the FM-1 reports them: 0 SELECT, 1 ALGORITHM, 2-5 KNOB 1-4, 6 PRESETS */
-  const ENC_FN = ['page', 'track', 'param 1', 'param 2', 'param 3', 'param 4', 'device / list'];
-  const BTN_FN = {FX: 'shards', SEL: 'spectra', ENV: 'color', LFO: 'mods', EDIT: 'source · mix', GLO: 'space · setup',
-    HOME: 'hands', SAVE: 'proj · sounds', ARP: 'perform', SEQ: 'seq', REC: 'capture'};
+  const ENC_FN = ['view', 'reson · robot', 'param 1', 'param 2', 'param 3', 'param 4', 'page\'s own'];
+  const BTN_FN = {FX: 'input', ENV: 'reson', LFO: 'robots', EDIT: 'mixer', GLO: 'settings',
+    HOME: 'tape', SAVE: 'projects', SEQ: 'bounce', REC: 'rec · punch'};
   const ROW1 = ['FX', 'SEL', 'ENV', 'LFO', 'EDIT', 'GLO'], ROW2 = ['HOME', 'SAVE', 'ARP', 'SEQ', 'PLAY', 'REC'];
   let master = 0.8;
   function makeEnc(role, parent, label, fn) {
@@ -157,6 +157,33 @@
     lcd.putImageData(img, 0, 0);
   }
 
+  /* ---------- the meter bridge: four LED ladders, as on a 424 ---------- */
+  /* 12 segments from -20 to +6 dB (0 VU at the 9th); peak-reading, with a short hold */
+  const SEG_DB = [-20, -15, -10, -7, -5, -3, -2, -1, 0, 2, 4, 6];
+  const ladders = [], lamps = [], held = [0, 0, 0, 0];
+  {
+    const m = $('meters');
+    for (let t = 0; t < 4; t++) {
+      const d = document.createElement('div'); d.className = 'mtr';
+      const lad = document.createElement('div'); lad.className = 'lad';
+      const segs = SEG_DB.map(db => { const g = document.createElement('div'); g.className = 'seg ' + (db > 2 ? 'r' : db >= 0 ? 'a' : 'g'); lad.appendChild(g); return g; });
+      const lamp = document.createElement('div'); lamp.className = 'lamp';
+      const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = 'TRK ' + (t + 1);
+      d.append(lad, lamp, nm); m.appendChild(d); ladders.push(segs); lamps.push(lamp);
+    }
+    const sc = document.createElement('div'); sc.className = 'mscale'; sc.innerHTML = '<span>+6</span><span>0</span><span>-20</span>';
+    m.appendChild(sc);
+  }
+  function meters(v) {
+    if (!v) return;
+    for (let t = 0; t < 4; t++) {
+      const pk = v.pk[t], db = pk > 1e-5 ? 20 * Math.log10(pk / 0.5) : -99;   /* 0 VU: -6 dBFS */
+      held[t] = Math.max(db, held[t] - 1.2);
+      ladders[t].forEach((g, i) => g.classList.toggle('on', held[t] >= SEG_DB[i]));
+      lamps[t].className = 'lamp' + (v.rec >> t & 1 ? ' rec' : v.arm >> t & 1 ? ' arm' : '');
+    }
+  }
+
   /* ---------- the panel's LEDs: 2 lit, 1 the backlight's glow ---------- */
   function lights(l) {
     for (let i = 0; i < 14; i++) if (btnEls[i]) { btnEls[i].classList.toggle('lit', l[i] === 2); btnEls[i].classList.toggle('glow', l[i] === 1); }
@@ -177,66 +204,6 @@
   function hostStatus() { node && node.port.postMessage({type: 'host-status', input: inputKind !== 'none', slots: slotList()}); }
   const toB64 = b => { let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); };
   const fromB64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-
-  /* ---------- the sample bank ---------- */
-  const SR = 32000, slotNames = new Array(16).fill('');
-  const slotsEl = $('slots');
-  for (let s = 0; s < 16; s++) {
-    const b = document.createElement('button');
-    b.className = 'slot'; b.dataset.slot = s; b.textContent = 'S' + (s + 1);
-    b.addEventListener('click', () => { $('slot-pick').dataset.slot = s; $('slot-pick').click(); });
-    b.addEventListener('dragover', e => { e.preventDefault(); b.classList.add('over'); });
-    b.addEventListener('dragleave', () => b.classList.remove('over'));
-    b.addEventListener('drop', e => { e.preventDefault(); b.classList.remove('over'); const f = e.dataTransfer.files[0]; if (f) loadFile(s, f); });
-    slotsEl.appendChild(b);
-  }
-  $('slot-pick').addEventListener('change', e => { const f = e.target.files[0]; if (f) loadFile(+e.target.dataset.slot, f); e.target.value = ''; });
-  function showSlot(s, name) {
-    slotNames[s] = name;
-    const b = slotsEl.children[s];
-    b.textContent = 'S' + (s + 1) + (name ? ' ' + name : '');
-    b.classList.toggle('full', !!name);
-  }
-  function toBank(s, name, f32) {
-    const n = Math.min(f32.length, SR * 12), pcm = new Int16Array(n);
-    let peak = 0; for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(f32[i]));
-    const g = peak > 0 ? 0.9 / peak : 1;
-    for (let i = 0; i < n; i++) pcm[i] = Math.round(Math.max(-1, Math.min(1, f32[i] * g)) * 32767);
-    node.port.postMessage({type: 'bank', slot: s, name: name.toUpperCase().slice(0, 15), pcm}, [pcm.buffer]);
-    showSlot(s, name.toUpperCase().slice(0, 15));
-  }
-  async function loadFile(s, file) {
-    if (!ctx) { note('Switch the FM-1 on first.'); return; }
-    try {
-      const buf = await ctx.decodeAudioData(await file.arrayBuffer());
-      /* mono, resampled to the bank's 32 kHz, like M-VAVE's workbench does */
-      const n = Math.min(Math.ceil(buf.duration * SR), SR * 12);
-      const off = new OfflineAudioContext(1, n, SR);
-      const src = off.createBufferSource(); src.buffer = buf; src.connect(off.destination); src.start();
-      const out = await off.startRendering();
-      toBank(s, file.name.replace(/\.[^.]+$/, ''), out.getChannelData(0));
-      note('Loaded ' + file.name + ' into S' + (s + 1) + (buf.duration > 12 ? ' (first 12 s)' : '') + '.');
-    } catch (e) { note('That file could not be decoded.'); }
-  }
-  /* sounds made here, so PLAY and KEYS have something to work with */
-  function rnd(seed) { return () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }; }
-  function made() {
-    const r = rnd(9), len = s => new Float32Array(Math.round(SR * s));
-    const rain = len(5); { let lp = 0;
-      for (let i = 0; i < rain.length; i++) { lp += (r() * 2 - 1 - lp) * 0.08; rain[i] = lp * 0.4; }
-      for (let k = 0; k < 140; k++) { const at = Math.floor(r() * (rain.length - 4000)), f = 1800 + r() * 3200, a = 0.2 + r() * 0.6;
-        for (let i = 0; i < 3800; i++) rain[at + i] += a * Math.sin(2 * Math.PI * f * i / SR) * Math.exp(-i / (180 + r() * 40)); } }
-    const glass = len(4); { const parts = [1, 2.76, 5.4, 8.93, 13.3];
-      for (let i = 0; i < glass.length; i++) { let v = 0; parts.forEach((p, j) => v += Math.sin(2 * Math.PI * 523.25 * p * i / SR) * Math.exp(-i / (SR * (1.6 / (j + 1)))) / (j + 1)); glass[i] = v; } }
-    const hum = len(5); for (let i = 0; i < hum.length; i++) { const t = i / SR;
-      hum[i] = Math.sin(2 * Math.PI * 55 * t) * 0.5 + Math.sin(2 * Math.PI * 110.4 * t) * 0.3 + Math.sin(2 * Math.PI * 165.7 * t) * 0.2 * (0.5 + 0.5 * Math.sin(t * 1.3)) + (r() * 2 - 1) * 0.02; }
-    const breath = len(4); { let a = 0, b = 0;
-      for (let i = 0; i < breath.length; i++) { const t = i / SR, env = Math.sin(Math.PI * Math.min(1, t / 4)) ** 2;
-        const f = 0.02 + 0.05 * (0.5 + 0.5 * Math.sin(t * 2.1)); a += (r() * 2 - 1 - a) * f; b += (a - b) * f; breath[i] = (a - b) * 6 * env; } }
-    const ticks = len(3); for (let k = 0; k < 24; k++) { const at = Math.floor(k * ticks.length / 24 + (k % 3) * 400);
-      for (let i = 0; i < 600 && at + i < ticks.length; i++) ticks[at + i] += (r() * 2 - 1) * Math.exp(-i / 40) * (k % 4 ? 0.5 : 1); }
-    [['RAIN ON TIN', rain], ['GLASS', glass], ['HUM', hum], ['BREATH', breath], ['TICKS', ticks]].forEach(([n, d], s) => toBank(s, n, d));
-  }
 
   /* ---------- live input ---------- */
   const KINDS = ['none', 'demo', 'file', 'pc', 'mic'];
@@ -259,7 +226,7 @@
       return true;
     } catch (e) { note(e && e.userMessage ? e.userMessage : 'That input is not available here.'); setInput('none'); $('in-name').textContent = 'No live input.'; return false; }
   }
-  const CATCH = ' Tap REC on HANDS, tap again: A catches it.';
+  const CATCH = ' REC starts the first take on the armed track, REC again loops it.';
 
   /* the demo: made here, at the FM-1's default 110 BPM, four bars of drums, bass and a chord that
      moves, so there is always something worth catching (no file, nothing to set up) */
@@ -366,7 +333,7 @@
       node.connect(outGain).connect(ctx.destination);
       node.port.onmessage = e => {
         const m = e.data;
-        if (m.type === 'screen') { pending = false; draw(m.px); if (m.leds) lights(m.leds); }
+        if (m.type === 'screen') { pending = false; draw(m.px); if (m.leds) lights(m.leds); meters(m.meters); }
         else if (m.type === 'device') { try { localStorage.setItem('viscera-device', toB64(m.bytes)); } catch {} }
         else if (m.type === 'host') host(m.req, m.arg);
         else if (m.type === 'saved') {
@@ -376,14 +343,14 @@
         } else if (m.type === 'loaded') note(m.ok ? 'Project loaded.' : 'That project could not be loaded.');
       };
       await ctx.resume();
-      made(); hostStatus();
+      hostStatus();
       try { const d = localStorage.getItem('viscera-device'); if (d) node.port.postMessage({type: 'device-load', bytes: fromB64(d)}); } catch {}
       $('power').hidden = true;
       (function loop() { if (!pending && node) { pending = true; node.port.postMessage({type: 'paint'}); } setTimeout(loop, 33); })();
       setInterval(send, 50);       /* keeps held-button timings (like a long REC) moving */
       midiIn();
       await useDemo();
-      note('Viscera is on, with a demo loop playing in. Tap REC to catch it.');
+      note('Viscera 4-Track is on, with a demo loop playing in. Tap REC for the first take on track 1.');
     } catch (e) {
       $('power-on').disabled = false;
       note('Could not start audio in this browser: ' + (e && e.message ? e.message : e));

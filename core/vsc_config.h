@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only WITH GPL-3.0-linking-exception
- * Viscera: compile-time sizes. Every buffer here lives in internal RAM. */
+ * Viscera 4-Track: compile-time sizes. Every buffer here lives in internal RAM. */
 #ifndef VSC_CONFIG_H
 #define VSC_CONFIG_H
 
@@ -12,28 +12,21 @@
 #define VSC_BLOCK         128      /* frames per audio callback (SDK fixed) */
 #define VSC_SUB           32       /* control-rate sub-block */
 
-/* Buffers (bytes or frames). They come out of the heap M-VAVE's library starts USB,
- * Bluetooth and MIDI from: with too little (0.2.2/0.2.3 had 68 KB) that start-up fails
- * and the FM-1 never starts (no screen, no USB). tools/build_fm1.py checks the heap. */
-#define VSC_CAP_FRAMES    14400    /* per track capture, 8-bit mu-law (0.33 s HI, 0.65 s MID, 1.31 s LO) */
-#define VSC_GRAINS        8        /* shards per track */
-#define VSC_DELAY_FRAMES  8192     /* int16 mono (0.19 s, 0.37 s in long mode) */
-#define VSC_FFT           512      /* SPECTRA's frame */
-#define VSC_VOCODERS      2        /* tracks in SPECTRA at once */
+/* The tape: four tracks of 4-bit ADPCM in RAM, VSC_TAPE_BLOCKS blocks of 128 samples
+ * each (64 bytes, plus a 3-byte header). The buffers come out of the heap M-VAVE's
+ * library starts USB, Bluetooth and MIDI from: with too little the FM-1 never starts.
+ * tools/build_fm1.py checks the heap. */
+#ifndef VSC_TAPE_BLOCKS
+#define VSC_TAPE_BLOCKS   488      /* per track: 62,464 samples (2.8 s HI, 3.9 s MID, 5.7 s LO) */
+#endif
+#define VSC_TAPE_BLK      128      /* samples per ADPCM block */
 
-#define VSC_STEPS         64
-#define VSC_SCENES        8
-#define VSC_MACROS        8
-#define VSC_MACRO_ROUTES  8
-#define VSC_MOD_ROUTES    16
-#define VSC_MODS          4
 #define VSC_PROJECTS      8
+#define VSC_ROBOTS        2
+#define VSC_GEST          48       /* points of a recorded gesture */
+#define VSC_LEARN         16
 
-/* Flash sample bank (M-VAVE workbench format). */
-#define VSC_BANK_SLOTS    16
-#define VSC_BANK_RATE     32000
-#define VSC_CHUNK         320      /* frames per SEA chunk */
-#define VSC_CACHE         8        /* decoded chunks kept in RAM */
+#define VSC_SHIFT_RING    2048     /* the pitch shifter's memory per side (46 ms) */
 
 /* Placement. On the FM-1 every function and table the audio interrupt
  * touches must sit in RAM, because flash programming stalls code that runs
@@ -42,8 +35,6 @@
 #if defined(__GCC_PI32V2__)
 #define VSC_FM1 1
 #define VSC_HOT     __attribute__((section(".volatile_ram_code"), noinline, used))
-/* RAM code built for size: RAM code costs heap that Bluetooth needs, so the parts that
- * run seldom or whose loops are short take less of it */
 #define VSC_HOT_SMALL __attribute__((section(".volatile_ram_code"), noinline, used, minsize))
 #define VSC_HOTDATA __attribute__((section(".volatile_ram.fm1"), aligned(4)))
 #else

@@ -6,24 +6,26 @@
 
 <h1 align="center">viscera</h1>
 
-<p align="center">PUTTY: a live-capture firmware for the M-VAVE FM-1. Catch loops and work them like putty.<br>
-<a href="https://de-pattern.github.io/viscera/">Install page</a> · <a href="docs/DESIGN.md">Design</a> · <a href="docs/STATUS.md">Status</a></p>
+<p align="center">4-TRACK: an overdubbing tape-looper firmware for the M-VAVE FM-1, in the spirit of a TASCAM Portastudio.<br>
+<a href="https://de-pattern.github.io/viscera/">Install page</a> · <a href="https://de-pattern.github.io/viscera/manual.html">Guide</a> · <a href="docs/DESIGN.md">Design</a> · <a href="docs/STATUS.md">Status</a></p>
 
 <p align="center">
   <img src="docs/art/cycle.gif" width="520" alt="The install page animation: vapour, rain, swell, melt, settle">
 </p>
 
-Viscera catches sound coming in over Bluetooth (a phone or tablet) or USB (a computer) and lets you work it like putty. Tap REC to catch a loop, tap again to end it; a partner track can catch what the first one plays, or the two can pass a sound back and forth. Then stretch it without changing its pitch, freeze it, phase-vocode it, break it into glass-shard grains and build it back up:
+Viscera 4-Track records sound coming in over Bluetooth (a phone or tablet) or USB (a computer) onto four tracks of tape in the FM-1's memory, and overdubs them:
 
-- **HANDS**: stretch (0.25× to 8×, frozen at the top) and pitch, independent of each other, over a window you move and size.
-- **SHARDS**: up to eight grains with expodec, reverse-expodec and shattering windows, free, on the hits the listener hears, on notes or on the clock.
-- **SPECTRA**: a phase vocoder: blur, shift, gate, hold, and CROSS, one track's spectrum on its partner's phases.
+- **The tape**: four mono tracks of 4-bit ADPCM, at three tape speeds (2.8, 3.9 or 5.7 s a track). The first take sets the loop; then punch in and out of the armed tracks, DUB or REPLACE. SPEED is varispeed (pitch and time together, as tape); PITCH shifts the mix without changing its time.
+- **The desk**: four channel strips with VU meters, each with a TRIM into a 424-style preamp (clean to 0 VU, then softly rounding with a little second harmonic), PAN and LEVEL; the input has its own preamp with DRIVE.
+- **Bounce**: print any tracks, through RESON and a preamp, onto a free track, one loop long.
+- **RESON**: an eight-band resonant filterbank (LIQUID, GLASS, THROAT, DUST, RADIO, DROPS) on a track, the input or a bounce.
+- **Robots**: two, moving SPEED, PITCH, levels, pans or RESON as LFOs or as a recorded knob gesture. MIDI learn for knobs and for REC, PLAY and the arm keys.
 
-Four tracks in two pairs, each SOURCE → PUTTY → COLOR into a shared SPACE bus, with RESON (an eight-band resonant filterbank that filters, vocodes, rings from the sound's transients and throws particles) on one of them (delay and reverb), with four modulators per track, robots (a knob gesture recorded while REC is held, looping on its own), macros, scenes that morph, and STEPS (each step a SLICE, PITCH, LEN and PROB) or CAROM. Captures can be kept on a reel in flash.
+The screen is drawn as a tape machine: reels that wind with the loop, a mechanical counter, amber VU meters, aluminium knobs.
 
-It's built on M-VAVE's official FM1 Open SDK (V14), so Bluetooth, USB audio and MIDI keep working, and samples uploaded with M-VAVE's workbench still play.
+It's built on M-VAVE's official FM1 Open SDK (V14), so Bluetooth, USB audio and MIDI keep working.
 
-**Status: being tested on hardware.** The firmware builds, packages, passes M-VAVE's updater checks and starts in an emulated FM-1 running M-VAVE's own library. 1.0 replaced 0.x's engine: 0.x projects don't load.
+**Status: being tested on hardware.** The firmware builds, packages, passes M-VAVE's updater checks and starts in an emulated FM-1 running M-VAVE's own library. 2.0 replaced the 1.x live-capture engine (PUTTY) with the 4-track; 1.x projects don't load, and 1.x is still on the install page.
 
 | | |
 |:-:|:-:|
@@ -34,7 +36,7 @@ It's built on M-VAVE's official FM1 Open SDK (V14), so Bluetooth, USB audio and 
 
 ## Try it in the browser
 
-The [emulator](https://de-pattern.github.io/viscera/emulator/) runs the firmware's own C core, compiled to WebAssembly: the engine, the screen and the controls, with an audio file or your microphone standing in for Bluetooth and USB audio in.
+The [emulator](https://de-pattern.github.io/viscera/emulator/) runs the firmware's own C core, compiled to WebAssembly: the engine, the screen and the controls, with a demo loop, an audio file or your microphone standing in for Bluetooth and USB audio in.
 
 ## Install
 

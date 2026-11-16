@@ -108,9 +108,9 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
   </header>
 
   <div class="top">
-    <p class="eyebrow">Manual · Viscera 1.2.0</p>
+    <p class="eyebrow">Manual · Viscera 2.0.0 · 4-Track</p>
     <h1>Guide</h1>
-    <p>Viscera turns the M-VAVE FM-1 into a live-capture instrument. You catch sound coming in over Bluetooth or USB, then stretch it, freeze it, shatter it, vocode it and ring it through resonators. This page covers installing it safely, getting sound in, how the sound flows, and what every page and control does.</p>
+    <p>Viscera 4-Track turns the M-VAVE FM-1 into an overdubbing tape machine. Four tracks of tape in its memory, a 424-style preamp on the input and every channel, VU meters, and RESON to print a bounce through. This page covers installing it safely, getting sound in, how the sound flows, and what every page and control does.</p>
   </div>
 
   <div class="layout">
@@ -120,16 +120,15 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
       <a href="#audio">Getting audio in</a>
       <a href="#flow">Signal path</a>
       <a href="#controls">Controls</a>
-      <a href="#capture">Capturing</a>
-      <a href="#putty">Putty pages</a>
+      <a href="#tape">The tape</a>
+      <a href="#record">Recording</a>
+      <a href="#mixer">Mixer</a>
+      <a href="#input">Input</a>
+      <a href="#bounce">Bounce</a>
       <a href="#reson">RESON</a>
-      <a href="#color">COLOR &amp; SPACE</a>
-      <a href="#dissect">DISSECT</a>
-      <a href="#mods">Modulation</a>
-      <a href="#perform">Perform &amp; scenes</a>
-      <a href="#seq">Sequencer</a>
-      <a href="#save">Projects &amp; sounds</a>
+      <a href="#robots">Robots</a>
       <a href="#midi">MIDI</a>
+      <a href="#save">Projects</a>
       <a href="#settings">Settings</a>
       <a href="#trouble">Trouble</a>
     </nav>
@@ -151,7 +150,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
 
         <div class="warn">
           <span class="k">Early firmware</span>
-          <p>Viscera is being tested on hardware now. Back up first: save your projects and samples with M-VAVE's workbench, because switching firmware doesn't convert them. Viscera's reel (captures you KEEP) uses the flash where the stock firmware keeps its projects.</p>
+          <p>Viscera is being tested on hardware now. Back up first: save your projects and samples with M-VAVE's workbench, because switching firmware doesn't convert them. The 4-Track keeps its tape in memory: it is gone when the FM-1 switches off. Projects keep the desk (every setting, the robots), not the tape.</p>
         </div>
 
         <h3>Steps</h3>
@@ -161,8 +160,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
           <li>Press <b>Connect</b> and allow MIDI access. The page says what the FM-1 runs now, and names the Viscera version if it's one.</li>
           <li>Press <b>Install Viscera</b>. Keep the cable in, the FM-1 on and the tab in front until it restarts, which takes one to three minutes.</li>
         </ol>
-        <p><b>Going back:</b> on the install page, <b>Put M-VAVE's V15 back</b> installs M-VAVE's original firmware. M-VAVE's <a href="https://open.m-vave.com/fm1-workbench">workbench</a> can too.</p>
-        <p><b>1.1.0 note:</b> on the FM-1, 1.1.0 overloads the CPU when RESON is on, with clicks even at zero volume. Use 1.1.1 or later.</p>
+        <p><b>Going back:</b> the version menu still has the earlier Viscera (1.x, the live-capture PUTTY firmware). <b>Put M-VAVE's V15 back</b> installs M-VAVE's original firmware. M-VAVE's <a href="https://open.m-vave.com/fm1-workbench">workbench</a> can too. Projects saved with 1.x don't load in 2.0, and the other way round.</p>
       </section>
 
       <section id="start">
@@ -170,53 +168,43 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
         <h2>Quick start</h2>
         <ol>
           <li><b>Send sound in.</b> Pair a phone over Bluetooth and play something, or play into the FM-1 from a computer over USB (see <a href="#audio">Getting audio in</a>).</li>
-          <li><b>Press <kbd>HOME</kbd></b> for HANDS. The screen shows track A.</li>
-          <li><b>Tap <kbd>REC</kbd></b> to start catching, then <b>tap again</b> to end. The gap between the taps is the loop length. A full buffer ends it by itself.</li>
-          <li><b>Turn the knobs.</b> STRETCH slows or speeds it without changing pitch, PITCH shifts it, and POS and SIZE pick the window it plays.</li>
-          <li>Try <kbd>FX</kbd> (SHARDS) and <kbd>SEL</kbd> (SPECTRA) on the same capture. Opening one of these pages also sets the track to that mode.</li>
-          <li>Press <kbd>PLAY</kbd> to run the sequencer and modulators, and <kbd>ALGORITHM</kbd> to change track (A–D).</li>
+          <li><b>Track 1 is armed</b> at start-up: its key (the lowest white key, F3) is lit.</li>
+          <li><b>Press <kbd>REC</kbd></b>. The first take starts: the reels turn and the counter runs. <b>Press <kbd>REC</kbd> again</b> (or <kbd>PLAY</kbd>) to end it. That length is the loop, and it plays round.</li>
+          <li><b>Arm track 2</b> (the second white key, G3) and disarm track 1 (F3). Press <kbd>REC</kbd> to punch in, and <kbd>REC</kbd> again to punch out. You can do this as often as you like, anywhere in the loop.</li>
+          <li><b>Press <kbd>EDIT</kbd></b> for the MIXER: KNOB 1–4 are the four tracks' levels. Push a track's TRIM (EDIT again) until its lamp glows: that's the preamp warming it.</li>
+          <li><b>Bounce</b> (<kbd>SEQ</kbd>): the white keys F3–B3 pick the tracks to bounce, and <kbd>REC</kbd> prints one loop of them, through RESON, onto a free track.</li>
         </ol>
       </section>
 
       <section id="audio">
         <p class="eyebrow">03</p>
         <h2>Getting audio in</h2>
-        <p>The FM-1 has no analogue input. Sound gets in two ways, and Viscera can use both at once.</p>
+        <p>The FM-1 has no analogue input. Sound gets in two ways, and Viscera can use both at once. Everything about it is on one page: <b>INPUT</b> (<kbd>FX</kbd>, or <kbd>EDIT</kbd> after the mixer).</p>
         <div class="tbl"><table>
           <tr><th>Input</th><th>How</th></tr>
-          <tr><td>Bluetooth</td><td>A phone, tablet or computer plays music to the FM-1 as a Bluetooth speaker. Bluetooth audio must be on: <b>GLO → SETTINGS</b>, first view, <b>BT AUD</b>. Then pair from the phone's Bluetooth settings and press play.</td></tr>
+          <tr><td>BT</td><td>A phone, tablet or computer plays music to the FM-1 as a Bluetooth speaker. Pair from the phone's Bluetooth settings and press play. Choosing BT (or BOTH) on the INPUT page switches Bluetooth audio on if it was off.</td></tr>
           <tr><td>USB</td><td>Connected to a computer, the FM-1 shows up as a USB audio device. Choose it as the output in your computer's sound settings or your DAW.</td></tr>
+          <tr><td>BOTH</td><td>The two together (the default).</td></tr>
         </table></div>
-        <h3>AUDIO IN (GLO → SETTINGS, second view)</h3>
-        <p>Everything about input in one place:</p>
-        <ul>
-          <li>whether Bluetooth is waiting, connected or playing, and whether USB is connected;</li>
-          <li>a level meter for each input;</li>
-          <li>the selected track's <b>INPUT</b> (BT, USB, BT+USB, another track, or the main mix), its <b>GAIN</b>, and <b>MONITR</b> (hear the input through the FM-1).</li>
-        </ul>
-        <p>PRESETS picks the track, and REC opens its SOURCE page. If a capture comes out silent, check here first: the meter moves, the track's INPUT is right, and its SOURCE is CAPTURE.</p>
-        <h3>Samples</h3>
-        <p>Samples in the FM-1's flash sample bank also play (SOURCE → REEL → a slot S1–S16). Write them with the <a href="./#samples">Samples</a> section of the install page or M-VAVE's workbench.</p>
+        <p>Each source's button says what it's doing (BT: OFF, NO LINK, LINKED or PLAYING; USB: HOST or NO HOST), and its green lamp lights while audio arrives. The big VU meter shows the level going to tape. Aim for the needle around 0, with the OL lamp only flickering.</p>
       </section>
 
       <section id="flow">
         <p class="eyebrow">04</p>
         <h2>Signal path</h2>
-        <div class="flow">inputs: BT, USB ──┐
-partner's output ─┼─▶ <em>SOURCE</em> ─▶ <em>PUTTY</em> ─▶ (<em>RESON</em>) ─▶ <em>COLOR</em> ─▶ level / pan ─┬─▶ master ─▶ out
-the reel, samples ┘   capture    HANDS      one track         noise          └─▶ <em>SPACE</em> send
-                      reel       SHARDS     at a time         drive              (delay + reverb)
-                      thru       SPECTRA                      crush
-                                                              comp, tilt</div>
-        <p><b>Four tracks, A to D, in two pairs: A+B and C+D.</b> A pair can bounce sound between its two tracks, cross spectra, and move together under your hands.</p>
+        <div class="flow">BT / USB ─▶ TRIM ─▶ <em>PREAMP</em> ─▶ (<em>RESON</em>) ─┬─▶ armed tracks: DUB or REPLACE
+                 (DRIVE)                      └─▶ monitor ─────────────────────────────┐
+                                                                                       │
+<em>TAPE</em> 1–4 ─▶ head ─▶ (<em>RESON</em>, one track) ─▶ TRIM ─▶ <em>PREAMP</em> ─▶ LEVEL / PAN ─▶ ─┴─▶ <em>PITCH</em> ─▶ out
+ SPEED: varispeed                                                                       (the tape's mix)
+
+<em>BOUNCE</em>: the picked tracks ─▶ (<em>RESON</em>) ─▶ DRIVE ─▶ LEVEL ─▶ a free track, one loop</div>
         <ul>
-          <li><b>SOURCE</b>: what the track holds. Your capture, the reel or a sample, or the live input passing through (THRU).</li>
-          <li><b>PUTTY</b>: one of three ways to work it (HANDS, SHARDS, SPECTRA).</li>
-          <li><b>RESON</b>: an eight-band resonant filterbank, on one track at a time.</li>
-          <li><b>COLOR</b>: noise, drive, crush, compression and tilt.</li>
-          <li><b>SPACE</b>: a shared delay and reverb, fed by each track's SEND.</li>
-          <li><b>DISSECT</b> listens to a source and drives things from what it hears: hits, bands and pitch.</li>
-          <li><b>Modulators</b>, <b>robots</b>, <b>macros</b> and <b>scenes</b> move any of it.</li>
+          <li><b>The tape</b>: four mono tracks, 4-bit ADPCM in RAM, at the TAPE SPEED you choose. SPEED plays it faster or slower, pitch and time together, as tape does.</li>
+          <li><b>The preamps</b>: the input's and each channel's. Clean below 0 VU; past it they round off softly, with a little second harmonic, as a pushed TASCAM 424 does.</li>
+          <li><b>RESON</b>: an eight-band resonant filterbank, on one track's playback, on the input (it goes to tape), or on a bounce.</li>
+          <li><b>PITCH</b> shifts the tape's mix without changing its time. The monitored input isn't shifted.</li>
+          <li><b>Robots</b> move SPEED, PITCH, levels, pans and RESON on their own.</li>
         </ul>
       </section>
 
@@ -225,323 +213,172 @@ the reel, samples ┘   capture    HANDS      one track         noise          �
         <h2>Controls</h2>
         <div class="tbl"><table>
           <tr><th>Control</th><th>What it does</th></tr>
-          <tr><td>KNOB 1–4</td><td>The four parameters on screen.</td></tr>
-          <tr><td>SELECT</td><td>The page's next view (the dots in the header).</td></tr>
-          <tr><td>ALGORITHM</td><td>Track A–D.</td></tr>
-          <tr><td>PRESETS</td><td>The page's list: SOURCE's source, the step on SEQ, a modulator's type, a matrix row, a project or sound slot, a Bluetooth device, a learned mapping.</td></tr>
+          <tr><td>KNOB 1–4</td><td>The four knobs on screen.</td></tr>
+          <tr><td>SELECT</td><td>The page's next view.</td></tr>
+          <tr><td>ALGORITHM</td><td>Where RESON sits (on RESON), the robot (on ROBOTS).</td></tr>
+          <tr><td>PRESETS</td><td>The page's own: TAPE SPEED (TAPE), DUB or REPLACE (INPUT), where a bounce goes (BOUNCE), RESON's band, a robot's target, a project slot, a Bluetooth device.</td></tr>
           <tr><td>MASTER</td><td>Output level.</td></tr>
-          <tr><td>HOME / FX / SEL</td><td>HANDS / SHARDS / SPECTRA, which also sets the track's mode. Press again for the next view.</td></tr>
-          <tr><td>EDIT</td><td>SOURCE, then MIX.</td></tr>
-          <tr><td>ENV</td><td>COLOR, press again for RESON.</td></tr>
-          <tr><td>GLO</td><td>SPACE, then DISSECT, then SETTINGS.</td></tr>
-          <tr><td>LFO</td><td>The first modulator, then the next one each press, then the MATRIX of every route. Hold LFO and turn a knob to map a modulator to it.</td></tr>
-          <tr><td>ARP</td><td>PERFORM: macros and scenes. Hold ARP and turn a knob to map a macro; ARP + a pad recalls a scene.</td></tr>
-          <tr><td>SEQ</td><td>The sequencer: STEPS or CAROM (PRESETS switches).</td></tr>
-          <tr><td>SAVE</td><td>PROJECT, then SOUNDS. Hold SAVE and turn a knob for MIDI learn. SAVE + REC on a putty page keeps the capture on the reel.</td></tr>
-          <tr><td>PLAY</td><td>Play / stop.</td></tr>
-          <tr><td>REC</td><td>On putty pages and SOURCE: capture (tap, tap), overdub (hold), robot (hold + turn a knob). REC + PLAY clears the capture and its robots. On other pages, the page's own action: freeze SPACE, ping RESON, record steps, and so on.</td></tr>
-          <tr><td>OCT− / OCT+</td><td>Octave. Held while turning a knob: the pair moves together (OCT−) or apart (OCT+). Both held: TEMP, where changes snap back when you let go.</td></tr>
-          <tr><td>Pads</td><td>Notes for the track, or steps on SEQ, scenes on ARP, RESON's bands on its BAND view.</td></tr>
+          <tr><td>HOME</td><td>TAPE. Held: turn a knob to record a robot gesture; a track's key clears that track; PLAY erases the whole tape.</td></tr>
+          <tr><td>EDIT</td><td>MIXER (levels, then trims, then pans), then INPUT.</td></tr>
+          <tr><td>FX</td><td>INPUT.</td></tr>
+          <tr><td>SEQ</td><td>BOUNCE.</td></tr>
+          <tr><td>ENV</td><td>RESON.</td></tr>
+          <tr><td>LFO</td><td>ROBOTS and MIDI learn.</td></tr>
+          <tr><td>SAVE</td><td>PROJECTS. Held: turn a knob, or press REC, PLAY or a track's key, for MIDI learn.</td></tr>
+          <tr><td>GLO</td><td>SETTINGS.</td></tr>
+          <tr><td>PLAY</td><td>Play / stop (stop goes back to the start). In the first take it ends the take.</td></tr>
+          <tr><td>REC</td><td>The first take, then punch in / out of the armed tracks. On BOUNCE: print. On PROJECTS: load or save.</td></tr>
+          <tr><td>Keys</td><td>The four lowest white keys (F3, G3, A3, B3) are tracks 1–4: arm, or on BOUNCE pick the sources. On RESON, the next eight white keys (C4 to C5) pick a band. The other keys ping RESON.</td></tr>
         </table></div>
-        <p>The bottom line of the screen shows a page's gestures for a moment when it opens.</p>
       </section>
 
-      <section id="capture">
+      <section id="tape">
         <p class="eyebrow">06</p>
-        <h2>Capturing: SOURCE (EDIT)</h2>
+        <h2>The tape (HOME)</h2>
+        <p>The cassette window: the reels wind from left to right as the loop plays, the counter shows tenths of a second, and the loop's length sits under it. Below are the transport lamps, the TAPE SPEED switch, and the four tracks: each with its ARM lamp, its shape over the loop, where the tape is, and its level.</p>
         <div class="tbl"><table>
           <tr><th>Knob</th><th></th></tr>
-          <tr><td>SOURCE</td><td><b>CAPTURE</b> (what REC catches), <b>REEL</b> (a kept capture, or a bank sample S1–S16) or <b>THRU</b> (the live input, passing through a short ring).</td></tr>
-          <tr><td>INPUT</td><td>BT, USB, BT+USB (default), another track, or the main mix.</td></tr>
-          <tr><td>RATE</td><td>HI 44.1 kHz, MID 22 kHz (default) or LO 11 kHz: lower rates hold longer captures, and sound grittier.</td></tr>
-          <tr><td>SOS</td><td>How much of the old sound an overdub keeps.</td></tr>
-          <tr><td>BOUNCE</td><td>OFF, IN (the track captures its partner's output) or PING (when one track ends a capture, the other takes it back, as long). PING needs BUFFER SPLIT.</td></tr>
-          <tr><td>REEL / SPLICE</td><td>KEPT (the reel) or a bank slot; all of the reel or one splice.</td></tr>
-          <tr><td>GAIN</td><td>Input gain.</td></tr>
-          <tr><td>KEYS</td><td>What the pads do: OFF, PITCH, PLAY (restart and gate) or SLICE (each key a sixteenth of the window, from F3).</td></tr>
-          <tr><td>FREEZE</td><td>Hold the playhead still (for THRU, the ring stops recording).</td></tr>
-          <tr><td>BUFFER</td><td><b>LONG</b> (default) or <b>SPLIT</b>; see below.</td></tr>
+          <tr><td>SPEED</td><td>Varispeed: half to double speed. Pitch and time move together, as tape. Recording slow and playing back at 1.00× is the old trick for chipmunks and octave-up parts.</td></tr>
+          <tr><td>PITCH</td><td>±12 semitones on the tape's mix, without changing its time. At 0 it is out of the way.</td></tr>
+          <tr><td>LOOP</td><td>Before the first take: a length to stop at (FREE: when you press REC again). After: trims or extends the loop, a twentieth of a second a click.</td></tr>
+          <tr><td>LEVEL</td><td>The tape's level into the mix.</td></tr>
         </table></div>
-        <h3>LONG and SPLIT</h3>
-        <ul>
-          <li><b>LONG</b> (the default, 1.1.1 and later) puts the four buffers end to end as one capture the tracks share: about <b>1.3 s at HI, 2.6 s at MID, 5.2 s at LO</b>.
-            <ul>
-              <li>Any track on CAPTURE plays it, each with its own playhead, mode and settings.</li>
-              <li>One track records at a time.</li>
-              <li>A track on THRU keeps one buffer for its ring, so the long capture gets the rest.</li>
-            </ul></li>
-          <li><b>SPLIT</b> gives each track its own buffer (0.33 s HI, 0.65 s MID, 1.31 s LO), so the pairs can bounce and PING sound between two separate captures.</li>
-        </ul>
-        <p>BUFFER is a setting of the FM-1, not of a project.</p>
-        <h3>Recording</h3>
-        <ul>
-          <li><b>Tap REC</b> to start and tap again to end. A full buffer ends it.</li>
-          <li><b>Hold REC</b> to overdub over what plays (SOS sets how much stays).</li>
-          <li><b>Hold REC and turn a knob</b> to record a <b>robot</b>: up to about two seconds of the gesture, looping on its own after you let go. Each track has four, and a fifth replaces the oldest.</li>
-          <li><b>REC + PLAY</b> clears the capture and the track's robots.</li>
-        </ul>
-        <h3>The reel</h3>
-        <p><b>SAVE + REC</b> keeps the capture on the reel in flash, as a splice that survives power-off. That's about 2.6 s at MID in all, 16 splices at most. Writing to flash pauses the sound for a moment. The first KEEP asks twice, because the reel takes the place of any projects the stock firmware kept there. GLO → SETTINGS → PANEL → REEL shows the room left; turn it and press REC to erase the reel.</p>
+        <h3>TAPE SPEED (PRESETS)</h3>
+        <div class="tbl"><table>
+          <tr><th>Speed</th><th>Rate</th><th>Per track</th></tr>
+          <tr><td>HI</td><td>22.05 kHz</td><td>2.8 s</td></tr>
+          <tr><td>MID</td><td>16 kHz</td><td>3.9 s</td></tr>
+          <tr><td>LO</td><td>11.025 kHz</td><td>5.7 s</td></tr>
+        </table></div>
+        <p>Lower is longer and darker, as on a cassette. Switching with something on the tape plays it at the new speed: an octave up from LO to HI.</p>
       </section>
 
-      <section id="putty">
+      <section id="record">
         <p class="eyebrow">07</p>
-        <h2>The putty pages</h2>
-        <p>Each mode reads a window of the source, from POS to POS + SIZE, with a playhead moving through it.</p>
+        <h2>Recording</h2>
         <ul>
-          <li><b>STRETCH</b> sets the playhead's speed (0.25× to 8×; at the top it freezes) without changing pitch.</li>
-          <li><b>PITCH</b> shifts it ±24 semitones.</li>
+          <li><b>Arm</b> a track with its key (F3, G3, A3, B3). Its lamp lights, and blinks while it records. More than one can be armed.</li>
+          <li><b>The first take</b>: on an empty tape, REC starts recording into the armed tracks; REC or PLAY ends it and the loop plays round. If LOOP is set, the take ends there by itself; a full track ends it too.</li>
+          <li><b>Punching</b>: while the loop plays, REC punches the armed tracks in, REC again punches them out. Stopped, REC starts the tape and punches in.</li>
+          <li><b>DUB or REPLACE</b> (INPUT, PRESETS): DUB adds to what's on the track, REPLACE records over it (you hear only the input while punched in). A hot DUB is taken softly by the tape.</li>
+          <li><b>Monitoring</b> (INPUT, K4): AUTO hears the input while a track is armed; ON always; OFF never.</li>
+          <li><b>Clearing</b>: hold HOME and press a track's key. Hold HOME and press PLAY to erase the whole tape (and the loop length).</li>
         </ul>
-        <h3>HANDS (HOME)</h3>
-        <p>Two overlapping grains follow the playhead: smooth stretching and pitching.</p>
+        <p>Each pass is re-encoded, so a part that is overdubbed many times picks up a little hiss, as tape does.</p>
+      </section>
+
+      <section id="mixer">
+        <p class="eyebrow">08</p>
+        <h2>Mixer (EDIT)</h2>
+        <p>Four strips, each with its VU meter, what it holds (TAPE, ARMED, REC, EMPTY), TRIM with its preamp lamp, PAN, a fader and its ARM button. KNOB 1–4 work the four strips at once: <b>EDIT</b> steps through LEVEL, then TRIM, then PAN (the row in use is lit), then on to INPUT.</p>
+        <p><b>TRIM</b> drives the channel's preamp: 0 dB is clean; push it until the lamp glows for warmth, further for grit.</p>
+      </section>
+
+      <section id="input">
+        <p class="eyebrow">09</p>
+        <h2>Input (FX)</h2>
         <div class="tbl"><table>
-          <tr><th>View</th><th>Knobs</th></tr>
-          <tr><td>1</td><td>STRTCH, PITCH, POS, SIZE</td></tr>
-          <tr><td>2</td><td>GRAIN (10–260 ms), JITTER, REVRS, LEVEL</td></tr>
-          <tr><td>3</td><td>FREEZE, KEYS, GAIN, SOS</td></tr>
+          <tr><th>Control</th><th></th></tr>
+          <tr><td>SOURCE (K1)</td><td>BT, USB or BOTH.</td></tr>
+          <tr><td>TRIM (K2)</td><td>The input's level into its preamp.</td></tr>
+          <tr><td>DRIVE (K3)</td><td>The preamp: CLEAN, WARM, HOT, FUZZ. It lifts the level into the knee and evens it out after, so the sound thickens more than it gets louder.</td></tr>
+          <tr><td>MONITOR (K4)</td><td>AUTO, ON, OFF.</td></tr>
+          <tr><td>REC MODE (PRESETS)</td><td>DUB or REPLACE.</td></tr>
         </table></div>
-        <h3>SHARDS (FX)</h3>
-        <p>Up to eight grains broken from the window. SHAPE runs:</p>
-        <ul>
-          <li>smooth;</li>
-          <li>swell (reverse decay);</li>
-          <li>expodec;</li>
-          <li>glass: sharper and shorter, and at the top it <b>shatters</b> into denser shards an octave up.</li>
-        </ul>
+        <p>The header says which track the input goes to. The line at the bottom says what is coming in and the tape's rate.</p>
+      </section>
+
+      <section id="bounce">
+        <p class="eyebrow">10</p>
+        <h2>Bounce (SEQ)</h2>
+        <p>Prints the picked tracks to another track, through RESON and a preamp, one loop long: the 4-track way to free tracks and to print effects.</p>
+        <ol>
+          <li>Pick the sources with the tracks' keys (lit).</li>
+          <li>Choose where it goes with PRESETS: FREE (the first empty track) or a track.</li>
+          <li>Press <kbd>REC</kbd>. The tape goes to the start, plays one loop and prints it; you hear the print as it's made.</li>
+        </ol>
         <div class="tbl"><table>
-          <tr><th>View</th><th>Knobs</th></tr>
-          <tr><td>1</td><td>SHAPE, DENS, SPRAY (scatter in the window), TRIG: FREE, HIT (on DISSECT's hits), NOTE (keys, steps, CAROM), CLOCK (the steps)</td></tr>
-          <tr><td>2</td><td>SIZE, SPREAD (pitch scatter), REVRS (chance), STEREO</td></tr>
-          <tr><td>3</td><td>The hands: STRTCH, PITCH, POS, SIZE</td></tr>
+          <tr><th>Knob</th><th></th></tr>
+          <tr><td>WET</td><td>RESON's mix on the bounce.</td></tr>
+          <tr><td>DRIVE</td><td>The bounce's preamp.</td></tr>
+          <tr><td>LEVEL</td><td>The print's level.</td></tr>
+          <tr><td>CLEAR</td><td>YES clears the sources after the print, so they're free for more.</td></tr>
+          <tr><td>TO, RESON (SELECT)</td><td>Where it goes, and RESON in or out.</td></tr>
         </table></div>
-        <h3>SPECTRA (SEL)</h3>
-        <p>A phase vocoder: the sound taken apart into its spectrum and put back.</p>
-        <div class="tbl"><table>
-          <tr><th>View</th><th>Knobs</th></tr>
-          <tr><td>1</td><td>STRTCH, BLUR (smears the spectrum over time), SHIFT (±24 semitones), CROSS (puts the partner's spectrum on this track's sound)</td></tr>
-          <tr><td>2</td><td>GATE (only the loud parts), TILT, HOLD (peaks held), PHASE (scatter)</td></tr>
-          <tr><td>3</td><td>PITCH, POS, SIZE, FREEZE</td></tr>
-        </table></div>
-        <p>Two tracks can be SPECTRA at once; a third plays as HANDS and says so.</p>
+        <p>The sources' levels set the balance in the print. "NO FREE TRACK" means every track not being bounced holds something: clear one (HOME + its key).</p>
       </section>
 
       <section id="reson">
-        <p class="eyebrow">08</p>
-        <h2>RESON (ENV, twice)</h2>
-        <p>An eight-band resonant filterbank at 200, 400, 800, 1200, 1600, 2400, 3200 and 4800 Hz. It runs on one track at a time, after PUTTY and before COLOR. Opening the page puts it on the track you're on, and ENV goes back to COLOR. Each band is two resonators:</p>
-        <ul>
-          <li>one the sound passes through;</li>
-          <li>one that rings with a decay of its own, excited by pings, dust and droplets.</li>
-        </ul>
-        <div class="tbl"><table>
-          <tr><th>View</th><th>Knobs</th></tr>
-          <tr><td>BANK</td><td>PROFILE (LIQ MEM, GLASS, THROAT, DUST, RADIO, DROPS), WIDTH, RESO (decay), MIX</td></tr>
-          <tr><td>BAND</td><td>BAND (or pads 1–8), GAIN (dB, 0 is off), FREQ (±1 octave), DECAY</td></tr>
-          <tr><td>VOCODE</td><td>MODSRC, ATTACK, RELEAS, DEPTH</td></tr>
-          <tr><td>PING</td><td>TRIG, QUANT (OFF, 1/32 … 1/4), HARD, DENS (dust)</td></tr>
-          <tr><td>MOTION</td><td>LIQUID, FDBK, SHIFT (±12 semitones, all bands), SPECTR</td></tr>
-          <tr><td>PARTICLES</td><td>COHES, DROPS, MIGR, OSC</td></tr>
-          <tr><td>SETUP</td><td>MODE, SENS, TRACK (0 turns RESON off)</td></tr>
-        </table></div>
-        <h3>Modes (SETUP → MODE)</h3>
-        <div class="tbl"><table>
-          <tr><th>Mode</th><th>What it does</th></tr>
-          <tr><td>FILTER</td><td>The sound through the bank.</td></tr>
-          <tr><td>VOCODE</td><td>Each band's level follows the modulator in that band. The track is the carrier.</td></tr>
-          <tr><td>PING</td><td>Only the ringing bank, struck by bursts.</td></tr>
-          <tr><td>HYBRID</td><td>The default: half of each, vocoded.</td></tr>
-        </table></div>
-        <h3>The vocoder</h3>
-        <p>Set MODE to VOCODE on SETUP (HYBRID vocodes too). Then pick <b>MODSRC</b> on the VOCODE view:</p>
-        <div class="tbl"><table>
-          <tr><th>MODSRC</th><th>The modulator</th></tr>
-          <tr><td>INPUT</td><td>The live input, e.g. a voice over Bluetooth or USB.</td></tr>
-          <tr><td>PARTNR</td><td>The other track of the pair.</td></tr>
-          <tr><td>OSC</td><td>An oscillator, sine → saw → pulse, set on PARTICLES.</td></tr>
-          <tr><td>NOISE</td><td>A noise source.</td></tr>
-          <tr><td>SELF</td><td>The track itself.</td></tr>
-          <tr><td>OUTPUT</td><td>RESON's own output.</td></tr>
-        </table></div>
-        <p>For the classic voice-over-synth sound, put a sound on the track and set MODSRC to INPUT.</p>
-        <h3>Pings, dust and droplets</h3>
-        <ul>
-          <li><b>TRIG</b> picks what pings the ringing bank:
-            <ul>
-              <li><b>HIGH</b>, <b>FULL</b> or <b>LOW</b>: a transient detector on that band of the modulator (SENS sets how easily);</li>
-              <li><b>HITS</b>: DISSECT's hits;</li>
-              <li><b>NOTES</b>: keys, steps and CAROM on RESON's track;</li>
-              <li>REC on the page pings by hand.</li>
-            </ul></li>
-          <li><b>QUANT</b> holds pings for the grid: the steps' when playing, the tempo's when stopped.</li>
-          <li><b>HARD</b> runs from a soft burst to a sharp click.</li>
-          <li><b>DENS</b> throws dust, specks that each ring one band. <b>COHES</b> gathers them around the hits.</li>
-          <li><b>DROPS</b> plays tiny grains of the wet sound. <b>MIGR</b> sends them into other bands instead of out.</li>
-          <li><b>LIQUID</b> lets tuning, decay and level drift slowly. <b>FDBK</b> returns the wet sound into the bank.</li>
-        </ul>
-        <p>RESON is the heaviest thing on the FM-1. Under load the CPU guard thins it to its loudest bands.</p>
-      </section>
-
-      <section id="color">
-        <p class="eyebrow">09</p>
-        <h2>COLOR (ENV) and SPACE (GLO)</h2>
-        <h3>COLOR</h3>
-        <p>Noise, drive, crush and compression in that order, then a two-band tilt.</p>
-        <div class="tbl"><table>
-          <tr><th>View</th><th>Knobs</th></tr>
-          <tr><td>1</td><td>DRIVE, COMP, CRUSH, TILT</td></tr>
-          <tr><td>2</td><td>NOISE, N.DEC, N.TONE, WET</td></tr>
-          <tr><td>3</td><td>C.MODE (BITS, REDUX, BOTH), XOVER, N.TYPE (WHITE, PINK, DUST), W.MODE</td></tr>
-        </table></div>
-        <h3>SPACE</h3>
-        <p>A shared bus with a tempo-synced delay and a reverb. Each track feeds it with SEND on MIX.</p>
-        <div class="tbl"><table>
-          <tr><th>View</th><th>Knobs</th></tr>
-          <tr><td>1</td><td>DELAY, TIME, FDBK, TONE</td></tr>
-          <tr><td>2</td><td>REVERB, SIZE, DAMP, LONG</td></tr>
-        </table></div>
-        <p>REC freezes SPACE; holding REC clears it.</p>
-        <h3>MIX (EDIT, twice)</h3>
-        <p>Every track's LEVEL, PAN, SEND, FILTER and MUTE, then MAIN, master COMP and the input MONITR.</p>
-      </section>
-
-      <section id="dissect">
-        <p class="eyebrow">10</p>
-        <h2>DISSECT (GLO, twice)</h2>
-        <p>One listener for the whole instrument. It hears its SOURCE and finds:</p>
-        <ul>
-          <li>hits (set by SENS and FOCUS);</li>
-          <li>three bands;</li>
-          <li>the pitch, with its first eight partials.</li>
-        </ul>
-        <p>Its hits can throw CAROM balls, clock the steps, burst SHARDS (TRIG HIT) and ping RESON (TRIG HITS). FOLLOW modulators can follow its bands, hits, pitch or brightness. The second view sets the track's shards as the hits drive them. REC on DISSECT opens SHARDS with TRIG HIT.</p>
-      </section>
-
-      <section id="mods">
         <p class="eyebrow">11</p>
-        <h2>Modulation (LFO)</h2>
-        <p>Each track has four modulator slots. PRESETS changes a slot's type:</p>
+        <h2>RESON (ENV)</h2>
+        <p>Eight resonant bands, from 200 Hz to 4.8 kHz, that filter the sound, vocode it, ring from its transients and throw particles. <b>ALGORITHM</b> puts it where you want it: OFF, on a track's playback (TRK 1–4), or on the INPUT (so it goes to tape). A bounce with RESON in takes it for the print.</p>
         <div class="tbl"><table>
-          <tr><th>Type</th><th>Parameters</th></tr>
-          <tr><td>WAVE</td><td>RATE, AMOUNT, PHASE, OFFSET, SKEW, FOLD, CURVE, SHAPE and SYNC (free, straight, triplet, dotted)</td></tr>
-          <tr><td>RANDOM</td><td>RATE, AMOUNT, PHASE, OFFSET, LENGTH, VARIAT, SMOOTH and SYNC</td></tr>
-          <tr><td>FOLLOW</td><td>An envelope follower of this track, its source, any track, the main mix or the live input</td></tr>
-          <tr><td>ADSR</td><td>An envelope from notes or REC</td></tr>
+          <tr><th>Knob</th><th></th></tr>
+          <tr><td>MODE</td><td>A profile: LIQUID (watery, moving), GLASS (bright rings), THROAT (vowel-like vocoding), DUST (pings and specks: the default), RADIO (a narrow band), DROPS (droplets of its own sound). Turning it sets the bands, mix, decay and width to suit.</td></tr>
+          <tr><td>MIX</td><td>Dry to wet.</td></tr>
+          <tr><td>DECAY</td><td>How long the bands ring.</td></tr>
+          <tr><td>WIDTH</td><td>How narrow the bands are.</td></tr>
+          <tr><td>SHIFT, DUST, BAND (SELECT)</td><td>The whole bank up or down an octave; how many specks; the picked band's level (the white keys C4 to C5 pick it, PRESETS too).</td></tr>
         </table></div>
-        <p><b>LFO</b> opens the first modulator: RATE, AMOUNT, PHASE and OFFSET, then SELECT for SKEW, FOLD, CURVE and SHAPE, then SYNC. Each LFO press goes to the next modulator. After the fourth comes the <b>MATRIX</b>, a list of every route:</p>
-        <ul>
-          <li>PRESETS picks a row.</li>
-          <li>The knobs set SOURCE (any of the sixteen modulators), DEVICE, PARAM and AMOUNT.</li>
-          <li>REC switches the row between bipolar and unipolar.</li>
-          <li>On the last row, NEW, turning any knob makes a route.</li>
-        </ul>
-        <p><b>The fast way:</b> hold LFO and turn any knob on any page. The track's modulator then moves that parameter, and the direction you turn sets the amount.</p>
+        <p>The keys outside the tracks' and bands' ping it. The lamps over the sliders light as the bands ring.</p>
       </section>
 
-      <section id="perform">
+      <section id="robots">
         <p class="eyebrow">12</p>
-        <h2>Perform, temp and scenes (ARP)</h2>
-        <ul>
-          <li><b>Macros</b>: eight per project, each moving up to eight parameters on any track. Hold ARP and turn a knob to map the selected macro (hold ARP and turn PRESETS to choose it).</li>
-          <li><b>Scenes</b>: eight per project, each a snapshot of every track's sound and the macros. ARP + a pad recalls a scene, and ARP + SAVE + a pad stores one. MORPH glides toward the TARGET scene. MIDI program change recalls them too.</li>
-          <li><b>TEMP</b>: hold OCT− and OCT+ together, tweak anything, and it all snaps back when you let go.</li>
-          <li><b>Two hands</b>: hold OCT− and turn a knob to move both tracks of the pair; hold OCT+ to move them apart.</li>
-        </ul>
+        <h2>Robots (LFO)</h2>
+        <p>Two robots move things on their own. Each has a <b>target</b> (PRESETS): SPEED, PITCH, the tape's level, the input's drive, a track's level or pan, or RESON's mix, decay, width or shift. Robot 1 starts on SPEED and robot 2 on PITCH, at no depth.</p>
+        <div class="tbl"><table>
+          <tr><th>Knob</th><th></th></tr>
+          <tr><td>RATE</td><td>0.02 to 10 Hz.</td></tr>
+          <tr><td>SHAPE</td><td>SINE, TRI, SAW, SQUARE, S+H, DRIFT, or GESTUR (a recorded gesture).</td></tr>
+          <tr><td>SKEW</td><td>Leans the shape (or the square's width).</td></tr>
+          <tr><td>DEPTH</td><td>How far it moves. 0: off.</td></tr>
+        </table></div>
+        <h3>Gestures</h3>
+        <p>Hold <kbd>HOME</kbd> and turn a knob whose parameter a robot can move (SPEED, PITCH, a level...). Let go of HOME: the movement, up to about 4 s, loops on a robot, and the knob goes back to where it was. ALGORITHM or SELECT shows the other robot.</p>
       </section>
 
-      <section id="seq">
+      <section id="midi">
         <p class="eyebrow">13</p>
-        <h2>Sequencer (SEQ)</h2>
-        <p>One pattern per track. PRESETS switches between STEPS and CAROM.</p>
-        <h3>STEPS</h3>
+        <h2>MIDI</h2>
+        <p>MIDI arrives over the MIDI jack, USB and Bluetooth MIDI alike.</p>
         <ul>
-          <li>16 to 64 steps. Each holds:
-            <ul>
-              <li>a <b>SLICE</b>: the playhead jumps to that sixteenth of the window, or OFF to play on;</li>
-              <li>a <b>PITCH</b>;</li>
-              <li>a <b>LEN</b>, in eighths of a step;</li>
-              <li>a <b>PROB</b>;</li>
-              <li>a velocity and a parameter lock.</li>
-            </ul></li>
-          <li>PRESETS picks the step and the pads switch steps on and off.</li>
-          <li>REC records live, quantised to the step.</li>
+          <li><b>MIDI learn</b>: hold SAVE and turn a knob, then move a controller. Or hold SAVE and press REC, PLAY or a track's key, then play a note: that note does it from then on. The mappings belong to the FM-1, and a learned CC picks up: the parameter doesn't move until the controller passes its value. They're listed on ROBOTS (SELECT to the end); K4 clears the picked one.</li>
+          <li><b>Notes</b> ping RESON and set its oscillator.</li>
+          <li><b>Start and stop</b> run the tape.</li>
+          <li><b>KNOB CC</b>: CC 110–113 turn knobs 1–4 of the page on screen (SETTINGS can switch it off).</li>
         </ul>
-        <h3>CAROM</h3>
-        <p>Notes bounce around a box and play when they hit a wall. The knobs are:</p>
-        <ul>
-          <li>SPEED, GRAVTY, LOSS, SPREAD;</li>
-          <li>QUANT (snap the hits to the grid);</li>
-          <li>the number of balls and WALLS;</li>
-          <li>JITTER and GATE.</li>
-        </ul>
-        <p>Play notes to throw balls.</p>
-        <p>Tempo is internal (30–300 BPM, with swing) or MIDI clock.</p>
       </section>
 
       <section id="save">
         <p class="eyebrow">14</p>
-        <h2>Projects and sounds (SAVE)</h2>
-        <ul>
-          <li><b>PROJECT</b>: eight slots, each holding every track's sound, the sequences, scenes and macros.
-            <ul>
-              <li>PRESETS picks a slot.</li>
-              <li>REC loads it, or saves into an empty slot.</li>
-              <li>SAVE + PLAY saves over.</li>
-              <li>Saving happens only while stopped, with a moment of silence.</li>
-            </ul></li>
-          <li><b>SOUNDS</b> (SAVE, twice): sixteen slots that belong to the FM-1, not to a project. A sound is one track's SOURCE, PUTTY and COLOR settings and its modulators. REC loads one onto the selected track.</li>
-        </ul>
-        <p>Captures themselves aren't saved in projects: KEEP them on the reel.</p>
-      </section>
-
-      <section id="midi">
-        <p class="eyebrow">15</p>
-        <h2>MIDI</h2>
-        <p>MIDI arrives over the MIDI jack, USB and Bluetooth MIDI alike.</p>
-        <ul>
-          <li><b>Notes</b>: channels 1–4 play tracks A–D.</li>
-          <li><b>Clock</b>: CLOCK AUTO follows MIDI clock when it arrives, MIDI always does, and INT never does. Start, continue and stop run the transport.</li>
-          <li><b>MIDI learn</b>: hold SAVE, turn a knob, then move a controller. Mappings belong to the FM-1 and pick up: the parameter doesn't move until the controller passes its value.</li>
-          <li><b>KNOB CC</b>: CC 110–113 turn knobs 1–4 of the page on screen (switch it off in SETTINGS → PANEL).</li>
-          <li><b>Fixed CCs</b> on a track's channel:
-            <ul>
-              <li>7 level, 10 pan, 11 send, 12 filter;</li>
-              <li>14–19 the hands;</li>
-              <li>20–28 SHARDS;</li>
-              <li>70–76 SPECTRA;</li>
-              <li>80–87 COLOR;</li>
-              <li>102–105 the modulators' amounts.</li>
-            </ul></li>
-          <li><b>Channel 16</b>: main, master compressor, SPACE, morph, the macros and swing.</li>
-          <li><b>Program change</b> recalls scenes.</li>
-        </ul>
+        <h2>Projects (SAVE)</h2>
+        <p>Eight slots for the desk: every knob, the robots and their gestures. Not the tape, which stays in memory until the FM-1 switches off. PRESETS picks a slot; REC loads it, or saves into it if it's empty; SAVE + PLAY saves over it. Saving writes flash, so it only happens while stopped.</p>
       </section>
 
       <section id="settings">
-        <p class="eyebrow">16</p>
-        <h2>Settings (GLO, three times)</h2>
+        <p class="eyebrow">15</p>
+        <h2>Settings (GLO)</h2>
         <div class="tbl"><table>
           <tr><th>View</th><th></th></tr>
-          <tr><td>BLUETOOTH</td><td>BT AUD and BT MIDI on or off, ROLE (central or peripheral), UNPAIR. PRESETS picks a device, and REC scans and connects.</td></tr>
-          <tr><td>AUDIO IN</td><td>Inputs, meters, and the track's INPUT, GAIN and monitor (see <a href="#audio">Getting audio in</a>).</td></tr>
-          <tr><td>CLOCK</td><td>Whether MIDI clock is arriving and which clock is followed.</td></tr>
-          <tr><td>PANEL</td><td>BACKLIT, KNOB CC, METRO (a click on each beat), REEL (room left; REC erases it). It also shows the version, the CPU load per track and the guard's state.</td></tr>
-          <tr><td>MIDI LEARN</td><td>The learned mappings. REC clears one.</td></tr>
+          <tr><td>PANEL</td><td>BT AUDIO and BT MIDI on or off, the backlight, KNOB CC. The CPU load: the tape and desk, RESON, the rest, and whether the guard is easing.</td></tr>
+          <tr><td>BLUETOOTH MIDI</td><td>The role (peripheral or central); PRESETS picks a device, REC scans and connects.</td></tr>
         </table></div>
       </section>
 
       <section id="trouble">
-        <p class="eyebrow">17</p>
+        <p class="eyebrow">16</p>
         <h2>Trouble</h2>
         <h3>Clicks and glitches</h3>
-        <p>Clicks and glitches, even at zero volume, mean the FM-1 is out of CPU. A guard eases things in two steps when rendering takes over 75 % of the time: the reverb rests and RESON keeps its loudest bands, then shards thin out. The screen also slows to about ten frames a second so the controls stay quick. If that isn't enough, it rests the sound for about a second. GLO → SETTINGS → PANEL shows the load per track. Turn RESON off (SETUP → TRACK 0) or use fewer SPECTRA tracks.</p>
+        <p>Clicks, even at zero volume, mean the FM-1 is out of CPU. The 4-Track is light (four tracks playing with an overdub and PITCH take about a sixth of the time in the emulator; RESON adds about a tenth), but if it happens a guard eases RESON in two steps, then rests the sound for about a second. GLO → SETTINGS shows the load. Turn RESON off (ALGORITHM on its page) to free the most.</p>
         <h3>Safe mode</h3>
         <p>"SAFE MODE" on the screen means the last three starts never ran for four seconds. <b>Press PLAY</b> to start Viscera anyway. Leaving it on for four seconds also clears the count, so the next power-on starts normally. Installing a new version starts the count afresh. In safe mode the sound is off and the install page still connects, so you can always reinstall. Hold <kbd>OCT−</kbd> + <kbd>OCT+</kbd> while switching on to enter safe mode yourself.</p>
         <h3>A dark FM-1 after an install</h3>
         <p>If the FM-1 stays dark (no screen, no lights), <a href="https://de-pattern.github.io/Ravel_FM1/install/">Ravel's install page</a> → <b>Back to the stock firmware</b> with a V15 file puts M-VAVE's firmware back.</p>
-        <h3>Silent captures</h3>
-        <p>Check GLO → SETTINGS → AUDIO IN. The meter should move, the track's INPUT should be right, and SOURCE should be CAPTURE.</p>
+        <h3>Nothing records</h3>
+        <p>Check INPUT: a green lamp on the source, the VU moving, and a track armed (the header says TO TRK n). REC on an empty tape with nothing armed says so.</p>
         <h3>Trying it without an FM-1</h3>
-        <p>The <a href="emulator/">browser emulator</a> runs the same code, with an audio file, your computer's sound or a microphone as the input.</p>
+        <p>The <a href="emulator/">browser emulator</a> runs the same code, with a demo loop, an audio file, your computer's sound or a microphone as the input.</p>
       </section>
     </main>
   </div>

@@ -1,450 +1,244 @@
-// Viscera PUTTY engine and UI test, run on the WebAssembly build of the same core the
-// FM-1 runs. Captures, bounces, the three putty modes, robots, two hands, the reel, every
-// page and view, the modulators and matrix, MIDI, the listener: nothing may produce NaN,
-// silence where sound is expected, or runaway level.
+// Viscera 4-Track engine and UI test, run on the WebAssembly build of the same core the
+// FM-1 runs: the first take, punches, DUB and REPLACE, clearing, the tape speeds, the
+// loop, varispeed and pitch, the preamps, bounces (through RESON), robots and gestures,
+// MIDI learn, every page and knob. Nothing may produce NaN, silence where sound is
+// expected, or runaway level; the tape must give back what went on it.
 import fs from 'node:fs';
 const wasm = fs.readFileSync(process.argv[2] || 'site/emulator/viscera.wasm');
-// parameter indices, read from the core's header
-const enumOf = (name, end) => {
-  const h = fs.readFileSync(new URL('../../core/vsc.h', import.meta.url), 'utf8');
-  const body = h.slice(h.indexOf(name) + name.length, h.indexOf(end)).replace(/\/\*[\s\S]*?\*\//g, '');
-  const idx = {}; let i = 0;
-  for (let n of body.split(',').map(s => s.trim()).filter(Boolean)) {
-    if (n.includes('=')) { const [a] = n.split('='); n = a.trim(); i = idx.P_MOD0 + 40; }
-    idx[n] = i++;
-  }
-  return idx;
-};
-const P = enumOf('enum vsc_tparam {', 'VSC_NP');
-const G = enumOf('enum vsc_gparam {', 'VSC_NG');
 const {instance} = await WebAssembly.instantiate(wasm, {});
 const x = instance.exports;
 const mem = () => x.memory.buffer;
 let fails = 0;
 const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } };
-ok(P.P_ENGINE > 0 && P.P_SEQM === P.P_MOD0 + 40 && x.np() === P.P_RGATE + 1, 'parameter table read: ' + x.np());
+// the parameters, in vsc.h's order
+const P = {SPEED: 0, PITCH: 1, LOOP: 2, TLEVEL: 3, TAPESPD: 4, ISRC: 5, ITRIM: 6, IDRIVE: 7, IMON: 8, IREC: 9,
+  BSRC: 30, BDST: 31, BRESON: 32, BDRIVE: 33, BLEVEL: 34, BCLEAR: 35,
+  RTGT: 36, RPROF: 37, RMIX: 38, RDECAY: 39, RWIDTH: 40, RSHIFT: 41, RDUST: 42, RG0: 43, ROB0: 51};
+const TRK = (t, k) => 10 + t * 5 + k, S = {TRIM: 0, PAN: 1, LEVEL: 2, MUTE: 3, ARM: 4};
+const ROB = (r, k) => P.ROB0 + r * 5 + k, R = {TARGET: 0, RATE: 1, SHAPE: 2, SKEW: 3, DEPTH: 4};
+const EV = {NOTE_ON: 0, NOTE_OFF: 1, PLAY: 2, STOP: 3, REC: 4, CLEAR: 5, ERASE: 6, BOUNCE: 7, ARM: 8, CC: 9, PANIC: 10, LOOP: 11};
+ok(x.np() === 61, 'parameter count: ' + x.np());
 x.init();
-const SRC = {CAPTURE: 0, REEL: 1, THRU: 2}, ENG = {HANDS: 0, SHARDS: 1, SPECTRA: 2};
-const inbuf = new Float32Array(mem(), x.input_buffer(), 256);
-let ph = 0, fr = 0;
+const inbuf = new Float32Array(mem(), x.input_buffer(), 256), usbbuf = new Float32Array(mem(), x.usb_buffer(), 256);
+let fr = 0;
 const music = () => { for (let i = 0; i < 128; i++, fr++) { const t = fr / 44100, tb = t % 0.5;
-  const v = 0.25 * Math.sin(ph += 0.031) + 0.2 * Math.sin(2 * Math.PI * 330 * t) * Math.exp(-tb * 4) + 0.3 * Math.exp(-tb * 30) * (Math.random() * 2 - 1);
+  const v = 0.25 * Math.sin(2 * Math.PI * 220 * t) * Math.exp(-tb * 3) + 0.25 * Math.exp(-tb * 30) * (Math.random() * 2 - 1);
   inbuf[2 * i] = inbuf[2 * i + 1] = v; } };
-function run(blocks, live = true, gen = music) {
+const silence = () => inbuf.fill(0);
+let gen = music;
+function run(blocks, live = 1) {
   let peak = 0, nan = false, sum = 0;
   for (let b = 0; b < blocks; b++) {
-    if (live) gen();
-    x.render(live ? 1 : 0);
+    if (live & 1) gen();
+    x.render(live);
     const o = new Float32Array(mem(), x.output_buffer(), 256);
     for (let i = 0; i < 256; i++) { const v = o[i]; if (!Number.isFinite(v)) nan = true; const a = Math.abs(v); if (a > peak) peak = a; sum += v * v; }
   }
   return {peak, nan, rms: Math.sqrt(sum / (blocks * 256))};
 }
 const sound = (r, m, min = 1e-3) => ok(!r.nan && r.rms > min && r.peak <= 1.0, m + ' ' + JSON.stringify(r));
+const quiet = (r, m) => ok(!r.nan && r.rms < 2e-3, m + ' ' + JSON.stringify(r));
 const clean = (r, m) => ok(!r.nan && r.peak <= 1.0, m + ' ' + JSON.stringify(r));
 let now = 0;
 // each control pass is 20 ms and renders that much audio, as on the FM-1
 function ctl(keys = 0, buttons = 0, e = [0, 0, 0, 0, 0, 0, 0]) { now += 20; const r = x.control(keys, buttons, ...e, now); run(7); return r; }
-function press(btn, held = 0) { ctl(0, held | 1 << btn); return ctl(0, held); }
-const enc = (k, d, held = 0) => { const e = [0, 0, 0, 0, 0, 0, 0]; e[k] = d; return ctl(0, held, e); };
 const B = {OCTD: 0, OCTU: 1, FX: 2, SCL: 3, ENV: 4, LFO: 5, EDIT: 6, GLO: 7, HOME: 8, SAVE: 9, ARP: 10, SEQ: 11, PLAY: 12, REC: 13};
+function press(btn, held = 0) { ctl(0, held | 1 << btn); return ctl(0, held); }
+function key(k, held = 0) { ctl(1 << k, held); ctl(0, held); }
+const TK = [0, 2, 4, 6];   // the tracks' keys: the first four white keys
+const enc = (k, d, held = 0) => { const e = [0, 0, 0, 0, 0, 0, 0]; e[k] = d; return ctl(0, held, e); };
+const wait = n => { for (let i = 0; i < n; i++) ctl(); };
 const screen = () => new Uint16Array(mem(), x.screen(), 240 * 240);
-function paintCheck(label) { x.paint(now); const s = screen(); let lit = 0; for (let i = 0; i < s.length; i++) if (s[i] !== s[0]) lit++; ok(lit > 500, 'screen drawn: ' + label); }
-const track = (t) => { enc(1, -8); enc(1, t); };
-const home = () => { press(B.HOME); enc(0, -20); };   // HANDS, its first view (HOME again steps the views)
-const solo = (t) => { for (let u = 0; u < 4; u++) x.set_param(u, P.P_MUTE, u === t ? 0 : 1); };
+function paintCheck(label) { x.paint(now); const s = screen(); let lit = 0; for (let i = 0; i < s.length; i++) if (s[i] !== s[0]) lit++; ok(lit > 3000, 'screen drawn: ' + label + ' (' + lit + ')'); }
+const has = () => [0, 1, 2, 3].map(t => x.has(t));
 
-// 1. capture on HANDS: tap REC, tap again; the capture plays
-track(0); home();
-ok(x.get_param(0, P.P_ENGINE) === ENG.HANDS, 'HOME is HANDS');
-solo(0);
-press(B.REC); ok(x.cap_state(0) === 1, 'REC starts a capture: ' + x.cap_state(0));
-paintCheck('recording');
-for (let i = 0; i < 25; i++) ctl();
-press(B.REC); ok(x.cap_state(0) === 2 && x.src_len(0) > 5000, 'REC again ends it: ' + x.cap_state(0) + ' ' + x.src_len(0));
-let r = run(200); sound(r, 'the capture plays');
-// the playhead moves; FREEZE stops it
-{ const h0 = x.head(0); run(40); ok(x.head(0) !== h0, 'the playhead moves'); }
-x.set_param(0, P.P_STRETCH, 127); run(10); { const h0 = x.head(0); r = run(60); ok(x.head(0) === h0, 'STRETCH at the top freezes'); sound(r, 'frozen still sounds'); }
-x.set_param(0, P.P_STRETCH, 50);
-// a full buffer ends a capture on its own
-x.set_param(0, P.P_RATE, 0); press(B.REC); run(700); ok(x.cap_state(0) === 2, 'a full buffer ends the capture');
-x.set_param(0, P.P_RATE, 1); press(B.REC); for (let i = 0; i < 25; i++) ctl(); press(B.REC);
-// HANDS: every stretch and pitch, grain and jitter
-for (const [st, pi, gr, ji] of [[0, 0, 0, 0], [25, 48, 127, 127], [100, 12, 60, 30], [127, 36, 10, 0], [75, 24, 127, 127]]) {
-  x.set_param(0, P.P_STRETCH, st); x.set_param(0, P.P_PITCH, pi); x.set_param(0, P.P_GRAIN, gr); x.set_param(0, P.P_JITTER, ji);
-  sound(run(120), `HANDS stretch ${st} pitch ${pi} grain ${gr}`);
-}
-x.set_param(0, P.P_REV, 1); sound(run(100), 'HANDS reversed'); x.set_param(0, P.P_REV, 0);
-x.set_param(0, P.P_POS, 100); x.set_param(0, P.P_SIZE, 3); sound(run(100), 'a tiny window late in the capture');
-x.set_param(0, P.P_POS, 0); x.set_param(0, P.P_SIZE, 127); x.set_param(0, P.P_STRETCH, 50); x.set_param(0, P.P_PITCH, 24);
+// 1. the first take: track 1 is armed; REC starts it, REC ends it and the loop plays
+x.set_param(P.IMON, 0);
+ok(x.get_param(TRK(0, S.ARM)) === 1, 'track 1 armed at the start');
+paintCheck('tape, empty');
+press(B.REC);
+ok(x.transport() === 2 && x.recording() === 1, 'REC on an empty tape starts the first take');
+wait(50);
+press(B.REC);
+ok(x.transport() === 1 && x.loop() > 10000 && x.recording() === 0, 'REC again: the loop is set and plays: ' + x.loop());
+const loop1 = x.loop();
+gen = silence;
+sound(run(200), 'the first take plays back');
+paintCheck('tape, playing');
 
-// 2. overdub: hold REC
-ctl(0, 1 << B.REC); for (let i = 0; i < 30; i++) ctl(0, 1 << B.REC);
-ok(x.cap_state(0) === 3, 'holding REC overdubs: ' + x.cap_state(0));
-ctl(0, 0); ok(x.cap_state(0) === 2, 'letting go ends the overdub');
-
-// 3. a robot: hold REC and turn a knob; it loops around the knob
-{ const base = x.get_param(0, P.P_STRETCH);
-  ctl(0, 1 << B.REC);
-  for (let i = 0; i < 20; i++) { const e = [0, 0, i < 10 ? 2 : -2, 0, 0, 0, 0]; ctl(0, 1 << B.REC, e); }
-  ctl(0, 0);
-  let slot = -1; for (let k = 0; k < 4; k++) if (x.robot_param(0, k) === P.P_STRETCH) slot = k;
-  ok(slot >= 0, 'REC + knob records a robot');
-  ok(x.get_param(0, P.P_STRETCH) === base, 'the knob is back where it was: ' + x.get_param(0, P.P_STRETCH));
-  ok(x.cap_state(0) === 2, 'turning a knob ended no capture and started no overdub');
-  const seen = new Set(); for (let i = 0; i < 40; i++) { ctl(); seen.add(x.robot_off(0, slot).toFixed(3)); }
-  ok(seen.size > 5, 'the robot moves: ' + seen.size);
-  paintCheck('robot');
-  // REC + PLAY clears the capture and the robots
-  ctl(0, 1 << B.REC); ctl(0, 1 << B.REC | 1 << B.PLAY); ctl(0, 0);
-  ok(x.cap_state(0) === 0 && x.src_len(0) === 0, 'REC + PLAY clears the capture');
-  ok([0, 1, 2, 3].every(k => x.robot_param(0, k) === 255), 'and its robots');
-  ok(!x.playing(), 'REC + PLAY starts nothing');
-  press(B.REC); for (let i = 0; i < 30; i++) ctl(); press(B.REC);
-}
-
-// 4. B captures what A plays (BOUNCE IN, the default), and PING passes it back
-x.set_param(0, P.P_MUTE, 0); x.set_param(1, P.P_MUTE, 0);
-track(1); ok(x.get_param(1, P.P_BOUNCE) === 1, 'B bounces A by default');
-press(B.REC); for (let i = 0; i < 25; i++) ctl(); press(B.REC);
-ok(x.cap_state(1) === 2 && x.src_len(1) > 3000, 'B caught A');
-solo(1); sound(run(150), 'B plays what it caught'); x.set_param(0, P.P_MUTE, 0);
-x.set_cap_split(1);   // SPLIT: a buffer each, as PING needs
-x.set_param(0, P.P_BOUNCE, 2); x.set_param(1, P.P_BOUNCE, 2);
-press(B.REC); for (let i = 0; i < 20; i++) ctl(); press(B.REC);
-ok(x.cap_state(0) === 1, 'PING: when B ends, A takes it back: ' + x.cap_state(0));
-run(600); ok(x.cap_state(0) === 2, 'A ends as long');
-x.set_param(0, P.P_BOUNCE, 0); x.set_param(1, P.P_BOUNCE, 1);
-paintCheck('ping');
-
-// 4b. LONG (the default): one capture, four buffers long, that the tracks share; a track
-// on THRU keeps a buffer of its own
-x.set_cap_split(0);
-{ track(0); const srcs = [0, 1, 2, 3].map(t => x.get_param(t, P.P_SRC)), bns = [0, 1, 2, 3].map(t => x.get_param(t, P.P_BOUNCE));
-  for (let t = 0; t < 4; t++) { x.set_param(t, P.P_SRC, 0); x.set_param(t, P.P_BOUNCE, 0); }
-  ok(x.src_cap(0) >= 9856, 'LONG: the capture can be four buffers long: ' + x.src_cap(0));
-  press(B.REC); for (let i = 0; i < 100; i++) ctl(); press(B.REC); run(5);
-  ok(x.cap_state(0) === 2 && x.src_len(0) > 14400, 'LONG: a capture longer than one buffer: ' + x.src_len(0));
-  solo(2); sound(run(120), 'C plays the long capture');
-  ok(x.cap_state(2) === 2 && x.src_len(2) === x.src_len(0), 'LONG: the other tracks have it too: ' + [x.cap_state(2), x.src_len(2), x.src_len(0)]);
-  for (let t = 0; t < 4; t++) x.set_param(t, P.P_MUTE, 0);
-  x.set_param(3, P.P_SRC, 2); run(2);
-  ok(x.src_cap(0) === 3 * 14400, 'a track on THRU takes one buffer: ' + x.src_cap(0));
-  clean(run(100), 'LONG with a THRU track');
-  x.set_param(3, P.P_SRC, 0);
-  x.set_cap_split(1); run(2); ok(x.src_cap(0) === 14400, 'SPLIT: one buffer each');
-  clean(run(60), 'SPLIT after LONG');
-  x.set_cap_split(0); for (let t = 0; t < 4; t++) { x.set_param(t, P.P_SRC, srcs[t]); x.set_param(t, P.P_BOUNCE, bns[t]); } }
-
-// 5. two hands: OCT- mirrors the pair, OCT+ opposes it; neither moves the octave
-track(0); home();
-{ const a0 = x.get_param(0, P.P_POS), b0 = x.get_param(1, P.P_POS);
-  ctl(0, 1 << B.OCTD); enc(4, 5, 1 << B.OCTD); ctl(0, 0);
-  ok(x.get_param(0, P.P_POS) > a0 && x.get_param(1, P.P_POS) > b0, 'OCT- + knob moves both the same way');
-  const a1 = x.get_param(0, P.P_POS), b1 = x.get_param(1, P.P_POS);
-  ctl(0, 1 << B.OCTU); enc(4, 3, 1 << B.OCTU); ctl(0, 0);
-  ok(x.get_param(0, P.P_POS) > a1 && x.get_param(1, P.P_POS) < b1, 'OCT+ + knob moves them apart');
-  const l = new Uint8Array(mem(), x.leds(), 41); ok(l[B.OCTD] !== 2 && l[B.OCTU] !== 2, 'the octave stayed put');
-  x.set_param(0, P.P_POS, 0); x.set_param(1, P.P_POS, 0); }
-
-// 6. SHARDS: the page is the mode; every trigger, every shape
-press(B.FX); ok(x.get_param(0, P.P_ENGINE) === ENG.SHARDS, 'FX is SHARDS');
-solo(0);
-for (const trig of [0, 1, 2, 3]) for (const shape of [0, 50, 90, 127]) {
-  x.set_param(0, P.P_TRIG, trig); x.set_param(0, P.P_SHAPE, shape); x.set_param(0, P.P_DENS, 100); x.set_param(0, P.P_SPREAD, 60); x.set_param(0, P.P_SREV, 60);
-  if (trig === 3 && !x.playing()) press(B.PLAY);
-  if (trig === 2) for (let i = 0; i < 6; i++) { ctl(1 << (i * 3)); ctl(0); }
-  r = run(120); if (trig === 0) sound(r, `SHARDS free shape ${shape}`); else clean(r, `SHARDS trig ${trig} shape ${shape}`);
-}
-if (x.playing()) press(B.PLAY);
-x.set_param(0, P.P_TRIG, 0);
-paintCheck('shards');
-
-// 7. SPECTRA: two vocoders; a third track falls back to HANDS
-press(B.SCL); ok(x.get_param(0, P.P_ENGINE) === ENG.SPECTRA, 'SCL is SPECTRA');
-run(10); ok(x.spectra_on(0) === 1, 'A has a vocoder');
-sound(run(150), 'SPECTRA plays');
-for (const [p, v] of [['P_BLUR', 127], ['P_SHIFT', 0], ['P_SHIFT', 48], ['P_GATE', 127], ['P_STILT', 0], ['P_HOLD', 127], ['P_SPHASE', 127], ['P_STRETCH', 127], ['P_STRETCH', 0]])
-  { x.set_param(0, P[p], v); clean(run(80), `SPECTRA ${p} ${v}`); }
-for (const p of ['P_BLUR', 'P_GATE', 'P_HOLD', 'P_SPHASE']) x.set_param(0, P[p], 0);
-x.set_param(0, P.P_SHIFT, 24); x.set_param(0, P.P_STILT, 64); x.set_param(0, P.P_STRETCH, 50);
-track(1); press(B.SCL); x.set_param(1, P.P_CROSS, 100); x.set_param(1, P.P_MUTE, 0); run(10);
-ok(x.spectra_on(1) === 1, 'B has the other vocoder');
-solo(1); sound(run(150), 'B crosses A'); x.set_param(0, P.P_MUTE, 0);
-x.set_param(2, P.P_SRC, SRC.CAPTURE); track(2); press(B.REC); for (let i = 0; i < 20; i++) ctl(); press(B.REC);
-press(B.SCL); run(10); ok(x.spectra_on(2) === 0, 'a third SPECTRA has no vocoder');
-paintCheck('spectra, none free');
-solo(2); sound(run(100), 'and plays as HANDS'); x.set_param(2, P.P_ENGINE, ENG.HANDS);
-for (let t = 0; t < 4; t++) x.set_param(t, P.P_MUTE, 0);
-
-// 8. KEEP on the reel; D plays it; the reel clears from SETTINGS
-track(0); home(); x.set_param(0, P.P_ENGINE, ENG.HANDS);
-ok(x.reel_count() === 0 && x.reel_free() === 100, 'the reel starts empty');
-ctl(0, 1 << B.SAVE); ctl(0, 1 << B.SAVE | 1 << B.REC); ctl(0, 1 << B.SAVE); ctl(0, 0);
-ok(x.reel_count() === 1 && x.reel_free() < 100, 'SAVE + REC keeps the capture: ' + x.reel_count() + ' ' + x.reel_free());
-ok(x.src_len(0) > 0, 'keeping leaves the capture');
-track(3); ok(x.get_param(3, P.P_SRC) === SRC.REEL, 'D plays the reel by default');
-solo(3); r = run(150); sound(r, 'D plays the kept splice'); ok(x.src_len(3) > 0, 'the reel has length');
-x.set_param(3, P.P_SPLICE, 1); sound(run(80), 'D plays splice 1');
-paintCheck('reel on HANDS');
-press(B.EDIT); paintCheck('source, reel');
-for (let i = 0; i < 6; i++) { track(0); home(); ctl(0, 1 << B.SAVE); ctl(0, 1 << B.SAVE | 1 << B.REC); ctl(0, 1 << B.SAVE); ctl(0, 0); }
-ok(x.reel_count() >= 3 && x.reel_free() < 20, 'the reel fills: ' + x.reel_count() + ' ' + x.reel_free());
-press(B.GLO); press(B.GLO); press(B.GLO); enc(0, 3);   // SETTINGS, PANEL
-enc(5, 1); press(B.REC);
-ok(x.reel_count() === 0 && x.reel_free() === 100, 'REEL turned and REC erases the reel');
-for (let t = 0; t < 4; t++) x.set_param(t, P.P_MUTE, 0);
-
-// 9. THRU and KEYS
-x.set_param(2, P.P_SRC, SRC.THRU); solo(2); sound(run(100), 'C plays the input live');
-for (const keys of [1, 2, 3]) { x.set_param(2, P.P_KEYS, keys); for (let i = 0; i < 4; i++) { x.midi(0x92, 55 + i * 3, 100); run(20); x.midi(0x82, 55 + i * 3, 0); } clean(run(20), 'KEYS ' + keys); }
-x.set_param(2, P.P_KEYS, 1); x.set_param(2, P.P_SRC, SRC.CAPTURE);
-for (let t = 0; t < 4; t++) x.set_param(t, P.P_MUTE, 0);
-
-// 10. SEQ: steps with SLICE, PITCH, LEN, PROB; CAROM
-track(0); press(B.SEQ);
-for (const k of [0, 3, 6, 9, 12]) { ctl(1 << k); ctl(0); }
-enc(6, -20); enc(2, 5); enc(3, 7); enc(4, 3); enc(5, -20);   // step 1: SLICE, PITCH, LEN, PROB
-press(B.PLAY); sound(run(400), 'steps play slices');
-paintCheck('seq');
-enc(0, 2); enc(3, 1); paintCheck('seq, view 3'); r = run(200); clean(r, 'CAROM');
-enc(3, -1); enc(0, -5);
+// 2. PLAY stops (back to the start) and plays
 press(B.PLAY);
+ok(x.transport() === 0 && x.pos() === 0, 'PLAY stops, at the start');
+quiet(run(50), 'stopped: silence');
+press(B.PLAY);
+ok(x.transport() === 1, 'PLAY plays');
 
-// 11. COLOR, every mode, everything up
-for (let cm = 0; cm < 3; cm++) for (let nt = 0; nt < 3; nt++) {
-  for (let t = 0; t < 4; t++) for (const [p, v] of [['P_DRIVE', 127], ['P_COMP', 127], ['P_CRUSH', 100], ['P_CMODE', cm], ['P_NOISE', 127], ['P_NTYPE', nt], ['P_TILT', 127], ['P_XOVER', (cm + nt) % 3]]) x.set_param(t, P[p], v);
-  clean(run(60), `color ${cm}/${nt}`);
+// 3. a punch on track 2 (key 2 arms it), DUB
+key(TK[1]);
+ok(x.get_param(TRK(1, S.ARM)) === 1, 'key 2 arms track 2');
+key(TK[0]);
+ok(x.get_param(TRK(0, S.ARM)) === 0, 'key 1 disarms track 1');
+gen = music;
+press(B.REC); ok(x.recording() === 2, 'REC punches in the armed track');
+wait(20);
+press(B.REC); ok(x.recording() === 0, 'REC punches out');
+ok(x.has(1) === 1, 'track 2 holds something');
+gen = silence;
+x.set_param(TRK(0, S.MUTE), 1);
+sound(run(200), 'track 2 plays alone');
+x.set_param(TRK(0, S.MUTE), 0);
+
+// 4. the tape gives back what went on it: a sine, REPLACE, at each speed
+function fidelity(spd) {
+  press(B.HOME); press(B.PLAY, 1 << B.HOME);   // HOME + PLAY: erase
+  ok(x.loop() === 0 && has().every(h => !h), 'HOME + PLAY erases the tape');
+  x.set_param(P.TAPESPD, spd); x.set_param(P.IDRIVE, 0); x.set_param(P.IREC, 1);
+  for (let t = 0; t < 4; t++) x.set_param(TRK(t, S.ARM), t === 0 ? 1 : 0);
+  let ph = 0; gen = () => { for (let i = 0; i < 128; i++) { inbuf[2 * i] = inbuf[2 * i + 1] = 0.3 * Math.sin(ph); ph += 2 * Math.PI * 300 / 44100; } };
+  x.event(EV.REC, 0, 0); run(300); x.event(EV.REC, 0, 0);
+  gen = silence; run(10);
+  const out = []; for (let b = 0; b < 120; b++) { x.render(0); const o = new Float32Array(mem(), x.output_buffer(), 256); for (let i = 0; i < 128; i++) out.push(o[2 * i]); }
+  let s = 0, c = 0; const N = 12000, w = 2 * Math.PI * 300 / 44100;
+  for (let i = 0; i < N; i++) { s += out[i] * Math.sin(w * i); c += out[i] * Math.cos(w * i); }
+  const A = 2 * s / N, Bc = 2 * c / N; let res = 0, sig = 0;
+  for (let i = 0; i < N; i++) { const m = A * Math.sin(w * i) + Bc * Math.cos(w * i); res += (out[i] - m) ** 2; sig += m * m; }
+  return {amp: Math.hypot(A, Bc), snr: 10 * Math.log10(sig / res), loop: x.loop()};
 }
-for (let t = 0; t < 4; t++) for (const p of ['P_DRIVE', 'P_COMP', 'P_CRUSH', 'P_NOISE']) x.set_param(t, P[p], 0);
+const fid = [0, 1, 2].map(fidelity);
+fid.forEach((f, s) => ok(f.amp > 0.27 && f.amp < 0.33 && f.snr > 30, 'tape speed ' + s + ' gives the sine back: ' + JSON.stringify(f)));
+ok(fid[0].loop > fid[1].loop && fid[1].loop > fid[2].loop, 'faster tape: more samples for the same take');
+x.set_param(P.IREC, 0); x.set_param(P.TAPESPD, 1);
 
-// 12. modulators: every type in every slot, routed to a putty knob, level and a global
-for (let ty = 0; ty < 4; ty++) {
-  for (let t = 0; t < 4; t++) for (let m = 0; m < 4; m++) x.set_param(t, P.P_MOD0 + m * 10, ty);
-  x.set_route(0, 0, 0, P.P_POS, 100, 0); x.set_route(0, 1, 1, P.P_LEVEL, -60, 1); x.set_route(0, 2, 2, 128 + 5, 80, 1);
-  ctl(1); r = run(120); ctl(0); r = run(60);
-  const vals = []; for (let m = 0; m < 4; m++) vals.push(x.mod_value(0, m));
-  ok(!r.nan && vals.every(v => v >= 0 && v <= 1), 'mod type ' + ty + ' ' + vals.map(v => v.toFixed(2)));
-}
-for (let m = 0; m < 4; m++) x.set_param(0, P.P_MOD0 + m * 10, 0);
-x.set_param(0, P.P_MOD0 + 1, 120);
-{ const seen = new Set(); for (let i = 0; i < 60; i++) { run(4); seen.add(x.mod_value(0, 0).toFixed(2)); } ok(seen.size > 10, 'WAVE moves: ' + seen.size); }
-for (let t = 0; t < 4; t++) for (let r2 = 0; r2 < 16; r2++) x.set_route(t, r2, 0, 255, 0, 0);
+// 5. a set loop length closes the first take by itself; the LOOP knob trims it after
+press(B.HOME); press(B.PLAY, 1 << B.HOME);
+x.set_param(P.LOOP, 20);   // 1.0 s
+gen = music; press(B.REC); wait(80);
+ok(x.transport() === 1 && Math.abs(x.loop() - 16000) < 300, 'LOOP 1.0 s closes the take at 1 s: ' + x.loop());
+x.set_param(P.LOOP, 0);
+press(B.HOME);
+const lb = x.loop(); enc(4, -4); ok(x.loop() < lb, 'the LOOP knob shortens the loop: ' + lb + ' > ' + x.loop());
+enc(4, 2); ok(x.loop() > lb - 4 * 800, 'and lengthens it');
+const capOk = x.cap() > 40000; ok(capOk, 'tape capacity per track: ' + x.cap());
 
-// 13. every page and every view paints, and every knob turns without trouble
-const pages = [B.HOME, B.EDIT, B.FX, B.SCL, B.ENV, B.LFO, B.GLO, B.ARP, B.SEQ, B.SAVE];
-for (const t of [0, 1, 2, 3]) {
-  track(t);
-  for (const pg of pages) {
-    press(pg);
-    for (let v = 0; v < 14; v++) {
-      for (let k = 2; k < 6; k++) { enc(k, 1); enc(k, -1); }
-      paintCheck(`track ${t} page ${pg} view ${v}`);
-      enc(0, 1);
-    }
-    enc(0, -20);
-  }
-  for (let k = 0; k < 4; k++) x.set_param(t, P.P_MUTE, 0);
-}
-press(B.EDIT); for (let i = 0; i < 3; i++) { enc(6, 1); paintCheck('source ' + i); } enc(6, -5);
-press(B.LFO); for (let i = 0; i < 4; i++) { enc(6, 1); paintCheck('mod type ' + i); }
+// 6. clearing: HOME + key
+x.set_param(TRK(1, S.ARM), 1); x.set_param(TRK(0, S.ARM), 0);
+press(B.REC); wait(10); press(B.REC);
+ok(x.has(1) === 1, 'track 2 recorded');
+key(TK[1], 1 << B.HOME); ctl(); ok(x.has(1) === 0 && x.has(0) === 1, 'HOME + key 2 clears track 2 only');
 
-// 14. the matrix: after the four modulators; it lists every route on every track, then NEW
-{ const NP = x.np(), ROUTES = 32 + 4 * NP + x.ng() + 4;
-  const routes = () => { const b = new Uint8Array(mem(), x.project() + ROUTES, 4 * 16 * 4), out = [];
-    for (let t = 0; t < 4; t++) for (let r2 = 0; r2 < 16; r2++) { const o = (t * 16 + r2) * 4; if (b[o + 1] !== 255) out.push({t, src: b[o], param: b[o + 1], depth: (b[o + 2] << 24) >> 24, flags: b[o + 3]}); }
-    return out; };
-  for (let t = 0; t < 4; t++) for (let r2 = 0; r2 < 16; r2++) x.set_route(t, r2, 0, 255, 0, 0);
-  track(0); x.set_param(0, P.P_ENGINE, ENG.HANDS);
-  home(); for (let i = 0; i < 5; i++) press(B.LFO); paintCheck('matrix, empty');
-  enc(6, -40);                                  // PRESETS: the NEW row
-  enc(2, 1);                                    // a knob on NEW makes a route
-  let rs = routes();
-  ok(rs.length === 1 && rs[0].t === 0 && rs[0].param === P.P_STRETCH && rs[0].src === 0, 'a knob on NEW makes A WAV1 > A STRETCH: ' + JSON.stringify(rs));
-  enc(2, 5);
-  rs = routes(); ok(rs[0].src === (16 | 1 << 2 | 1), 'SOURCE reaches another track\'s modulator: ' + rs[0].src);
-  enc(3, 1);                                    // DEVICE: A PUTTY -> A COLOR
-  rs = routes(); ok(rs[0].t === 0 && rs[0].param === P.P_DRIVE, 'DEVICE moves to the next device, its first knob: ' + rs[0].param);
-  enc(3, 3);                                    // COLOR, MIX, MODS -> B SOURCE
-  rs = routes(); ok(rs.length === 1 && rs[0].t === 1 && rs[0].src === 1, 'DEVICE onto another track moves the route there: ' + JSON.stringify(rs[0]));
-  enc(3, 30);
-  rs = routes(); ok(rs[0].param >= 128, 'DEVICE reaches the globals: ' + rs[0].param);
-  enc(5, 10);
-  rs = routes(); ok(rs[0].depth === 52, 'AMOUNT: ' + rs[0].depth);
-  press(B.REC); rs = routes(); ok(rs[0].flags === 1, 'REC: bipolar');
-  paintCheck('matrix, one route');
-  clean(run(40), 'cross-track and global routes run');
-  enc(4, -60);
-  ok(routes().length === 0, 'PARAM turned past the first removes the route');
-  // LFO + knob on MIX: A's modulator onto C's level
-  press(B.EDIT); press(B.EDIT); press(B.EDIT); press(B.EDIT); enc(0, -9);
-  ctl(0, 1 << B.LFO); enc(4, 4, 1 << B.LFO); ctl(0, 0);
-  rs = routes(); ok(rs.length === 1 && rs[0].t === 2 && rs[0].param === P.P_LEVEL, 'LFO + knob maps across tracks: ' + JSON.stringify(rs));
-  for (let t = 0; t < 4; t++) for (let r2 = 0; r2 < 16; r2++) x.set_route(t, r2, 0, 255, 0, 0);
-}
+// 7. varispeed, pitch, the preamps
+gen = silence;
+x.set_param(P.SPEED, 127); run(4); const r1 = x.rate(); x.set_param(P.SPEED, 0); run(4); const r0 = x.rate();
+ok(r1 > 1.9 * 16000 * 0.97 && r0 < 0.51 * 16000, 'SPEED: half to double the tape rate: ' + r0 + ' .. ' + r1);
+x.set_param(P.SPEED, 64);
+for (const p of [0, 6, 18, 24]) { x.set_param(P.PITCH, p); sound(run(100), 'pitch ' + (p - 12) + ' st'); }
+x.set_param(P.PITCH, 12); clean(run(50), 'pitch back to 0');
+x.set_param(TRK(0, S.TRIM), 127); x.set_param(TRK(0, S.LEVEL), 127); x.set_param(P.TLEVEL, 127);
+const hot = run(100); clean(hot, 'a hot strip stays in range');
+ok(x.sat(0) > 0, 'the strip\'s preamp lamp lights when pushed');
+x.set_param(TRK(0, S.TRIM), 80); x.set_param(TRK(0, S.LEVEL), 100); x.set_param(P.TLEVEL, 100);
+x.set_param(P.ITRIM, 127); x.set_param(P.IDRIVE, 127); gen = music; x.set_param(P.IMON, 1);
+clean(run(100), 'the input preamp pushed, monitored'); ok(x.sat(4) > 0, 'the input lamp lights');
+x.set_param(P.ITRIM, 80); x.set_param(P.IDRIVE, 30); x.set_param(P.IMON, 2);
 
-// 15. MIDI: learn, the fixed CC map, program change, clock and transport
-home();
+// 8. USB as the source
+x.set_param(P.ISRC, 1); gen = silence;
+for (let i = 0; i < 256; i++) usbbuf[i] = 0.3 * Math.sin(i * 0.1);
+x.set_param(TRK(0, S.ARM), 1);
+let u = {peak: 0}; for (let b = 0; b < 50; b++) { x.render(2); } ok(x.vu(4) > 0.05, 'USB reaches the input: ' + x.vu(4));
+x.set_param(P.ISRC, 2); x.set_param(TRK(0, S.ARM), 0);
+
+// 9. bounces: 1 + 2 to a free track, through RESON; the errors
+press(B.HOME); press(B.PLAY, 1 << B.HOME);
+gen = music;
+x.set_param(TRK(0, S.ARM), 1); press(B.REC); wait(40); press(B.REC);
+x.set_param(TRK(0, S.ARM), 0); x.set_param(TRK(1, S.ARM), 1); press(B.REC); wait(40); press(B.REC);
+x.set_param(TRK(1, S.ARM), 0);
+ok(has().join() === '1,1,0,0', 'two tracks for the bounce: ' + has());
+press(B.SEQ); paintCheck('bounce');
+key(TK[2]);   // drop 3 from the sources (it is empty anyway)
+ok(x.get_param(P.BSRC) === 3, 'keys pick the sources: ' + x.get_param(P.BSRC));
+x.set_param(P.BRESON, 1); x.set_param(P.BCLEAR, 0);
+press(B.REC);
+ok((x.bounce() & 255) === 1, 'REC on BOUNCE prints: ' + x.bounce().toString(16));
+paintCheck('bounce, printing');
+gen = silence;
+for (let i = 0; i < 80 && (x.bounce() & 255); i++) ctl();
+ok((x.bounce() & 255) === 0 && x.has(2) === 1 && x.has(0) && x.has(1), 'the bounce lands on track 3, sources kept: ' + has());
+for (let t = 0; t < 2; t++) x.set_param(TRK(t, S.MUTE), 1);
+sound(run(200), 'the bounced track plays');
+for (let t = 0; t < 2; t++) x.set_param(TRK(t, S.MUTE), 0);
+x.set_param(P.BSRC, 7); x.set_param(P.BCLEAR, 1); press(B.REC);
+for (let i = 0; i < 80 && (x.bounce() & 255); i++) ctl();
+ok(has().join() === '0,0,0,1', 'bounce 1+2+3 to 4, sources cleared: ' + has());
+x.set_param(P.BSRC, 8); x.set_param(P.BDST, 4); press(B.REC);
+ok(((x.bounce() >> 8) & 255) === 2 || (x.bounce() & 255) === 0, 'a bounce onto its own source is refused');
+x.set_param(P.BDST, 0); x.set_param(P.BCLEAR, 0);
+
+// 10. RESON: each profile on a track and on the input; pings from the keys
+press(B.ENV); paintCheck('reson, off');
+enc(1, 1); ok(x.get_param(P.RTGT) === 1, 'ALGORITHM puts RESON on track 1');
+x.set_param(P.RTGT, 4);
+gen = music;
+for (let p = 0; p < 6; p++) { enc(2, p === 0 ? -9 : 1); sound(run(150), 'RESON profile ' + x.get_param(P.RPROF) + ' on track 4'); }
+const pings = x.reson_pings(); key(1); run(20); ok(x.reson_pings() > pings, 'a key pings RESON');
+x.set_param(P.RTGT, 5); x.set_param(P.IMON, 1); sound(run(150), 'RESON on the input');
+x.set_param(P.RTGT, 0); x.set_param(P.IMON, 2);
+paintCheck('reson');
+
+// 11. robots: an LFO on SPEED moves the tape's rate; a gesture recorded with HOME + turn
+press(B.LFO); paintCheck('robots');
+x.set_param(ROB(0, R.TARGET), 0); x.set_param(ROB(0, R.RATE), 100); x.set_param(ROB(0, R.DEPTH), 127);
+const rates = new Set(); for (let i = 0; i < 40; i++) { run(10); rates.add(Math.round(x.rate())); }
+ok(rates.size > 10, 'robot 1 sweeps SPEED: ' + rates.size + ' rates');
+x.set_param(ROB(0, R.DEPTH), 0);
+press(B.HOME);
+ctl(0, 1 << B.HOME);
+for (let i = 0; i < 30; i++) enc(2, i < 15 ? 2 : -2, 1 << B.HOME);
+ctl(0, 0);
+ok(x.get_param(ROB(0, R.SHAPE)) === 6 && x.get_param(ROB(0, R.DEPTH)) === 127 && x.get_param(P.SPEED) === 64, 'HOME + turning SPEED records a gesture on a robot, and SPEED goes back');
+const gs = new Int8Array(mem(), x.gest(0), 48); ok(Math.max(...gs) > 20, 'the gesture holds the movement: ' + Math.max(...gs));
+const rr = new Set(); for (let i = 0; i < 30; i++) { run(10); rr.add(Math.round(x.rate())); } ok(rr.size > 5, 'the gesture plays back');
+x.set_param(ROB(0, R.DEPTH), 0);
+
+// 12. MIDI learn: SAVE + a knob, then a CC; SAVE + REC, then a note
+press(B.EDIT);
 ctl(0, 1 << B.SAVE); enc(2, 1, 1 << B.SAVE); ctl(0, 0);
-x.midi(0xb5, 21, 99); run(1);
-const le = x.learn_entry(0); ok((le & 0xff) === 5 && ((le >> 8) & 0xff) === 21, 'learned ' + le.toString(16));
-const target = le >>> 24, tk = (le >> 16) & 0xff;
-x.midi(0xb5, 21, 0); run(1); const lo = x.get_param(tk, target);
-x.midi(0xb5, 21, 127); run(1); const hi = x.get_param(tk, target);
-ok(hi > lo, `learned CC moves ${target}: ${lo} -> ${hi}`);
-x.midi(0xb1, 70, 10); run(1); ok(x.get_param(1, P.P_BLUR) === 10, 'CC70 ch2 -> B BLUR');
-x.midi(0xb0, 16, 0); run(1); ok(x.get_param(0, P.P_STRETCH) === 0, 'CC16 ch1 -> A STRETCH');
-x.midi(0xbf, 7, 64); run(1); ok(x.get_global(G.G_MAIN) === 64, 'CC7 ch16 -> main');
-x.set_param(0, P.P_STRETCH, 50);
-if (x.playing()) { press(B.PLAY); run(2); }
-ok(!x.playing(), 'stopped');
-x.midi(0xfa, 0, 0); run(1); ok(x.playing(), 'MIDI start plays');
-{ const fpc = 44100 * 60 / (140 * 24); let acc = 0;
-  for (let b = 0; b < 2000; b++) { acc += 128; while (acc >= fpc) { acc -= fpc; x.midi(0xf8, 0, 0); } run(1, false); }
-  ok(Math.abs(x.tempo_now() - 140) < 2, 'clock tempo ' + x.tempo_now().toFixed(1)); }
-x.midi(0xfc, 0, 0); run(1); ok(!x.playing(), 'MIDI stop stops');
-x.midi(0xfb, 0, 0); run(1); ok(x.playing(), 'MIDI continue plays');
-x.set_global(G.G_CLOCK, 1); x.midi(0xfc, 0, 0); run(1); ok(x.playing(), 'INT ignores MIDI stop');
-x.set_global(G.G_CLOCK, 0);
-x.midi(0x92, 60, 100); r = run(40); x.midi(0x82, 60, 0); clean(r, 'midi note');
-x.midi(0xcf, 1, 0); run(2);
-if (x.playing()) press(B.PLAY);
+x.midi(0xb0, 74, 0); run(2); x.midi(0xb0, 74, 20); run(2);
+ok((x.learn_entry(0) & 0xffff) === (74 << 8) && (x.learn_entry(0) >>> 24) === TRK(0, S.LEVEL), 'CC 74 learned to track 1 level: ' + x.learn_entry(0).toString(16));
+x.midi(0xb0, 74, 30); run(2); x.midi(0xb0, 74, 100); run(2);
+ok(x.get_param(TRK(0, S.LEVEL)) === 100, 'the learned CC moves it (after pickup): ' + x.get_param(TRK(0, S.LEVEL)));
+ctl(0, 1 << B.SAVE); ctl(0, 1 << B.SAVE | 1 << B.REC); ctl(0, 0);
+x.midi(0x90, 36, 100); run(2);
+const tr0 = x.transport(), rec0 = x.recording();
+x.set_param(TRK(3, S.ARM), 1);
+x.midi(0x90, 36, 100); run(2);
+ok(x.recording() !== rec0 || x.transport() !== tr0, 'a learned note works REC');
+x.midi(0x90, 36, 100); run(2);
+x.set_param(TRK(3, S.ARM), 0);
 
-// 16. the panel: LEDs, knob CCs with pickup, metronome, the FM-1's own settings
-press(B.SCL);
-{ const l = new Uint8Array(mem(), x.leds(), 41); ok(l[B.SCL] === 2 && l[B.FX] !== 2, 'the open page lights its button'); }
-const dev = () => new Uint8Array(mem(), x.device(), 20);
-dev()[17] = 1; dev()[18] = 0;
-track(0); home(); enc(0, -20);
-x.set_param(0, P.P_STRETCH, 64);
-x.midi(0xb0, 110, 10); run(1); ctl(); ok(x.get_param(0, P.P_STRETCH) === 64, 'knob CC far from the value waits (pickup)');
-x.midi(0xb0, 110, 63); run(1); ctl(); x.midi(0xb0, 110, 90); run(1); ctl();
-ok(Math.abs(x.get_param(0, P.P_STRETCH) - 90) <= 1, 'knob CC picks up and follows: ' + x.get_param(0, P.P_STRETCH));
-x.set_param(0, P.P_STRETCH, 50);
-{ const g0 = x.device_changed();
-  press(B.GLO); press(B.GLO); press(B.GLO); enc(0, 3); enc(4, 1);
-  ok(x.device_changed() !== g0, 'changing a panel setting marks the FM-1 settings to keep');
-  paintCheck('settings panel'); }
-{ for (let t = 0; t < 4; t++) x.set_param(t, P.P_LEVEL, 0);
-  x.set_global(G.G_CLOCK, 1); if (!x.playing()) press(B.PLAY);
-  const r2 = run(400, false); ok(r2.peak > 0.1, 'metronome clicks: ' + r2.peak.toFixed(2));
-  press(B.PLAY); for (let t = 0; t < 4; t++) x.set_param(t, P.P_LEVEL, 100); x.set_global(G.G_CLOCK, 0); enc(4, -1); }
-
-// 17. SOUNDS under SAVE: store a track's sound, change it, load it back; mix stays
-{ if (x.playing()) press(B.PLAY);
-  track(0);
-  x.set_param(0, P.P_BLUR, 33); x.set_param(0, P.P_DENS, 21); x.set_param(0, P.P_LEVEL, 90);
-  press(B.SAVE); press(B.SAVE); enc(6, -20);
-  const g0 = x.device_changed();
-  ctl(0, 1 << B.REC); const req = ctl(0, 0);
-  ok(x.device_changed() !== g0 && req === 10, 'REC on an empty sound slot saves it (req ' + req + ')');
-  paintCheck('sounds');
-  x.set_param(0, P.P_BLUR, 100); x.set_param(0, P.P_DENS, 99); x.set_param(0, P.P_LEVEL, 40);
-  press(B.REC);
-  ok(x.get_param(0, P.P_BLUR) === 33 && x.get_param(0, P.P_DENS) === 21, 'REC on a sound loads it onto the track');
-  ok(x.get_param(0, P.P_LEVEL) === 40, 'loading a sound leaves the mix alone');
-  ctl(0, 1 << B.SAVE); ctl(0, (1 << B.SAVE) | (1 << B.PLAY)); ctl(0, 1 << B.SAVE); ctl(0, 0); run(2);
-  ok(!x.playing(), 'SAVE + PLAY saves without starting playback'); }
-
-// 18. DISSECT: the listener, and the shards it drives
-{ for (let t = 0; t < 4; t++) { x.set_param(t, P.P_SRC, SRC.THRU); x.set_param(t, P.P_INPUT, 0); x.set_param(t, P.P_BOUNCE, 0); x.set_param(t, P.P_ENGINE, ENG.HANDS);
-    x.set_param(t, P.P_TRIG, 0); x.set_param(t, P.P_MUTE, 1); x.set_param(t, P.P_LEVEL, 0);
-    for (let m = 0; m < 4; m++) x.set_param(t, P.P_MOD0 + m * 10, m === 2 ? 0 : m); }
-  x.set_param(0, P.P_MUTE, 0); x.set_param(0, P.P_LEVEL, 100);
-  x.set_global(G.G_ASRC, 0); x.set_global(G.G_ASENS, 80); x.set_global(G.G_AFOCUS, 0); x.set_global(G.G_AHITS, 0);
-  let f2 = 0;
-  const drums = () => { for (let i = 0; i < 128; i++, f2++) { const t = f2 / 44100, tb = t % 0.5, th = (t + 0.25) % 0.5;
-      const v = 0.7 * Math.exp(-tb * 25) * Math.sin(2 * Math.PI * (50 + 80 * Math.exp(-tb * 40)) * tb) + 0.25 * Math.exp(-th * 60) * (Math.random() * 2 - 1) + 0.08 * Math.sin(2 * Math.PI * 220 * t);
-      inbuf[2 * i] = inbuf[2 * i + 1] = v; } };
-  const tone = (f, a = 0.4) => () => { for (let i = 0; i < 128; i++, f2++) { const v = a * Math.sin(2 * Math.PI * f * f2 / 44100); inbuf[2 * i] = inbuf[2 * i + 1] = v; } };
-  track(0); home();
-  run(40, true, drums); const h0 = x.ana_hits(); run(700, true, drums); ok(x.ana_hits() === h0, 'the listener sleeps while nothing uses it');
-  press(B.GLO); press(B.GLO); paintCheck('dissect');
-  run(20, true, drums); const h1 = x.ana_hits(); run(689, true, drums);
-  ok(Math.abs(x.ana_hits() - h1 - 8) <= 1, 'hits: a kick and a hat a beat for 2 s: ' + (x.ana_hits() - h1));
-  run(120, true, tone(220)); ok(Math.abs(x.ana_pitch() - 220) < 2 && x.ana_conf() > 0.5, 'pitch: 220 Hz: ' + x.ana_pitch().toFixed(1) + ' ' + x.ana_conf().toFixed(2));
-  run(120, true, tone(880)); ok(Math.abs(x.ana_pitch() - 880) < 8, 'pitch: 880 Hz (no octave slip): ' + x.ana_pitch().toFixed(1));
-  { const h2 = x.ana_hits(); run(300, true, tone(147)); ok(x.ana_hits() - h2 <= 1, 'a steady tone makes no hits: ' + (x.ana_hits() - h2)); }
-  for (let v = 0; v < 2; v++) { for (let k = 2; k < 6; k++) { enc(k, 1); enc(k, -1); } paintCheck('dissect view ' + v); enc(0, 1); }
-  enc(0, -9);
-  // REC on DISSECT: SHARDS on the hits
-  press(B.REC); ok(x.get_param(0, P.P_ENGINE) === ENG.SHARDS && x.get_param(0, P.P_TRIG) === 1, 'REC on DISSECT: shards on the hits');
-  x.set_param(0, P.P_SRC, SRC.CAPTURE); press(B.REC); for (let i = 0; i < 30; i++) ctl(); press(B.REC);
-  x.set_param(0, P.P_DENS, 80);
-  r = run(700, true, drums); sound(r, 'SHARDS HIT bursts on hits');
-  x.set_param(0, P.P_TRIG, 0);
-  // FOLLOW on the LOW band moves
-  x.set_param(0, P.P_MOD0 + 20, 2); x.set_param(0, P.P_MOD0 + 25, 8);
-  { const seen = new Set(); for (let i = 0; i < 60; i++) { run(4, true, drums); seen.add(x.mod_value(0, 2).toFixed(2)); } ok(seen.size > 5, 'FOLLOW LOW moves with the music: ' + seen.size); }
-  // HITS STEPS: the music clocks the sequencer
-  x.set_global(G.G_AHITS, 2); press(B.PLAY); run(100, true, tone(147));
-  { const s0 = x.step_now(0); run(300, true, tone(147)); const s1 = x.step_now(0); run(345, true, drums); const s2 = x.step_now(0);
-    ok(s1 === s0 && s2 !== s1, 'HITS STEPS: no hits, no steps; hits step it: ' + [s0, s1, s2]); }
-  x.set_global(G.G_AHITS, 1); x.set_param(1, P.P_SEQM, 1); clean(run(300, true, drums), 'HITS BALLS');
-  press(B.PLAY); x.set_global(G.G_AHITS, 0); x.set_param(1, P.P_SEQM, 0);
-  home();
+// 13. every page and view drawn, every knob both ways, nothing breaks
+gen = music;
+for (const b of [B.HOME, B.EDIT, B.FX, B.SEQ, B.ENV, B.LFO, B.SAVE, B.GLO]) {
+  press(b); paintCheck('page ' + b);
+  for (let v = 0; v < 3; v++) {
+    for (let k = 2; k < 6; k++) { enc(k, 5); enc(k, -9); enc(k, 4); }
+    enc(6, 1); enc(6, -1);
+    paintCheck('page ' + b + ' view ' + v);
+    enc(0, 1);
+  }
+  enc(0, -5);
 }
+clean(run(100), 'after every knob');
 
-// 19. projects: this format loads; 1.0's (format 6) comes in with RESON at its defaults;
-// anything else is refused
-{ const p = new Uint8Array(mem(), x.project(), x.project_bytes()), keep = p.slice();
-  x.project_seal(0); ok(x.project_check() === 1, 'a sealed project checks');
-  const dv = new DataView(mem(), x.project(), 16); dv.setUint32(4, 4, true);
-  ok(x.project_check() !== 1, 'a 0.x project (format 4) is refused');
-  p.set(keep);
-  // make a 1.0 project from this one: everything but RESON's globals, which came last
-  const n6 = x.project6_bytes(), at = x.project_reson_at(), gap = x.project_bytes() - n6, old = new Uint8Array(n6);
-  ok(gap === x.ng() - G.G_BTRACK, 'RESON adds its globals only: ' + gap);
-  x.set_global(G.G_TARGET, 3); x.set_param(2, P.P_LEVEL, 77); x.project_seal(0);
-  const cur = p.slice();
-  old.set(cur.subarray(0, at)); old.set(cur.subarray(at + gap), at);
-  const ov = new DataView(old.buffer); ov.setUint32(4, 6, true); ov.setUint32(8, n6, true);
-  // its CRC, as 1.0 sealed it: over everything after the crc field
-  let c = 0xffffffff; for (let i = 16; i < n6; i++) { c ^= old[i]; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1)); }
-  ov.setUint32(12, ~c >>> 0, true);
-  x.set_global(G.G_BMIX, 1); x.set_param(2, P.P_LEVEL, 0);
-  p.fill(0); p.set(old);
-  ok(x.project_upgrade() === 1 && x.project_check() === 1, 'a 1.0 project loads');
-  ok(x.get_param(2, P.P_LEVEL) === 77 && x.get_global(G.G_TARGET) === 3, 'a 1.0 project keeps its settings');
-  ok(x.get_global(G.G_BMIX) === 83 && x.get_global(G.G_BMODE) === 4, 'a 1.0 project gets RESON at its defaults: ' + x.get_global(G.G_BMIX));
-  old[40] ^= 1; p.fill(0); p.set(old);
-  ok(x.project_upgrade() !== 1, 'a damaged 1.0 project is refused');
-  p.set(keep); }
+// 14. a project seals and checks; the device settings too
+x.project_seal(0); ok(x.project_check() === 1, 'a sealed project checks');
+x.device_seal(); ok(x.device_check() === 1, 'the device settings check');
 
-// 19b. RESON: every mode, modulator and trigger on a track that plays; pings; particles
-{ for (let t = 0; t < 4; t++) x.set_param(t, P.P_MUTE, t === 0 ? 0 : 1);
-  x.set_param(0, P.P_SRC, SRC.THRU); x.set_param(0, P.P_INPUT, 0);
-  const dry = run(150);
-  x.set_global(G.G_BTRACK, 1);
-  for (let m = 1; m <= 4; m++) { x.set_global(G.G_BMODE, m); sound(run(150), 'RESON mode ' + m); }
-  for (let v = 0; v < 6; v++) { x.set_global(G.G_BVMOD, v); sound(run(120), 'RESON modulator ' + v); }
-  x.set_global(G.G_BVMOD, 0);
-  const p0 = x.reson_pings(); x.set_global(G.G_BTRIG, 2); x.set_global(G.G_BSENS, 127); run(700); ok(x.reson_pings() > p0, 'RESON pings on the hits: ' + (x.reson_pings() - p0));
-  for (const q of [1, 2, 3, 4]) { x.set_global(G.G_BQUANT, q); clean(run(120), 'RESON quantised ' + q); }
-  x.set_global(G.G_BQUANT, 0);
-  x.set_global(G.G_BDUST, 100); x.set_global(G.G_BDROP, 127); x.set_global(G.G_BMIGR, 90); x.set_global(G.G_BFDBK, 127); x.set_global(G.G_BLIQ, 127);
-  r = run(400); clean(r, 'RESON with everything up'); ok(x.reson_drops() >= 0, 'droplets');
-  let lit = 0; for (let b = 0; b < 8; b++) lit += x.reson_level(b) > 0 ? 1 : 0; ok(lit >= 4, 'RESON bands light: ' + lit);
-  x.set_global(G.G_BMIX, 127); x.set_global(G.G_BMODE, 3); x.set_global(G.G_BTRIG, 0); x.set_global(G.G_BDUST, 0); x.set_global(G.G_BDROP, 0); x.set_global(G.G_BFDBK, 0);
-  run(400, false); const q0 = run(60, false); ok(q0.rms < 1e-3, 'PING with nothing to ping is quiet: ' + q0.rms);
-  // the page: REC pings, the views draw, pads pick a band
-  press(B.ENV); press(B.ENV);
-  const p1 = x.reson_pings(); press(B.REC); run(20); ok(x.reson_pings() > p1, 'REC pings on the RESON page');
-  for (let v = 0; v < 7; v++) { for (let k = 2; k < 6; k++) { enc(k, 1); enc(k, -1); } paintCheck('RESON view ' + v); enc(0, 1); }
-  enc(0, -20); enc(0, 1); for (let k = 0; k < 8; k++) { ctl(1 << k); ctl(); }   // BAND: the pads pick
-  x.set_global(G.G_BTRACK, 0); clean(run(100), 'RESON off');
-  for (let g = G.G_BTRACK; g < x.ng(); g++) x.set_global(g, 0);
-  x.set_global(G.G_BMIX, 83); x.set_global(G.G_BMODE, 4);
-  home(); }
-
-// 20. long run with everything moving: no NaN, no runaway
-for (let t = 0; t < 4; t++) { x.set_param(t, P.P_SRC, SRC.CAPTURE); x.set_param(t, P.P_MUTE, 0); x.set_param(t, P.P_LEVEL, 110); x.set_param(t, P.P_SEND, 100); x.set_param(t, P.P_SOS, 127); }
-x.set_param(0, P.P_ENGINE, ENG.SPECTRA); x.set_param(1, P.P_ENGINE, ENG.SPECTRA); x.set_param(1, P.P_CROSS, 127); x.set_param(2, P.P_ENGINE, ENG.SHARDS); x.set_param(2, P.P_DENS, 127);
-x.set_param(0, P.P_BOUNCE, 2); x.set_param(1, P.P_BOUNCE, 2);
-x.set_global(G.G_DFEED, 127); x.set_global(G.G_RLEVEL, 127);
-track(0); home(); press(B.REC); for (let i = 0; i < 20; i++) ctl(); press(B.REC);
-ctl(0, 1 << B.REC); for (let i = 0; i < 100; i++) ctl(0, 1 << B.REC); ctl(0, 0);
-r = run(3000); ok(!r.nan && r.peak <= 1.0 && r.rms > 1e-3, 'long run ' + JSON.stringify(r));
-console.log(fails ? `${fails} failures` : 'all engine tests pass');
-process.exit(fails ? 1 : 0);
+// 15. long run with everything moving: no NaN, in range
+x.set_param(P.RTGT, 2); x.set_param(P.PITCH, 19); x.set_param(ROB(1, R.TARGET), 1); x.set_param(ROB(1, R.DEPTH), 90);
+x.set_param(TRK(0, S.ARM), 1); press(B.HOME); press(B.REC);
+clean(run(2000), 'two minutes... (46 s) of everything');
+press(B.REC);
+if (fails) { console.log(fails + ' failures'); process.exit(1); }
+console.log('engine test passed');

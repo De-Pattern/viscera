@@ -270,6 +270,9 @@ x.set_param(P.CON, 1); x.set_param(P.CTHR, 0); x.set_param(P.CRATIO, 2); x.set_p
 const comp = run(300);
 ok(comp.rms < open_.rms * 0.8, 'the compressor pulls the level down: ' + open_.rms.toFixed(4) + ' > ' + comp.rms.toFixed(4));
 x.set_param(P.CKEY, 1); clean(run(200), 'keyed by track 1');
+x.set_param(P.CKEY, 5); x.set_param(P.IMON, 0); gen = music; { const ducked = run(300); gen = silence; const free = run(300);
+  ok(ducked.rms < free.rms * 0.85, 'KEY INPUT: the input ducks the tape (not heard): ' + ducked.rms.toFixed(4) + ' < ' + free.rms.toFixed(4)); }
+x.set_param(P.IMON, 2);
 press(B.FX); paintCheck('master, EQ'); for (let v = 0; v < 6; v++) { paintCheck('master view ' + v); enc(0, 1); }
 x.set_param(P.CON, 0); x.set_param(P.CKEY, 0); x.set_param(TRK(0, S.TRIM), 80); x.set_param(TRK(1, S.TRIM), 80);
 

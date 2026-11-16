@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.1 — the compressor keyed by the input
+
+- **KEY INPUT**: the master compressor can listen to the live input (Bluetooth or USB, after its trim and drive) and duck the tape with it, whether the input is monitored or not. KEY is the sidechain: the mix, a track (after its strip, before its fader and mute, so a silent track can still drive it) or now the input.
+
 ## 2.4.0 — MOTION and SLICE (SEL)
 
 - **MOTION** (SEL): the TAPE screen again, its knobs SPEED, PITCH, RESON's MIX and LEVEL, then (SEL again) the selected track's SPEED, PITCH, PAN and LEVEL. Press REC and turn knobs: each one turned is recorded round the loop (64 points a pass) and plays back on every pass after REC again. Up to four knobs move at once; a knob with motion shows an M, and its value moving. ARP + a knob erases that knob's motion; ARP + REC erases all of it. Saved with the project.

@@ -795,7 +795,7 @@ static VSC_HOT void comp_run(float *l, float *r, unsigned n, const float *key)
     vsc_meter.comp_gr = comp_gr > comp_grs ? comp_gr : comp_grs;
     vsc_meter.comp_in = comp_db;
 }
-static float key_buf[VSC_BLOCK];   /* the compressor's key, when it listens to a track */
+static float key_buf[VSC_BLOCK];   /* the compressor's key, when it listens to a track or the input */
 
 /* ------------------------------------------------------------- transport */
 static VSC_HOT_SMALL unsigned armed_mask(void)
@@ -1246,7 +1246,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
         k->dg = pf[P_TRK(t, S_DUB)] * (1.f / 127.f);
         t_semis[t] = semis + pf[P_TRK(t, S_PITCH)] - 12.f;
     }
-    const int keyed = vsc.p[P_CON] && vsc.p[P_CKEY] >= 1 && vsc.p[P_CKEY] <= VSC_TRACKS;
+    const int keyed = vsc.p[P_CON] && vsc.p[P_CKEY] >= 1 && vsc.p[P_CKEY] <= VSC_TRACKS + 1u;   /* (KEY 5: the input) */
     float ibuf[VSC_SUB], bbuf[VSC_SUB];
     float iacc = 0.f, ipk = 0.f, tacc[VSC_TRACKS] = {0}, tpk[VSC_TRACKS] = {0};
     static float idc, bdc;
@@ -1263,6 +1263,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
             ibuf[i] = v;
             float a = absf(v); iacc += a; if (a > ipk) ipk = a;
         }
+        if (keyed && vsc.p[P_CKEY] == VSC_TRACKS + 1u) for (unsigned i = 0; i < n; ++i) key_buf[off + i] = ibuf[i];   /* the input, after its preamp */
         if (rtgt == RT_INPUT && !rs_bounce) {
             uint32_t r0 = vsc_clock_now ? vsc_clock_now() : 0;
             reson(ibuf, ibuf, n, RT_INPUT);
@@ -1391,7 +1392,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
         /* the monitor */
         if (mon) for (unsigned i = 0; i < n; ++i) { main_l[off + i] += ibuf[i] * 0.8f; main_r[off + i] += ibuf[i] * 0.8f; }
     }
-    if (keyed && !tk[vsc.p[P_CKEY] - 1u].r.on) vsc_memset(key_buf, 0, sizeof key_buf);
+    if (keyed && vsc.p[P_CKEY] <= VSC_TRACKS && !tk[vsc.p[P_CKEY] - 1u].r.on) vsc_memset(key_buf, 0, sizeof key_buf);
     if (in_n < in_len) intro(main_l, main_r, VSC_BLOCK);
     eq_run(main_l, main_r, VSC_BLOCK);
     comp_run(main_l, main_r, VSC_BLOCK, keyed ? key_buf : 0);

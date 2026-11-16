@@ -32,7 +32,7 @@ static const struct vsc_pinfo info[VSC_NP] = {
     E("ON", RT_INPUT, RT_OFF), E("MODE", RP_COUNT - 1, RP_DUST), C("MIX", 100), C("DECAY", 100), C("WIDTH", 76), B("SHIFT", 64), C("DUST", 70),
     C("BAND 1", 85), C("BAND 2", 95), C("BAND 3", 90), C("BAND 4", 88), C("BAND 5", 92), C("BAND 6", 86), C("BAND 7", 95), C("BAND 8", 84),
     BAND(30, EQ_CUT), BAND(55, 0), BAND(89, 0), BAND(110, EQ_CUT),
-    {"THRESH", 30, 20, 0}, E("RATIO", 2, 0), E("ATTACK", 5, 4), E("RELEAS", 4, 4), {"MAKEUP", 15, 0, 0}, C("MIX", 127), E("KEY", VSC_TRACKS, 0), E("COMP", 1, 0),
+    {"THRESH", 30, 20, 0}, E("RATIO", 2, 0), E("ATTACK", 5, 4), E("RELEAS", 4, 4), {"MAKEUP", 15, 0, 0}, C("MIX", 127), E("KEY", VSC_TRACKS + 1, 0), E("COMP", 1, 0),
     E("SOURCE", VSC_TRACKS - 1, 0), E("SLICES", 2, 1), E("SNAP", 1, 1), E("TO", 4, 0),
     ROBOT(0), ROBOT(1),
 };
@@ -148,7 +148,7 @@ void vsc_param_label(unsigned p, unsigned v, char out[8])
     case P_CATK: { static const char *const a[6] = {"0.1MS", "0.3MS", "1MS", "3MS", "10MS", "30MS"}; put_str(out, a[v % 6]); return; }
     case P_CREL: { static const char *const r[5] = {"0.1S", "0.3S", "0.6S", "1.2S", "AUTO"}; put_str(out, r[v % 5]); return; }
     case P_CMAKE: out[0] = '+'; put_unit(out + 1, (int)v, "DB"); return;
-    case P_CKEY: if (!v) put_str(out, "MIX"); else { put_str(out, "TRK "); out[4] = (char)('0' + v); out[5] = 0; } return;
+    case P_CKEY: if (!v) put_str(out, "MIX"); else if (v > VSC_TRACKS) put_str(out, "INPUT"); else { put_str(out, "TRK "); out[4] = (char)('0' + v); out[5] = 0; } return;
     case P_CON: put_str(out, v ? "ON" : "OFF"); return;
     case P_SLSRC: put_str(out, "TRK "); out[4] = (char)('1' + (v & 3u)); out[5] = 0; return;
     case P_SLN: put_unit(out, 4 << (v % 3), ""); return;

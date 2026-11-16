@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.5.0 — the LFO matrix
+
+- **Hold LFO and turn a knob** on any page: the robot (1, or the one last shown on ROBOTS) moves that knob, by as much as it's turned, either way; back to zero removes it. The knob stays where it was. PRESETS while holding LFO picks robot 1 or 2. A tap of LFO opens ROBOTS as before (now on release).
+- **LFO MATRIX** (ROBOTS, SELECT past the robots): eight routes shared by the two robots, each drawn with its depth and the robot's swing; FROM, TO, DEPTH, DELETE on the knobs, PRESETS picks the row. These are on top of each robot's own target.
+- Routes can move the tape, input, track, bounce and RESON knobs (not the EQ, the compressor or switches). They're saved with the project; 2.4's projects load, with an empty matrix.
+- Nothing changes in the sound unless a route is set.
+- **For the FM-1 Firmware Hub**: `fmhub.json` and a card image (`docs/card.png`).
+
 ## 2.4.3 — two screens drawn right
 
 - **The master EQ's curve** drew a low cut wrongly near the bottom of the range (a dip that rose again); the sound was right. It's now worked out in the form that stays exact at low frequencies.

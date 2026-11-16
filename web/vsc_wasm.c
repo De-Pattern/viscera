@@ -64,7 +64,9 @@ W_EXPORT(project_seal) void w_project_seal(unsigned slot)
     for (unsigned i = 0; i < 12; ++i) vsc.name[i] = name[i];
     vsc.crc = vsc_crc32(&vsc.name, sizeof vsc - offsetof(struct vsc_project, name));
 }
-W_EXPORT(project_check) int w_project_check(void) { return vsc_project_valid(&vsc); }
+W_EXPORT(project_check) int w_project_check(void) { return vsc_project_valid(&vsc) || vsc_project_upgrade(&vsc); }
+W_EXPORT(param_live) float w_param_live(unsigned p) { return vsc_param_live(p); }
+W_EXPORT(route) struct vsc_route *w_route(void) { return vsc.route; }
 W_EXPORT(stop_all) void w_stop_all(void) { vsc_event(EV_STOP, 0, 0); vsc_event(EV_PANIC, 0, 0); }
 W_EXPORT(slot_info) void w_slot_info(unsigned slot, unsigned used, const char *name)
 {

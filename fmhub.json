@@ -1,0 +1,9 @@
+{
+  "what": "A four-track tape looper in the spirit of a cassette Portastudio. Record from Bluetooth or USB audio, overdub and punch in, set each track's speed, pitch and pan, bounce through a resonant filterbank, record knob motion, slice loops, and route two LFOs to any knob.",
+  "author": "De-Pattern",
+  "kinds": ["other"],
+  "play": "https://de-pattern.github.io/viscera/emulator/",
+  "cheat": "https://de-pattern.github.io/viscera/manual.html",
+  "image": "docs/card.png",
+  "color": "#F2B33D"
+}

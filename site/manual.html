@@ -108,7 +108,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
   </header>
 
   <div class="top">
-    <p class="eyebrow">Manual · Viscera 2.4.2 · 4-Track</p>
+    <p class="eyebrow">Manual · Viscera 2.5.0 · 4-Track</p>
     <h1>Guide</h1>
     <p>Viscera 4-Track turns the M-VAVE FM-1 into an overdubbing tape machine. Four tracks of tape in its memory, a 424-style preamp on the input and every channel, VU meters, and RESON to print a bounce through. This page covers installing it safely, getting sound in, how the sound flows, and what every page and control does.</p>
   </div>
@@ -227,7 +227,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
           <tr><td>FX</td><td>MASTER: the four-band EQ (a view per band), then the compressor.</td></tr>
           <tr><td>SEQ</td><td>BOUNCE.</td></tr>
           <tr><td>ENV</td><td>RESON.</td></tr>
-          <tr><td>LFO</td><td>ROBOTS and MIDI learn.</td></tr>
+          <tr><td>LFO</td><td>ROBOTS, the LFO MATRIX and MIDI learn. Held: turn any knob to route a robot to it.</td></tr>
           <tr><td>SAVE</td><td>PROJECTS. Held: turn a knob, or press REC, PLAY or a track's key, for MIDI learn.</td></tr>
           <tr><td>GLO</td><td>SETTINGS.</td></tr>
           <tr><td>PLAY</td><td>Play / stop (stop goes back to the start). In the first take it ends the take.</td></tr>
@@ -366,6 +366,13 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
         </table></div>
         <h3>Gestures</h3>
         <p>Hold <kbd>HOME</kbd> and turn a knob whose parameter a robot can move (SPEED, PITCH, a level...). Let go of HOME: the movement, up to about 4 s, loops on a robot, and the knob goes back to where it was. ALGORITHM or SELECT shows the other robot.</p>
+        <h3>Routing a robot to any knob</h3>
+        <p>Besides its own target, either robot can move up to eight more knobs, shared between the two.</p>
+        <ul>
+          <li><b>Hold LFO and turn a knob</b>, on any page: robot 1 (or the one last shown on ROBOTS) moves that knob, by as much as you turn it: right for one way, left for the other. Turn it back to zero to remove it. The knob itself stays where it was. Still holding LFO, PRESETS picks robot 1 or 2. A tap of LFO still opens ROBOTS.</li>
+          <li><b>LFO MATRIX</b> (ROBOTS, SELECT past the two robots): the eight routes, each with its robot, the knob, the depth and the robot's swing now. PRESETS picks a row; the knobs are FROM (LFO 1, LFO 2, or off), TO, DEPTH and DELETE. Turning any knob of an empty row starts one.</li>
+        </ul>
+        <p>A route can move the tape's SPEED, PITCH and LEVEL, the input's TRIM and DRIVE, each track's TRIM, PAN, LEVEL, SPEED, PITCH and DUB, the bounce's DRIVE and LEVEL, and RESON's knobs and band levels. Not the master EQ and compressor, whose curves are worked out only when a knob moves, nor switches. Routes are saved with the project; projects saved by 2.4 load with an empty matrix.</p>
       </section>
 
       <section id="midi">

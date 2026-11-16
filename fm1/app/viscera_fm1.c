@@ -170,12 +170,18 @@ CTRL int vsc_fm1_storage_ok(void)
     if (header[0] == 0x53314d46u && header[2] > VSC_SAMPLE_LIMIT) return 0;
     return 1;
 }
+/* this format, or format 10 (2.4's: no LFO matrix), which loads with an empty one */
+static CTRL int head_ok(const uint32_t *head)
+{
+    return head[0] == VSC_MAGIC && ((head[1] == VSC_FORMAT && head[2] == sizeof(struct vsc_project)) ||
+                                    (head[1] == 10u && head[2] == VSC_FORMAT_10_BYTES));
+}
 CTRL int vsc_fm1_slot_info(unsigned slot, char name[12])
 {
     uint32_t head[4];
     if (fm1_flash_read(slot_offset(slot), head, sizeof head)) return 0;
     /* this format only: 0.x projects were made for the old engine */
-    if (head[0] != VSC_MAGIC || head[1] != VSC_FORMAT || head[2] != sizeof(struct vsc_project)) return 0;
+    if (!head_ok(head)) return 0;
     if (fm1_flash_read(slot_offset(slot) + 16u, name, 12)) return 0;
     return 1;
 }
@@ -204,7 +210,7 @@ CTRL int vsc_fm1_load(unsigned slot)
     uint32_t base = slot_offset(slot), head[4];
     if (fm1_flash_read(base, head, sizeof head)) return -3;
     /* (1.0's projects, format 6, load in the emulator only: flash for the FM-1's CPU guards) */
-    if (head[0] != VSC_MAGIC || head[1] != VSC_FORMAT || head[2] != sizeof(struct vsc_project)) return -4;
+    if (!head_ok(head)) return -4;
     uint8_t buf[256];
     uint32_t c = 0xffffffffu, at = offsetof(struct vsc_project, name), end = head[2];
     while (at < end) {
@@ -220,6 +226,7 @@ CTRL int vsc_fm1_load(unsigned slot)
     vsc_event(EV_STOP, 0, 0);
     vsc_event(EV_PANIC, 0, 0);
     if (fm1_flash_read(base, &vsc, end)) return -3;
+    if (head[1] != VSC_FORMAT && !vsc_project_upgrade(&vsc)) { vsc_project_defaults(&vsc); return -4; }
     vsc_learn_release();
     if (vsc_dev.last_slot != slot + 1u) { vsc_dev.last_slot = (uint8_t)(slot + 1u); ++vsc_dev_changed; }   /* START WITH LAST */
     return 0;

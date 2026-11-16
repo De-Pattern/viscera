@@ -291,7 +291,7 @@ static VSC_HOT_SMALL void track_clear(unsigned t)
 /* the parameters in use this block: the knobs, moved by the robots */
 static float pf[VSC_NP];
 static float rob_ph[VSC_ROBOTS], rob_out[VSC_ROBOTS], rob_hold[VSC_ROBOTS][2];
-static uint8_t is_enum[VSC_NP], pmax[VSC_NP];
+static uint8_t is_enum[VSC_NP], pmax[VSC_NP], route_ok[VSC_NP];
 static VSC_HOTDATA const uint8_t rtarget[VSC_RTARGETS] = {
     P_SPEED, P_PITCH, P_TLEVEL, P_IDRIVE,
     P_STRIP + 0 * VSC_TP + S_LEVEL, P_STRIP + 1 * VSC_TP + S_LEVEL, P_STRIP + 2 * VSC_TP + S_LEVEL, P_STRIP + 3 * VSC_TP + S_LEVEL,
@@ -356,7 +356,16 @@ static VSC_HOT_SMALL void robots(void)
         float span = shape == RS_GESTURE ? (float)pmax[tg] : 0.5f * (float)pmax[tg];
         pf[tg] = clampf(pf[tg] + o * span * (float)q[R_DEPTH] * (1.f / 127.f), 0.f, (float)pmax[tg]);
     }
+    /* the LFO matrix: more knobs moved by the same robots */
+    for (unsigned i = 0; i < VSC_ROUTES; ++i) {
+        const struct vsc_route *rt = &vsc.route[i];
+        unsigned p = rt->param;
+        if (!rt->depth || rt->src >= VSC_ROBOTS || p >= VSC_NP || !route_ok[p]) continue;
+        float span = vsc.p[P_ROB(rt->src, R_SHAPE)] == RS_GESTURE ? (float)pmax[p] : 0.5f * (float)pmax[p];
+        pf[p] = clampf(pf[p] + rob_out[rt->src] * span * (float)rt->depth * (1.f / 127.f), 0.f, (float)pmax[p]);
+    }
 }
+float vsc_param_live(unsigned p) { return p < VSC_NP ? pf[p] : 0.f; }
 VSC_INL float trim_gain(float v) { return v < 0.5f ? 0.f : exp2a((v - 80.f) * (0.3f / 6.0206f)); }   /* 0.3 dB a step, 80: 0 dB */
 VSC_INL float level_gain(float v) { float g = v * (1.f / 100.f); return g * g; }
 /* The preamp: clean to its knee (about 0 VU), then rounding off, a little lopsided (the
@@ -1168,7 +1177,7 @@ __attribute__((minsize)) void vsc_init(void)
     ulaw_build();
     vsc_device_defaults();
     vsc_learn_release();
-    for (unsigned p = 0; p < VSC_NP; ++p) { is_enum[p] = (vsc_param_info(p)->flags & VSC_PF_ENUM) != 0; pmax[p] = vsc_param_info(p)->max; }
+    for (unsigned p = 0; p < VSC_NP; ++p) { is_enum[p] = (vsc_param_info(p)->flags & VSC_PF_ENUM) != 0; pmax[p] = vsc_param_info(p)->max; route_ok[p] = (uint8_t)vsc_modulatable(p); }
     vsc_memset(tk, 0, sizeof tk);
     for (unsigned t = 0; t < VSC_TRACKS; ++t) track_clear(t);
     rs.where = 255;

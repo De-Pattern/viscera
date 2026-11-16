@@ -26,6 +26,7 @@
 #define VSC_GEST          48       /* points of a recorded gesture */
 #define VSC_LEARN         16
 #define VSC_MOTIONS       4        /* motion lanes */
+#define VSC_ROUTES        8        /* the LFO matrix: robot-to-knob routes, past each robot's own target */
 #define VSC_MOTION_PTS    64       /* points round the loop */
 
 #define VSC_SHIFT_RING    1024     /* each track's pitch shifter's memory (23 ms) */

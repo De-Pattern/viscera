@@ -164,12 +164,15 @@ static const char *notice;
 static char notice_buf[32];
 static uint32_t prev_buttons, prev_keys;
 static uint8_t learn_seen, used_mod;
+static unsigned rob_sel, route_sel;     /* the robot LFO+TURN routes; the matrix's row */
+static uint32_t lfo_at; static uint8_t lfo_hint;   /* when LFO went down; its hint shown */
+enum { V_MATRIX = VSC_ROBOTS, V_LEARN = VSC_ROBOTS + 1 };   /* the ROBOTS page's views after the robots */
 static uint8_t mrec, mlatch, mlast[VSC_MOTIONS], m_next;   /* MOTION: recording; lanes being written; their last point */
 static uint8_t slice_open;                                 /* the SLICE page told the engine */
 static uint32_t intro_at, frame_ms;   /* frame_ms: the time a frame is drawn at (one picture, however long its bands take) */
 static uint8_t intro_on, intro_fresh;   /* the start-up animation is on screen; its start time not yet taken from the clock */   /* a held modifier was used */
 /* a knob slot: a parameter, or one of the page's own controls */
-enum { K_NONE = 200, K_LSTART, K_LEND, K_LSLIDE, K_LFULL, K_LOOP, K_BTAUDIO, K_BTMIDI, K_LIGHT, K_KNOBCC, K_BLE, K_CLEARMAP, K_BAND, K_START };
+enum { K_NONE = 200, K_LSTART, K_LEND, K_LSLIDE, K_LFULL, K_LOOP, K_BTAUDIO, K_BTMIDI, K_LIGHT, K_KNOBCC, K_BLE, K_CLEARMAP, K_BAND, K_START, K_RSRC, K_RDST, K_RDEPTH, K_RDEL };
 static unsigned slot(unsigned k)
 {
     switch (page) {
@@ -195,7 +198,8 @@ static unsigned slot(unsigned k)
         return s[view & 1][k];
     }
     case PG_ROBOTS:
-        if (view >= VSC_ROBOTS) return k == 3 ? K_CLEARMAP : K_NONE;
+        if (view == V_MATRIX) { static const uint8_t s[4] = {K_RSRC, K_RDST, K_RDEPTH, K_RDEL}; return s[k]; }
+        if (view >= V_LEARN) return k == 3 ? K_CLEARMAP : K_NONE;
         return P_ROB(view, k == 0 ? R_RATE : k == 1 ? R_SHAPE : k == 2 ? R_SKEW : R_DEPTH);
     case PG_SETTINGS: {
         static const uint8_t s[2][4] = {{K_BTAUDIO, K_BTMIDI, K_LIGHT, K_START}, {K_BLE, K_KNOBCC, K_NONE, K_NONE}};
@@ -206,7 +210,7 @@ static unsigned slot(unsigned k)
 }
 static unsigned views(void)
 {
-    return page == PG_MOTION ? 2 : page == PG_MASTER ? 6 : page == PG_TAPE ? 3 : page == PG_MIXER ? 3 : page == PG_BOUNCE || page == PG_RESON || page == PG_SETTINGS ? 2 : page == PG_ROBOTS ? VSC_ROBOTS + 1 : 1;
+    return page == PG_MOTION ? 2 : page == PG_MASTER ? 6 : page == PG_TAPE ? 3 : page == PG_MIXER ? 3 : page == PG_BOUNCE || page == PG_RESON || page == PG_SETTINGS ? 2 : page == PG_ROBOTS ? V_LEARN + 1 : 1;
 }
 static float tape_hz(void) { return vsc_tape_hz(vsc.p[P_TAPESPD] % 3u); }
 /* MOTION: the lane a parameter has (-1 none), and what it plays now */
@@ -241,6 +245,10 @@ static void slot_text(unsigned s, char name[10], char val[10])
     case K_BLE: cpy(name, "BLE"); cpy(val, vsc_host.ble_role ? "CENTRL" : "PERIPH"); break;
     case K_START: cpy(name, "START"); cpy(val, vsc_dev.start_blank ? "BLANK" : "LAST"); break;
     case K_CLEARMAP: cpy(name, "CLEAR"); cpy(val, ">"); break;
+    case K_RSRC: { const struct vsc_route *r = &vsc.route[route_sel]; cpy(name, "FROM"); cpy(val, !r->depth ? "-" : r->src ? "LFO 2" : "LFO 1"); break; }
+    case K_RDST: { const struct vsc_route *r = &vsc.route[route_sel]; cpy(name, "TO"); if (r->depth) vsc_route_name(r->param, val); else cpy(val, "-"); val[7] = 0; break; }
+    case K_RDEPTH: { const struct vsc_route *r = &vsc.route[route_sel]; cpy(name, "DEPTH"); if (r->depth > 0) { cpy(val, "+"); char b[6]; num(b, r->depth); cat(val, b); } else num(val, r->depth); break; }
+    case K_RDEL: cpy(name, "DELETE"); cpy(val, vsc.route[route_sel].depth ? ">" : "-"); break;
     case K_BAND: { char b[8]; cpy(name, "BAND "); b[0] = (char)('1' + rsel); b[1] = 0; cat(name, b); vsc_param_label(P_RG0 + rsel, vsc.p[P_RG0 + rsel], val); break; }
     default: break;
     }
@@ -253,6 +261,8 @@ static float slot_frac(unsigned s)
     if (s == K_BAND) return (float)vsc.p[P_RG0 + rsel] / 127.f;
     if (s == K_LIGHT) return (float)vsc_dev.backlight / 3.f;
     if (s == K_START) return vsc_dev.start_blank ? 0.f : 1.f;
+    if (s == K_RDEPTH) return 0.5f + (float)vsc.route[route_sel].depth * (0.5f / 127.f);
+    if (s == K_RSRC) return vsc.route[route_sel].depth ? (vsc.route[route_sel].src ? 1.f : 0.5f) : 0.f;
     return 0.f;
 }
 void vsc_ui_notice(const char *t, uint32_t ms) { notice = t; notice_until = now_ms + ms; }
@@ -300,6 +310,38 @@ static void gesture_end(void)
 }
 
 /* ---- editing */
+/* the LFO matrix: the next parameter a route can move, from p, d steps on */
+static unsigned next_mod(unsigned p, int d)
+{
+    int step = d > 0 ? 1 : -1;
+    for (int n = d > 0 ? d : -d; n > 0; --n) {
+        unsigned q = p;
+        do { q = (unsigned)(((int)q + step + VSC_NP) % VSC_NP); } while (!vsc_modulatable(q) && q != p);
+        p = q;
+    }
+    return p;
+}
+static void route_say(const struct vsc_route *r, unsigned src, unsigned p)
+{
+    char b[10];
+    cpy(notice_buf, src ? "LFO 2 > " : "LFO 1 > ");
+    vsc_route_name(p, b); cat(notice_buf, b); cat(notice_buf, " ");
+    if (!r || !r->depth) cat(notice_buf, "OFF");
+    else { if (r->depth > 0) cat(notice_buf, "+"); num(b, r->depth); cat(notice_buf, b); }
+    vsc_ui_notice(notice_buf, 1200);
+}
+/* hold LFO, turn a knob: the robot moves that knob, by as much as it's turned */
+static void route_turn(unsigned p, int d)
+{
+    if (!vsc_modulatable(p)) { vsc_ui_notice("AN LFO CAN'T MOVE THAT ONE", 1100); return; }
+    struct vsc_route *r = 0;
+    for (unsigned i = 0; i < VSC_ROUTES && !r; ++i) if (vsc.route[i].depth && vsc.route[i].src == rob_sel && vsc.route[i].param == p) r = &vsc.route[i];
+    for (unsigned i = 0; i < VSC_ROUTES && !r; ++i) if (!vsc.route[i].depth) { r = &vsc.route[i]; r->src = (uint8_t)rob_sel; r->param = (uint8_t)p; r->pad = 0; }
+    if (!r) { vsc_ui_notice("LFO MATRIX FULL: DELETE A ROW", 1300); return; }
+    r->depth = (int8_t)clampi((int)r->depth + d * 4, -127, 127);
+    route_sel = (unsigned)(r - vsc.route);
+    route_say(r, rob_sel, p);
+}
 static void edit(unsigned s, int d, unsigned *req, unsigned *arg)
 {
     if (s < VSC_NP) {
@@ -329,6 +371,21 @@ static void edit(unsigned s, int d, unsigned *req, unsigned *arg)
         if (d > 0 && vsc_dev.learn[learn_sel].param != 255) { vsc_dev.learn[learn_sel].param = 255; ++vsc_dev_changed; vsc_ui_notice("MAPPING CLEARED", 900); }
         break;
     case K_BAND: vsc.p[P_RG0 + rsel] = (uint8_t)clampi((int)vsc.p[P_RG0 + rsel] + d, 0, 127); break;
+    case K_RSRC: case K_RDST: case K_RDEPTH: case K_RDEL: {
+        struct vsc_route *r = &vsc.route[route_sel];
+        if (s == K_RDEL) { if (d > 0 && r->depth) { r->depth = 0; vsc_ui_notice("ROW DELETED", 800); } break; }
+        if (!r->depth) {   /* an empty row: turning any of its knobs up starts one */
+            if (d < 0) break;
+            r->src = (uint8_t)rob_sel; r->param = P_TRK(0, S_LEVEL); r->depth = 32; r->pad = 0;
+            if (s != K_RDST) break;
+        }
+        if (s == K_RSRC) {
+            int v = clampi((int)r->src + 1 + d, 0, VSC_ROBOTS);
+            if (!v) r->depth = 0; else r->src = (uint8_t)(v - 1);
+        } else if (s == K_RDST) r->param = (uint8_t)next_mod(r->param, d);
+        else { int v = clampi((int)r->depth + d, -127, 127); if (!v) v = d > 0 ? 1 : -1; r->depth = (int8_t)v; }
+        break;
+    }
     default: break;
     }
 }
@@ -453,7 +510,13 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
         prev_buttons = in->buttons; prev_keys = in->keys;
         return HOST_NONE;
     }
-    if (!(prev_buttons & (B(BTN_HOME) | B(BTN_SAVE) | B(BTN_ARP)))) used_mod = 0;
+    const int lfo_held = (in->buttons & B(BTN_LFO)) != 0;
+    if (!(prev_buttons & (B(BTN_HOME) | B(BTN_SAVE) | B(BTN_ARP) | B(BTN_LFO)))) used_mod = 0;
+    if (page == PG_ROBOTS && view < VSC_ROBOTS) rob_sel = view;
+    if (down & B(BTN_LFO)) { lfo_at = now_ms; lfo_hint = 0; }
+    if (lfo_held && !used_mod && !lfo_hint && now_ms - lfo_at > 400u) {
+        lfo_hint = 1; vsc_ui_notice(rob_sel ? "LFO 2: TURN A KNOB  PRE: LFO 1" : "LFO 1: TURN A KNOB  PRE: LFO 2", 1500);
+    }
     if ((up & B(BTN_ARP)) && !used_mod) vsc_ui_notice("HOLD ARP: KEY CLEARS, PLAY ERASES", 1500);
 
     /* the pages */
@@ -469,7 +532,7 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
     if (page != PG_MOTION && mrec) motion_stop();
     if (down & B(BTN_ENV)) open_page(PG_RESON);
     if (down & B(BTN_SEQ)) open_page(PG_BOUNCE);
-    if (down & B(BTN_LFO)) open_page(PG_ROBOTS);
+    if ((up & B(BTN_LFO)) && !used_mod) { if (lfo_hint) notice_until = now_ms; open_page(PG_ROBOTS); }
     if (down & B(BTN_GLO)) open_page(PG_SETTINGS);
     if ((up & B(BTN_HOME)) && g_rec >= 0) gesture_end();
 
@@ -521,16 +584,22 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
         }
     }
 
+    /* LFO held: PRESETS (or ALGORITHM) picks the robot that LFO+TURN routes */
+    int enc1 = in->enc[1], enc6 = in->enc[6];
+    if (lfo_held && (enc1 || enc6)) {
+        rob_sel = (enc1 ? enc1 : enc6) > 0 ? 1u : 0u; used_mod = 1; enc1 = enc6 = 0;
+        vsc_ui_notice(rob_sel ? "LFO 2: TURN A KNOB" : "LFO 1: TURN A KNOB", 1200);
+    }
     /* SELECT: the view; ALGORITHM: RESON's place, the robot; PRESETS: the page's own */
     if (in->enc[0]) view = (unsigned)clampi((int)view + in->enc[0], 0, (int)views() - 1);
-    if (in->enc[1]) {
-        int d = in->enc[1];
+    if (enc1) {
+        int d = enc1;
         if (page == PG_RESON) vsc.p[P_RTGT] = (uint8_t)clampi((int)vsc.p[P_RTGT] + d, 0, RT_INPUT);
         else if (page == PG_TAPE || page == PG_MIXER) { sel = (unsigned)clampi((int)sel + d, 0, VSC_TRACKS - 1); if (page == PG_TAPE) view = 2; }
-        else if (page == PG_ROBOTS) view = (unsigned)clampi((int)view + d, 0, VSC_ROBOTS);
+        else if (page == PG_ROBOTS) view = (unsigned)clampi((int)view + d, 0, V_LEARN);
     }
-    if (in->enc[6]) {
-        int d = in->enc[6];
+    if (enc6) {
+        int d = enc6;
         switch (page) {
         case PG_TAPE: vsc.p[P_TAPESPD] = (uint8_t)clampi((int)vsc.p[P_TAPESPD] + d, 0, TS_LO); break;
         case PG_INPUT: vsc.p[P_IREC] = (uint8_t)clampi((int)vsc.p[P_IREC] + d, 0, IREC_REPLACE); break;
@@ -538,6 +607,7 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
         case PG_RESON: rsel = (unsigned)clampi((int)rsel + d, 0, VSC_RBANDS - 1); break;
         case PG_ROBOTS:
             if (view < VSC_ROBOTS) vsc.p[P_ROB(view, R_TARGET)] = (uint8_t)clampi((int)vsc.p[P_ROB(view, R_TARGET)] + d, 0, VSC_RTARGETS - 1);
+            else if (view == V_MATRIX) route_sel = (unsigned)clampi((int)route_sel + d, 0, VSC_ROUTES - 1);
             else learn_sel = (unsigned)clampi((int)learn_sel + d, 0, VSC_LEARN - 1);
             break;
         case PG_SAVE: slot_sel = (unsigned)clampi((int)slot_sel + d, 0, VSC_PROJECTS - 1); break;
@@ -552,6 +622,12 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
         unsigned s = slot(e - 2);
         touch_at[e - 2] = now_ms | 1u;
         if (save_held && s < VSC_NP) { learn_arm(0, s, "MOVE A MIDI CC"); continue; }
+        if (lfo_held) {
+            unsigned p = s == K_BAND ? P_RG0 + rsel : s;
+            used_mod = 1;
+            if (p < VSC_NP) route_turn(p, d); else vsc_ui_notice("AN LFO CAN'T MOVE THAT ONE", 1100);
+            continue;
+        }
         if (clr_held && s < VSC_NP && lane_of(s) >= 0) { int m = lane_of(s); vsc.motion[m].on = 0; vsc_ui_notice("MOTION ERASED", 900); used_mod = 1; continue; }
         if (page == PG_MOTION && mrec && s < VSC_NP) motion_touch(s);
         if (home_held && s < VSC_NP && g_rec < 0) { used_mod = 1; gesture_start(s); }
@@ -972,18 +1048,48 @@ static void robot_box(unsigned r, int x)
     vsc_param_label(P_ROB(r, R_SHAPE), vsc.p[P_ROB(r, R_SHAPE)], b); text(x + 5, 77, b, C_DIM);
     vsc_param_label(P_ROB(r, R_DEPTH), vsc.p[P_ROB(r, R_DEPTH)], n); cpy(b, "D "); cat(b, n); text(x + 44, 77, b, C_CREAM);
 }
+/* the LFO matrix: eight rows, each a robot moving a knob */
+static void draw_matrix(void)
+{
+    header("LFO MATRIX", rob_sel ? "LFO+TURN: 2" : "LFO+TURN: 1", C_DEEP, C_DIM);
+    for (unsigned i = 0; i < VSC_ROUTES; ++i) {
+        int y = 19 + 18 * (int)i;
+        if (!IN_BAND(y, y + 16)) continue;
+        const struct vsc_route *r = &vsc.route[i];
+        int on = r->depth != 0, sel = i == route_sel;
+        box(6, y, 228, 16, sel ? C_TAPE : C_DARK); if (sel) frame(6, y, 228, 16, C_AMBER);
+        char b[12];
+        num(b, (int)i + 1); text(11, y + 5, b, C_DIM);
+        if (!on) { text(26, y + 5, "--", C_DIMR); continue; }
+        text(26, y + 5, r->src ? "LFO 2" : "LFO 1", C_CREAM);
+        text(62, y + 5, ">", C_DIM);
+        vsc_route_name(r->param, b); text(72, y + 5, b, C_CREAM);
+        /* the depth, either side of the middle, and the robot's swing now */
+        int cx = 172, w = (int)r->depth * 22 / 127;
+        rect(cx - 22, y + 7, 45, 2, C_DEEP);
+        if (w > 0) rect(cx, y + 6, w, 4, C_AMBER); else if (w < 0) rect(cx + w, y + 6, -w, 4, C_AMBER);
+        rect(cx, y + 4, 1, 8, C_DIM);
+        int m = (int)(vsc_meter.robot[r->src < VSC_ROBOTS ? r->src : 0] * (float)w);
+        disc(cx + m, y + 8, 2, C_CREAM);
+        if (r->depth > 0) { cpy(b, "+"); char c[6]; num(c, r->depth); cat(b, c); } else num(b, r->depth);
+        text_r(229, y + 5, b, C_CREAM);
+    }
+    knob_row(170);
+    footer("PRE: ROW  HOLD LFO+TURN: ROUTE");
+}
 static void draw_robots(void)
 {
+    if (view == V_MATRIX) { draw_matrix(); return; }
     header("ROBOTS + LEARN", vsc_learn_armed ? "LISTENING" : "", C_AMBER, C_BODY);
     if (IN_BAND(18, 90)) { robot_box(0, 6); robot_box(1, 122); }
     if (IN_BAND(94, 164)) {
-        text(6, 96, "MIDI LEARN", view == VSC_ROBOTS ? C_AMBER : C_DIM);
+        text(6, 96, "MIDI LEARN", view == V_LEARN ? C_AMBER : C_DIM);
         unsigned first = learn_sel > 2 ? learn_sel - 2 : 0;
         for (unsigned i = 0; i < 3; ++i) {
             unsigned l = first + i;
             int y = 106 + 19 * (int)i;
             const struct vsc_learn *e = &vsc_dev.learn[l];
-            int sel = view == VSC_ROBOTS && l == learn_sel;
+            int sel = view == V_LEARN && l == learn_sel;
             box(6, y, 228, 16, sel ? C_TAPE : C_DARK); if (sel) frame(6, y, 228, 16, C_AMBER);
             char b[24], c[8];
             if (e->param == 255) { num(c, (int)l + 1); cpy(b, c); cat(b, "  --"); text(11, y + 5, b, C_DIMR); continue; }

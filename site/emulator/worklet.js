@@ -45,8 +45,8 @@ class Viscera extends AudioWorkletProcessor {
     } else if (m.type === 'load') {
       const p = new Uint8Array(this.mem(), x.project(), x.project_bytes());
       const keep = p.slice();
-      // projects of the earlier firmwares (another size or format) don't load here
-      if (m.bytes.length !== p.length) { this.port.postMessage({type: 'loaded', ok: false}); return; }
+      // projects of the earlier firmwares don't load here (but 2.4's, without the LFO matrix, do)
+      if (m.bytes.length > p.length) { this.port.postMessage({type: 'loaded', ok: false}); return; }
       x.stop_all(); p.fill(0); p.set(m.bytes);
       const ok = x.project_check() === 1;
       if (!ok) p.set(keep);

@@ -69,6 +69,9 @@ void vsc_param_label(unsigned p, unsigned value, char out[8]);
 #define VSC_RTARGETS 24
 unsigned vsc_robot_target(unsigned i);   /* the parameter, or VSC_NP for none */
 void vsc_target_name(unsigned i, char out[8]);
+int vsc_modulatable(unsigned p);           /* an LFO route can move it (the engine reads it per block) */
+void vsc_route_name(unsigned p, char out[10]);   /* a parameter's name with its place: "T2 LEVEL" */
+float vsc_param_live(unsigned p);          /* the value in use now: the knob, moved by motion and the robots */
 
 /* The panel's LEDs as the UI wants them: 0..13 buttons, 14..40 the 27 keys;
  * 0 off, 1 the backlight's glow, 2 lit. */
@@ -89,9 +92,12 @@ struct vsc_project {
     /* MOTION: knob moves recorded over the loop (SEL page), one lane a parameter, 64 points
      * round the loop, played back each pass in place of the knob */
     struct vsc_motion { uint8_t param, on, pad[2]; uint8_t v[VSC_MOTION_PTS]; } motion[VSC_MOTIONS];
+    /* the LFO matrix (format 11): a robot moving a knob, by depth (-127..127; 0: the row is empty) */
+    struct vsc_route { uint8_t src, param; int8_t depth; uint8_t pad; } route[VSC_ROUTES];
 };
 #define VSC_MAGIC 0x34435356u /* "VSC4" */
-#define VSC_FORMAT 10         /* 9: per-track speed, pitch, dub; the master EQ and compressor */
+#define VSC_FORMAT 11         /* 9: per-track speed, pitch, dub; the master EQ and compressor; 11: the LFO matrix */
+#define VSC_FORMAT_10_BYTES offsetof(struct vsc_project, route)   /* a format 10 project: this one without the matrix */
 /* MIDI learn: a CC (or a note, for an action) on a channel. kind 0: CC to a parameter;
  * 1: a note to an action. */
 struct vsc_learn { uint8_t ch, cc, kind, param; };
@@ -199,6 +205,9 @@ extern uint8_t vsc_eq_live;
 void vsc_project_defaults(struct vsc_project *p);
 uint32_t vsc_crc32(const void *data, size_t bytes);
 int vsc_project_valid(const struct vsc_project *p);
+/* a format 10 project read into p (its first VSC_FORMAT_10_BYTES): checks it, gives it an empty
+ * matrix and makes it this format. 1 if it was one. */
+int vsc_project_upgrade(struct vsc_project *p);
 /* RESON's profiles: the values a profile sets (the knobs' too) */
 void vsc_reson_profile(unsigned n);
 float vsc_reson_hz(unsigned band);

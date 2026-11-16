@@ -19,7 +19,7 @@ Viscera 4-Track records sound coming in over Bluetooth (a phone or tablet) or US
 - **The desk**: four channel strips with VU meters, each with a TRIM into a 424-style preamp (clean to 0 VU, then softly rounding with a little second harmonic), PAN and LEVEL; the input has its own preamp with DRIVE.
 - **Bounce**: print any tracks, through RESON and a preamp, onto a free track, one loop long.
 - **RESON**: an eight-band resonant filterbank (LIQUID, GLASS, THROAT, DUST, RADIO, DROPS) on a track, the input or a bounce.
-- **Robots**: two, moving SPEED, PITCH, levels, pans or RESON as LFOs or as a recorded knob gesture. MIDI learn for knobs and for REC, PLAY and the arm keys.
+- **Robots**: two, moving SPEED, PITCH, levels, pans or RESON as LFOs or as a recorded knob gesture, plus an eight-route LFO matrix: hold LFO and turn any knob to route a robot to it. MIDI learn for knobs and for REC, PLAY and the arm keys.
 
 The screen is drawn as a tape machine: reels that wind with the loop, a mechanical counter, amber VU meters, aluminium knobs.
 

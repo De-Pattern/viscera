@@ -55,6 +55,31 @@ static const char *const rtarget_name[VSC_RTARGETS] = {
 unsigned vsc_robot_target(unsigned i) { return i < VSC_RTARGETS ? rtargets[i] : VSC_NP; }
 static void put_str(char *o, const char *s) { unsigned i = 0; while (s[i] && i < 7) { o[i] = s[i]; ++i; } o[i] = 0; }
 void vsc_target_name(unsigned i, char out[8]) { put_str(out, i < VSC_RTARGETS ? rtarget_name[i] : "-"); }
+/* what the engine takes from the moved values each block (the EQ and compressor take their
+ * knobs as set: their curves are worked out only when a knob moves) */
+int vsc_modulatable(unsigned p)
+{
+    if (p == P_SPEED || p == P_PITCH || p == P_TLEVEL || p == P_ITRIM || p == P_IDRIVE) return 1;
+    if (p >= P_STRIP && p < P_STRIP + VSC_TRACKS * VSC_TP) { unsigned k = (p - P_STRIP) % VSC_TP; return k != S_MUTE && k != S_ARM; }
+    if (p == P_BDRIVE || p == P_BLEVEL) return 1;
+    return p >= P_RMIX && p <= P_RG0 + 7;
+}
+void vsc_route_name(unsigned p, char out[10])
+{
+    const char *pre = "", *n = p < VSC_NP ? info[p].name : "-";
+    char t[4] = "T1 ";
+    if (p == P_SPEED) n = "TAPE SPD";
+    else if (p == P_PITCH) n = "TAPE PIT";
+    else if (p == P_TLEVEL) n = "TAPE LVL";
+    else if (p == P_ITRIM || p == P_IDRIVE) pre = "IN ";
+    else if (p == P_BDRIVE || p == P_BLEVEL) pre = "BN ";
+    else if (p >= P_RMIX && p <= P_RG0 + 7) pre = "R ";
+    else if (p >= P_STRIP && p < P_STRIP + VSC_TRACKS * VSC_TP) { t[1] = (char)('1' + (p - P_STRIP) / VSC_TP); pre = t; }
+    unsigned i = 0;
+    for (; *pre && i < 9; ++pre) out[i++] = *pre;
+    for (; *n && i < 9; ++n) out[i++] = *n;
+    out[i] = 0;
+}
 
 static void put_int(char *o, int v)
 {
@@ -215,6 +240,15 @@ int vsc_project_valid(const struct vsc_project *p)
     if (p->magic != VSC_MAGIC || p->version != VSC_FORMAT || p->bytes != sizeof *p) return 0;
     if (vsc_crc32(&p->name, sizeof *p - offsetof(struct vsc_project, name)) != p->crc) return 0;
     for (unsigned i = 0; i < VSC_NP; ++i) if (p->p[i] > info[i].max) return 0;
+    return 1;
+}
+int vsc_project_upgrade(struct vsc_project *p)
+{
+    if (p->magic != VSC_MAGIC || p->version != 10 || p->bytes != VSC_FORMAT_10_BYTES) return 0;
+    if (vsc_crc32(&p->name, VSC_FORMAT_10_BYTES - offsetof(struct vsc_project, name)) != p->crc) return 0;
+    vsc_memset(p->route, 0, sizeof p->route);
+    p->version = VSC_FORMAT; p->bytes = sizeof *p;
+    p->crc = vsc_crc32(&p->name, sizeof *p - offsetof(struct vsc_project, name));
     return 1;
 }
 

@@ -328,6 +328,44 @@ clean(run(100), 'after every knob');
 x.project_seal(0); ok(x.project_check() === 1, 'a sealed project checks');
 x.device_seal(); ok(x.device_check() === 1, 'the device settings check');
 
+// 14b. the LFO matrix: hold LFO and turn a knob on any page; the matrix view edits the rows
+{
+  const rt = () => new Int8Array(mem(), x.route(), 32);
+  for (let i = 0; i < 32; i++) rt()[i] = 0;
+  x.set_param(ROB(0, R.SHAPE), 3); x.set_param(ROB(0, R.RATE), 127); x.set_param(ROB(0, R.DEPTH), 0); x.set_param(ROB(0, R.SKEW), 64);
+  press(B.EDIT); enc(0, -5);                       // the mixer, LEVEL: knob 2 is track 2's level
+  const lv = x.get_param(TRK(1, S.LEVEL));
+  ctl(0, 1 << B.LFO); enc(3, 5, 1 << B.LFO); ctl(0, 0);
+  ok(x.get_param(TRK(1, S.LEVEL)) === lv, 'LFO+TURN leaves the knob where it was');
+  ok(rt()[0] === 0 && rt()[1] === TRK(1, S.LEVEL) && rt()[2] === 20, 'LFO+TURN routes LFO 1 to T2 LEVEL by the turn: ' + [...rt().slice(0, 4)]);
+  // and it moves: the value in use swings either side of the knob
+  x.set_param(TRK(1, S.LEVEL), 60);
+  let lo = 999, hi = -1; for (let b = 0; b < 400; b++) { run(1); const v = x.param_live(TRK(1, S.LEVEL)); lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  ok(lo < 55 && hi > 65, 'the route moves T2 LEVEL ' + lo.toFixed(1) + '..' + hi.toFixed(1));
+  // the release opened nothing (the button was used); a tap opens ROBOTS
+  press(B.LFO); enc(0, 2); paintCheck('LFO matrix');
+  enc(6, 1); enc(2, 1); ok(rt()[4] === 0 && rt()[6] === 32, 'an empty row starts from FROM: ' + [...rt().slice(4, 8)]);
+  enc(2, 1); ok(rt()[4] === 1, 'FROM: LFO 2');
+  enc(3, 1); ok(rt()[5] !== TRK(0, S.LEVEL) && rt()[5] < 101, 'TO steps to the next knob an LFO can move: ' + rt()[5]);
+  enc(4, -40); ok(rt()[6] === -8, 'DEPTH is bipolar: ' + rt()[6]);
+  enc(4, 8); ok(rt()[6] === 1, 'DEPTH skips 0 (0 is an empty row): ' + rt()[6]);
+  enc(5, 1); ok(rt()[6] === 0, 'DELETE empties the row');
+  // a knob an LFO can't move: no row
+  press(B.FX); ctl(0, 1 << B.LFO); enc(2, 3, 1 << B.LFO); ctl(0, 0);
+  ok(rt()[6] === 0 && rt()[10] === 0, 'the EQ (worked out on change) is not a route target');
+  // 2.4's projects (format 10, no matrix) load with an empty one
+  x.project_seal(0);
+  const hv = new Uint32Array(mem(), x.project(), 4), bytes = x.project_bytes();
+  const old = bytes - 32; rt()[0] = 1; rt()[2] = 50;
+  const u8 = new Uint8Array(mem(), x.project(), bytes);
+  let c = 0xffffffff; for (let i = 16; i < old; i++) { c ^= u8[i]; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1)); }
+  hv[1] = 10; hv[2] = old; hv[3] = (~c) >>> 0;
+  ok(x.project_check() === 1, 'a format 10 project checks (upgraded)');
+  ok(hv[1] === 11 && hv[2] === bytes && rt()[2] === 0, 'and gets this format and an empty matrix');
+  for (let i = 0; i < 32; i++) rt()[i] = 0;
+  x.set_param(ROB(0, R.SHAPE), 0); x.set_param(ROB(0, R.RATE), 40);
+}
+
 // 15. long run with everything moving: no NaN, in range
 x.set_param(P.RTGT, 2); x.set_param(P.PITCH, 19); x.set_param(ROB(1, R.TARGET), 1); x.set_param(ROB(1, R.DEPTH), 90);
 x.set_param(TRK(0, S.ARM), 1); press(B.HOME); press(B.REC);

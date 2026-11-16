@@ -85,8 +85,7 @@ ok(x.transport() === 1, 'PLAY plays');
 // 3. a punch on track 2 (key 2 arms it), DUB
 key(TK[1]);
 ok(x.get_param(TRK(1, S.ARM)) === 1, 'key 2 arms track 2');
-key(TK[0]);
-ok(x.get_param(TRK(0, S.ARM)) === 0, 'key 1 disarms track 1');
+ok(x.get_param(TRK(0, S.ARM)) === 0, 'arming track 2 disarms track 1');
 gen = music;
 press(B.REC); ok(x.recording() === 2, 'REC punches in the armed track');
 wait(20);
@@ -124,9 +123,17 @@ x.set_param(P.LOOP, 20);   // 1.0 s
 gen = music; press(B.REC); wait(80);
 ok(x.transport() === 1 && Math.abs(x.loop() - 16000) < 300, 'LOOP 1.0 s closes the take at 1 s: ' + x.loop());
 x.set_param(P.LOOP, 0);
-press(B.HOME);
+press(B.HOME); enc(0, -5);
 const lb = x.loop(); enc(4, -4); ok(x.loop() < lb, 'the LOOP knob shortens the loop: ' + lb + ' > ' + x.loop());
 enc(4, 2); ok(x.loop() > lb - 4 * 800, 'and lengthens it');
+// the LOOP view: START, END, SLIDE, FULL
+enc(0, 1); paintCheck('tape, loop view');
+enc(2, 20); ok(x.lstart() > 2500 && x.lstart() < 3500, 'START moves in hundredths: ' + x.lstart());
+sound(run(100), 'the trimmed loop plays');
+const l0 = x.lstart(), e0 = x.lend(); enc(4, 10); ok(x.lstart() === l0 + 1600 && x.lend() === e0 + 1600, 'SLIDE moves both: ' + x.lstart() + ' ' + x.lend());
+enc(3, -2); ok(x.lend() === e0 + 1600 - 1600, 'END moves in twentieths');
+enc(5, 1); ok(x.lstart() === 0 && x.lend() === x.take(), 'FULL: the whole take again: ' + x.lstart() + '..' + x.lend() + ' of ' + x.take());
+enc(0, -5);
 const capOk = x.cap() > 40000; ok(capOk, 'tape capacity per track: ' + x.cap());
 
 // 6. clearing: HOME + key

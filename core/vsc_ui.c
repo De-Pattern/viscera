@@ -167,12 +167,13 @@ static uint8_t learn_seen, used_mod;
 static uint32_t intro_at, frame_ms;   /* frame_ms: the time a frame is drawn at (one picture, however long its bands take) */
 static uint8_t intro_on, intro_fresh;   /* the start-up animation is on screen; its start time not yet taken from the clock */   /* a held modifier was used */
 /* a knob slot: a parameter, or one of the page's own controls */
-enum { K_NONE = 200, K_LOOP, K_BTAUDIO, K_BTMIDI, K_LIGHT, K_KNOBCC, K_BLE, K_CLEARMAP, K_BAND, K_START };
+enum { K_NONE = 200, K_LSTART, K_LEND, K_LSLIDE, K_LFULL, K_LOOP, K_BTAUDIO, K_BTMIDI, K_LIGHT, K_KNOBCC, K_BLE, K_CLEARMAP, K_BAND, K_START };
 static unsigned slot(unsigned k)
 {
     switch (page) {
     case PG_TAPE:
-        if (view == 1) { static const uint8_t s[4] = {S_SPEED, S_PITCH, S_DUB, S_LEVEL}; return P_TRK(sel, s[k]); }
+        if (view == 1) { static const uint8_t s[4] = {K_LSTART, K_LEND, K_LSLIDE, K_LFULL}; return s[k]; }
+        if (view == 2) { static const uint8_t s[4] = {S_SPEED, S_PITCH, S_DUB, S_LEVEL}; return P_TRK(sel, s[k]); }
         { static const uint8_t s[4] = {P_SPEED, P_PITCH, K_LOOP, P_TLEVEL}; return s[k]; }
     case PG_MASTER:
         if (view < 4) return P_EQ(view, k);
@@ -199,7 +200,7 @@ static unsigned slot(unsigned k)
 }
 static unsigned views(void)
 {
-    return page == PG_MASTER ? 6 : page == PG_TAPE ? 2 : page == PG_MIXER ? 3 : page == PG_BOUNCE || page == PG_RESON || page == PG_SETTINGS ? 2 : page == PG_ROBOTS ? VSC_ROBOTS + 1 : 1;
+    return page == PG_MASTER ? 6 : page == PG_TAPE ? 3 : page == PG_MIXER ? 3 : page == PG_BOUNCE || page == PG_RESON || page == PG_SETTINGS ? 2 : page == PG_ROBOTS ? VSC_ROBOTS + 1 : 1;
 }
 static float tape_hz(void) { return vsc_tape_hz(vsc.p[P_TAPESPD] % 3u); }
 static void slot_text(unsigned s, char name[10], char val[10])
@@ -212,6 +213,10 @@ static void slot_text(unsigned s, char name[10], char val[10])
         return;
     }
     switch (s) {
+    case K_LSTART: cpy(name, "START"); secs(val, (float)vsc_meter.lstart / tape_hz()); break;
+    case K_LEND: cpy(name, "END"); secs(val, (float)vsc_meter.lend / tape_hz()); break;
+    case K_LSLIDE: cpy(name, "SLIDE"); secs(val, (float)vsc_meter.loop / tape_hz()); break;
+    case K_LFULL: cpy(name, "FULL"); cpy(val, vsc_meter.lstart == 0 && vsc_meter.lend >= vsc_meter.take ? "WHOLE" : "TURN"); break;
     case K_LOOP:
         cpy(name, "LOOP");
         if (vsc_meter.loop && vsc_meter.transport != TR_FIRST) secs(val, (float)vsc_meter.loop / tape_hz());
@@ -231,6 +236,7 @@ static void slot_text(unsigned s, char name[10], char val[10])
 static float slot_frac(unsigned s)
 {
     if (s < VSC_NP) { unsigned m = vsc_param_info(s)->max; return m ? (float)vsc.p[s] / (float)m : 0.f; }
+    if (s >= K_LSTART && s <= K_LSLIDE && vsc_meter.take) return (float)(s == K_LSTART ? vsc_meter.lstart : s == K_LEND ? vsc_meter.lend : vsc_meter.lstart + vsc_meter.loop / 2u) / (float)vsc_meter.take;
     if (s == K_LOOP) return vsc_meter.loop && vsc_meter.cap ? (float)vsc_meter.loop / (float)vsc_meter.cap : (float)vsc.p[P_LOOP] / 127.f;
     if (s == K_BAND) return (float)vsc.p[P_RG0 + rsel] / 127.f;
     if (s == K_LIGHT) return (float)vsc_dev.backlight / 3.f;
@@ -293,6 +299,10 @@ static void edit(unsigned s, int d, unsigned *req, unsigned *arg)
         return;
     }
     switch (s) {
+    case K_LSTART: case K_LEND: case K_LSLIDE: case K_LFULL:
+        if (!vsc_meter.loop || vsc_meter.transport == TR_FIRST) { vsc_ui_notice("RECORD A LOOP FIRST", 1000); break; }
+        vsc_event(EV_LOOP, (unsigned)(d & 255), s == K_LEND ? 0u : s == K_LSTART ? 1u : s == K_LSLIDE ? 2u : 3u);
+        break;
     case K_LOOP:
         if (vsc_meter.loop && vsc_meter.transport != TR_FIRST) vsc_event(EV_LOOP, (unsigned)(d & 255), 0);
         else vsc.p[P_LOOP] = (uint8_t)clampi((int)vsc.p[P_LOOP] + d, 0, 127);
@@ -403,7 +413,7 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
     if (in->enc[1]) {
         int d = in->enc[1];
         if (page == PG_RESON) vsc.p[P_RTGT] = (uint8_t)clampi((int)vsc.p[P_RTGT] + d, 0, RT_INPUT);
-        else if (page == PG_TAPE || page == PG_MIXER) { sel = (unsigned)clampi((int)sel + d, 0, VSC_TRACKS - 1); if (page == PG_TAPE) view = 1; }
+        else if (page == PG_TAPE || page == PG_MIXER) { sel = (unsigned)clampi((int)sel + d, 0, VSC_TRACKS - 1); if (page == PG_TAPE) view = 2; }
         else if (page == PG_ROBOTS) view = (unsigned)clampi((int)view + d, 0, VSC_ROBOTS);
     }
     if (in->enc[6]) {
@@ -443,7 +453,7 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
         if (k < VSC_TRACKS) {
             if (save_held) { learn_arm(1, ACT_ARM1 + k, "ARM: SEND A NOTE"); continue; }
             if (clr_held) { vsc_event(EV_CLEAR, k, 0); say("CLEARED TRACK ", (const char[]){(char)('1' + k), 0}, 1000); used_mod = 1; continue; }
-            if (home_held) { sel = k; used_mod = 1; if (page == PG_TAPE) view = 1; say("TRACK ", (const char[]){(char)('1' + k), 0}, 700); continue; }
+            if (home_held) { sel = k; used_mod = 1; if (page == PG_TAPE) view = 2; say("TRACK ", (const char[]){(char)('1' + k), 0}, 700); continue; }
             if (page == PG_BOUNCE) { vsc.p[P_BSRC] ^= (uint8_t)(1u << k); continue; }
             vsc_event(EV_ARM, k, 0);
             continue;
@@ -548,8 +558,8 @@ static uint32_t reel_pos;
 static void draw_tape(void)
 {
     char b[24];
-    if (view == 1) { cpy(b, "TRACK "); char c[2] = {(char)('1' + sel), 0}; cat(b, c); }
-    header("VISCERA 4-TRACK", view == 1 ? b : "TAPE", C_AMBER, C_BODY);
+    if (view == 2) { cpy(b, "TRACK "); char c[2] = {(char)('1' + sel), 0}; cat(b, c); }
+    header("VISCERA 4-TRACK", view == 2 ? b : view == 1 ? "LOOP" : "TAPE", C_AMBER, C_BODY);
     /* the cassette window and its reels: the tape winds from left to right over the loop */
     if (IN_BAND(18, 118)) {
         box(6, 19, 228, 98, C_BLACK); frame(6, 19, 228, 98, C_LINE);
@@ -596,23 +606,26 @@ static void draw_tape(void)
         box(x, 140, w, 32, C_DARK);
         if (armed) frame(x, 140, w, 32, recn ? C_RED : C_REDK);
         char c[2] = {(char)('1' + t), 0};
-        if (t == sel) { box(x + 3, 142, 9, 11, view == 1 ? C_AMBER : C_DEEP); }
-        text(x + 5, 144, c, t == sel && view == 1 ? C_BODY : vsc_meter.has[t] ? C_CREAM : C_DIM);
+        if (t == sel) { box(x + 3, 142, 9, 11, view == 2 ? C_AMBER : C_DEEP); }
+        text(x + 5, 144, c, t == sel && view == 2 ? C_BODY : vsc_meter.has[t] ? C_CREAM : C_DIM);
         disc(x + w - 8, 148, 3, armed ? (recn && (now_ms / 200u) & 1u ? C_REDK : C_RED) : C_REDK);
         if (armed) text(x + 13, 144, recn ? "REC" : "ARM", C_RED);
         else if (vsc.p[P_TRK(t, S_MUTE)]) text(x + 13, 144, "MUTE", C_DIM);
         if (vsc_meter.has[t]) {
             /* its shape over the loop, and where the tape is */
-            for (int i = 0; i < 46; ++i) { unsigned v = vsc_meter.overview[t][i * 60 / 46] / 3u; vline(x + 4 + i, 160 - (int)v, (int)v * 2 + 1, C_HUB2); }
-            uint32_t e = vsc_meter.loop ? vsc_meter.loop : vsc_meter.cap;
-            int ph = e ? (int)((float)vsc_meter.tpos[t] * 46.f / (float)e) : 0;
-            vline(x + 4 + ph, 154, 13, C_AMBER);
+            /* its shape over the take; dim outside the loop; START and END marked on LOOP */
+            uint32_t e = vsc_meter.take ? vsc_meter.take : vsc_meter.cap;
+            int ls = (int)((float)vsc_meter.lstart * 46.f / (float)e), le = vsc_meter.lend ? (int)((float)vsc_meter.lend * 46.f / (float)e) : 46;
+            for (int i = 0; i < 46; ++i) { unsigned v = vsc_meter.overview[t][i * 60 / 46] / 3u; vline(x + 4 + i, 160 - (int)v, (int)v * 2 + 1, i >= ls && i < le ? C_HUB2 : C_DEEP); }
+            if (view == 1) { vline(x + 4 + ls, 153, 15, C_AMBER); vline(x + 4 + (le > 45 ? 45 : le), 153, 15, C_AMBER); }
+            int ph = (int)((float)(vsc_meter.lstart + vsc_meter.tpos[t]) * 46.f / (float)e);
+            vline(x + 4 + (ph > 45 ? 45 : ph), 154, 13, view == 1 ? C_CREAM : C_AMBER);
             float lv = vsc_meter.pk[t]; int lw = (int)(lv * 46.f); lw = lw > 46 ? 46 : lw;
             rect(x + 4, 168, lw, 2, lv > 0.85f ? C_AMBER : C_GREEN);
         } else text(x + 6, 158, "EMPTY", C_DIMR);
     }
     knob_row(177);
-    footer(view == 1 ? "HOME+KEY OR ALGO: TRACK" : vsc_meter.loop ? "KEYS F3-B3: ARM  REC: PUNCH" : "KEYS F3-B3: ARM  REC: FIRST TAKE");
+    footer(view == 2 ? "HOME+KEY OR ALGO: TRACK" : view == 1 ? "LOOP: START END SLIDE FULL" : vsc_meter.loop ? "KEYS F3-B3: ARM  REC: PUNCH" : "KEYS F3-B3: ARM  REC: FIRST TAKE");
 }
 
 /* ---- MIXER */

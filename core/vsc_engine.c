@@ -125,7 +125,7 @@ static VSC_HOTDATA const int16_t ima_step[89] = {
     7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767};
 static VSC_HOTDATA const int8_t ima_adj[8] = {-1, -1, -1, -1, 2, 4, 6, 8};
 
-struct rd { int32_t pred; int32_t idx; int32_t ap, ai, bp, bi; uint32_t n0, m; float s0, s1; uint8_t on; };
+struct rd { int32_t pred; int32_t idx; int32_t ap, ai, bp, bi; uint32_t n0, m; float s0, s1; uint8_t on; int32_t lsp, lsi; };   /* lsp, lsi: the state just before the loop's START */
 struct wr { int32_t pred, idx; float acc; uint16_t cnt; uint8_t on, ending; };
 struct trk {
     struct rd r;
@@ -144,7 +144,9 @@ struct trk {
 };
 static struct trk tk[VSC_TRACKS];
 static float tp;              /* the master playhead (SPEED only): the loop's time, the first take, bounces */
-static uint32_t loop_len;     /* 0: no loop yet */
+static uint32_t loop_len;     /* the loop's END (exclusive); 0: no loop yet */
+static uint32_t loop_start;   /* the loop's START */
+static uint32_t take_len;     /* the furthest a take has gone: what START and END can reach (FULL) */
 static uint8_t transport, bounce_on, bounce_dst, bounce_src, bounce_clear;
 static uint32_t bounce_done;  /* samples of the loop printed */
 
@@ -187,7 +189,14 @@ static VSC_HOT void rd_fetch(unsigned t)
 {
     struct rd *r = &tk[t].r;
     uint32_t i = r->m + 1u;
-    if (i >= loop_end()) i = 0;
+    if (i >= loop_end()) {
+        i = loop_start;
+        if (i & (VSC_TAPE_BLK - 1u)) {   /* a START inside a block: the state there, from the block's start */
+            int32_t p = hpred[t][i / VSC_TAPE_BLK], x = hidx[t][i / VSC_TAPE_BLK];
+            for (uint32_t j = i & ~(VSC_TAPE_BLK - 1u); j < i; ++j) (void)dec(tape[t], j, &p, &x);
+            r->pred = r->lsp = p; r->idx = r->lsi = x;
+        }
+    }
     if (!(i & (VSC_TAPE_BLK - 1u))) { r->pred = hpred[t][i / VSC_TAPE_BLK]; r->idx = hidx[t][i / VSC_TAPE_BLK]; }
     r->ap = r->bp; r->ai = r->bi; r->bp = r->pred; r->bi = r->idx;
     r->s0 = r->s1; r->n0 = r->m;
@@ -202,6 +211,7 @@ static VSC_HOT_SMALL void rd_seek(unsigned t, uint32_t n)
     r->pred = hpred[t][b]; r->idx = hidx[t][b];
     for (uint32_t i = b * VSC_TAPE_BLK; i < n; ++i) (void)dec(tape[t], i, &r->pred, &r->idx);
     r->bp = r->pred; r->bi = r->idx;
+    if (n == loop_start) { r->lsp = r->pred; r->lsi = r->idx; }
     r->s1 = dec(tape[t], n, &r->pred, &r->idx);
     r->m = n;
     rd_fetch(t);
@@ -220,6 +230,7 @@ static VSC_HOT void wr_put(unsigned t, uint32_t n, float old, float in, int repl
 {
     struct wr *w = &tk[t].w;
     if (!(n & (VSC_TAPE_BLK - 1u))) { hpred[t][n / VSC_TAPE_BLK] = (int16_t)w->pred; hidx[t][n / VSC_TAPE_BLK] = (uint8_t)w->idx; }
+    else if (n == loop_start) { w->pred = tk[t].r.lsp; w->idx = tk[t].r.lsi; }   /* round from END to a START inside a block: as the block has it there */
     float v = w->ending ? old : replace ? in : old * tk[t].dg + in;
     enc(tape[t], n, tape_soft(v), &w->pred, &w->idx);
     if (w->ending && wr_last(n)) w->on = w->ending = 0;
@@ -253,7 +264,7 @@ static VSC_HOT_SMALL void tape_seek_all(uint32_t n)
     for (unsigned t = 0; t < VSC_TRACKS; ++t) {
         struct trk *k = &tk[t];
         if (n != ~0u) k->tp = (float)n;
-        if (k->tp >= (float)loop_end()) k->tp = 0.f;
+        if (k->tp >= (float)loop_end() || k->tp < (float)loop_start) k->tp = (float)loop_start;
         if (k->r.on) rd_seek(t, (uint32_t)k->tp);
     }
 }
@@ -261,7 +272,8 @@ static VSC_HOT_SMALL void tape_seek_all(uint32_t n)
 static VSC_HOT_SMALL void loop_set(uint32_t len)
 {
     loop_len = len;
-    if (tp >= (float)len) tp = 0.f;
+    if (len > take_len) take_len = len;
+    if (tp >= (float)len || tp < (float)loop_start) tp = (float)loop_start;
     tape_seek_all(~0u);
 }
 static VSC_HOT_SMALL void track_clear(unsigned t)
@@ -789,17 +801,18 @@ static VSC_HOT_SMALL void stop(void)
     for (unsigned t = 0; t < VSC_TRACKS; ++t) wr_finish(t);
     if (transport == TR_FIRST) { loop_len = (uint32_t)tp + 1u; if (loop_len >= TCAP) loop_len = TCAP; }
     bounce_end(0);
+    if (transport == TR_FIRST) take_len = loop_len;
     transport = TR_STOP;
-    tp = 0.f;
-    tape_seek_all(0);
+    tp = (float)loop_start;
+    tape_seek_all(loop_start);
 }
 static VSC_HOT_SMALL void play(void)
 {
     if (!loop_len) return;
     transport = TR_PLAY;
-    tp = 0.f;
+    tp = (float)loop_start;
     for (unsigned t = 0; t < VSC_TRACKS; ++t) tk[t].r.on = vsc_meter.has[t];
-    tape_seek_all(0);
+    tape_seek_all(loop_start);
 }
 static VSC_HOT_SMALL void rec(void)
 {
@@ -815,7 +828,7 @@ static VSC_HOT_SMALL void rec(void)
     if (!loop_len) {   /* an empty tape: the first take starts */
         if (!arm) return;
         for (unsigned t = 0; t < VSC_TRACKS; ++t) if (arm >> t & 1u) track_clear(t);
-        tp = 0.f; transport = TR_FIRST;
+        tp = 0.f; transport = TR_FIRST; loop_start = 0; take_len = 0;
         for (unsigned t = 0; t < VSC_TRACKS; ++t) tk[t].tp = 0.f;
         for (unsigned t = 0; t < VSC_TRACKS; ++t) if (arm >> t & 1u) { tk[t].r.on = 1; rd_seek(t, 0); wr_start(t); }
         return;
@@ -853,9 +866,9 @@ static VSC_HOT_SMALL void bounce_start(void)
     for (unsigned t = 0; t < VSC_TRACKS; ++t) wr_finish(t);
     track_clear(dst);
     bounce_src = (uint8_t)src; bounce_dst = (uint8_t)dst; bounce_clear = vsc.p[P_BCLEAR];
-    transport = TR_PLAY; tp = 0.f;
+    transport = TR_PLAY; tp = (float)loop_start;
     for (unsigned t = 0; t < VSC_TRACKS; ++t) tk[t].r.on = vsc_meter.has[t] || t == dst;
-    tape_seek_all(0);
+    tape_seek_all(loop_start);
     struct wr *w = &tk[dst].w;
     w->pred = 0; w->idx = 0; w->on = 1; w->ending = 0; w->acc = 0.f; w->cnt = 0;
     vsc_meter.has[dst] = 1;
@@ -912,7 +925,12 @@ static VSC_HOT_SMALL void action(unsigned a)
 {
     if (a == ACT_REC) rec();
     else if (a == ACT_PLAY) { if (transport != TR_STOP) stop(); else play(); }
-    else if (a >= ACT_ARM1 && a <= ACT_ARM4) { unsigned p = P_TRK(a - ACT_ARM1, S_ARM); vsc.p[p] ^= 1u; if (!vsc.p[p]) wr_stop(a - ACT_ARM1); }
+    else if (a >= ACT_ARM1 && a <= ACT_ARM4) {   /* one track armed at a time: arming one disarms the rest */
+        unsigned k = a - ACT_ARM1, p = P_TRK(k, S_ARM);
+        vsc.p[p] ^= 1u;
+        if (!vsc.p[p]) wr_stop(k);
+        else for (unsigned t = 0; t < VSC_TRACKS; ++t) if (t != k && vsc.p[P_TRK(t, S_ARM)]) { vsc.p[P_TRK(t, S_ARM)] = 0; wr_stop(t); }
+    }
     else if (a == ACT_BOUNCE) bounce_start();
 }
 static VSC_HOT_SMALL int learn_take(unsigned ch, unsigned num, unsigned kind)
@@ -981,24 +999,32 @@ static VSC_HOT_SMALL void handle(uint32_t e)
             track_clear(a);
             unsigned any = 0;
             for (unsigned t = 0; t < VSC_TRACKS; ++t) any |= vsc_meter.has[t];
-            if (!any && transport != TR_FIRST) { stop(); loop_len = 0; }
+            if (!any && transport != TR_FIRST) { stop(); loop_len = loop_start = take_len = 0; }
         }
         break;
     case EV_ERASE:
         stop();
         for (unsigned t = 0; t < VSC_TRACKS; ++t) track_clear(t);
-        loop_len = 0;
+        loop_len = loop_start = take_len = 0;
         break;
     case EV_BOUNCE: bounce_start(); break;
     case EV_ARM: if (a < VSC_TRACKS) action(ACT_ARM1 + a); break;
-    case EV_LOOP:
+    case EV_LOOP:   /* a: clicks (signed); b: 0 END, 1 START, 2 SLIDE (both), 3 FULL (the whole take); END
+                     * moves in twentieths of a second, START and SLIDE in hundredths */
         if (loop_len && transport != TR_FIRST) {
             float rate = tape_rate(vsc.p[P_TAPESPD]);
-            int32_t d = (int32_t)(int8_t)a * (int32_t)(rate * 0.05f);
-            int32_t l = (int32_t)loop_len + d, lo = (int32_t)(rate * 0.1f);
-            if (l < lo) l = lo;
-            if (l > (int32_t)TCAP) l = (int32_t)TCAP;
-            loop_set((uint32_t)l);
+            int32_t d = (int32_t)(int8_t)a * (int32_t)(rate * (b == 0 ? 0.05f : 0.01f));
+            int32_t st = (int32_t)loop_start, en = (int32_t)loop_len, lo = (int32_t)(rate * 0.05f);
+            if (b == 0) en += d;
+            else if (b == 1) st += d;
+            else if (b == 2) { if (st + d < 0) d = -st; if (en + d > (int32_t)TCAP) d = (int32_t)TCAP - en; st += d; en += d; }
+            else { st = 0; en = (int32_t)(take_len ? take_len : loop_len); }
+            if (en > (int32_t)TCAP) en = (int32_t)TCAP;
+            if (st < 0) st = 0;
+            if (en - st < lo) { if (b == 1) st = en - lo; else en = st + lo; }
+            if (st < 0) { st = 0; en = lo; }
+            loop_start = (uint32_t)st;
+            loop_set((uint32_t)en);
         }
         break;
     case EV_INTRO: in_n = 0; in_len = a ? 32u * IN_STEP : 0u; in_ph[0] = in_ph[1] = in_kp = 0.f; break;
@@ -1134,7 +1160,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
             if ((uint32_t)p != (uint32_t)tp) {
                 uint32_t e = loop_end();
                 if (p >= (float)e) {
-                    p -= (float)e;
+                    p -= (float)(e - loop_start);
                     if (transport == TR_FIRST) {   /* the tape's end: the first take closes */
                         loop_len = TCAP; transport = TR_PLAY; punch_out_all();
                     }
@@ -1159,7 +1185,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
                     k->cr[i] = 1;
                     k->old[i] = k->r.s0; k->oldn[i] = k->r.n0;
                     rd_fetch(t);
-                    if (q >= (float)e) q -= (float)e;
+                    if (q >= (float)e) q -= (float)(e - loop_start);
                 }
                 k->tp = q;
                 if (replace && k->w.on && !k->w.ending && !bounce_on) { k->buf[i] = 0.f; continue; }
@@ -1229,7 +1255,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
         }
         /* the overview: each track's level where the tape is */
         if (moving) {
-            uint32_t e = loop_end();
+            uint32_t e = transport == TR_FIRST ? TCAP : take_len > loop_len ? take_len : loop_len;
             for (unsigned t = 0; t < VSC_TRACKS; ++t) {
                 unsigned col = (unsigned)(tk[t].tp * 60.f / (float)(e ? e : 1u));
                 if (!tk[t].r.on || col >= 60u) continue;
@@ -1271,9 +1297,11 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
     vsc_meter.recording = (uint8_t)recm;
     vsc_meter.transport = transport;
     vsc_meter.playing = transport != TR_STOP;
-    vsc_meter.pos = (uint32_t)tp; vsc_meter.loop = loop_len; vsc_meter.cap = TCAP;
-    for (unsigned t = 0; t < VSC_TRACKS; ++t) vsc_meter.tpos[t] = (uint32_t)tk[t].tp;
-    vsc_meter.bounce_pct = bounce_on && loop_len ? (uint8_t)((float)bounce_done * 100.f / (float)loop_len) : 0;
+    /* (for the screen: places within the loop, its length; and where it sits in the take) */
+    vsc_meter.pos = (uint32_t)tp - (tp >= (float)loop_start ? loop_start : 0u); vsc_meter.loop = loop_len ? loop_len - loop_start : 0u; vsc_meter.cap = TCAP;
+    vsc_meter.lstart = loop_start; vsc_meter.lend = loop_len; vsc_meter.take = transport == TR_FIRST ? (uint32_t)tp + 1u : take_len > loop_len ? take_len : loop_len;
+    for (unsigned t = 0; t < VSC_TRACKS; ++t) vsc_meter.tpos[t] = (uint32_t)tk[t].tp - ((uint32_t)tk[t].tp >= loop_start ? loop_start : 0u);
+    vsc_meter.bounce_pct = bounce_on && loop_len ? (uint8_t)((float)bounce_done * 100.f / (float)(loop_len - loop_start)) : 0;
     if (vsc_clock_since) {
         uint32_t all = vsc_clock_since(t_start);
         vsc_meter.part_ticks[1] = t_reson;

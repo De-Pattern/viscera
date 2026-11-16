@@ -108,7 +108,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
   </header>
 
   <div class="top">
-    <p class="eyebrow">Manual · Viscera 2.1.0 · 4-Track</p>
+    <p class="eyebrow">Manual · Viscera 2.3.0 · 4-Track</p>
     <h1>Guide</h1>
     <p>Viscera 4-Track turns the M-VAVE FM-1 into an overdubbing tape machine. Four tracks of tape in its memory, a 424-style preamp on the input and every channel, VU meters, and RESON to print a bounce through. This page covers installing it safely, getting sound in, how the sound flows, and what every page and control does.</p>
   </div>
@@ -219,7 +219,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
           <tr><td>ALGORITHM</td><td>The selected track (TAPE, MIXER), where RESON sits (RESON), the robot (ROBOTS).</td></tr>
           <tr><td>PRESETS</td><td>The page's own: TAPE SPEED (TAPE), DUB or REPLACE (INPUT), where a bounce goes (BOUNCE), RESON's band, a robot's target, a project slot, a Bluetooth device.</td></tr>
           <tr><td>MASTER</td><td>Output level.</td></tr>
-          <tr><td>HOME</td><td>TAPE, then (HOME again) TRACK: the selected track's own SPEED, PITCH, DUB and LEVEL. Held: a track's key selects it (without arming it); turn a knob to record a robot gesture.</td></tr>
+          <tr><td>HOME</td><td>TAPE, then (HOME again) LOOP: START, END, SLIDE, FULL; then TRACK: the selected track's own SPEED, PITCH, DUB and LEVEL. Held: a track's key selects it (without arming it); turn a knob to record a robot gesture.</td></tr>
           <tr><td>ARP (CLEAR)</td><td>Held: a track's key clears that track; PLAY erases the whole tape.</td></tr>
           <tr><td>EDIT</td><td>MIXER (levels, then trims, then pans), then INPUT.</td></tr>
           <tr><td>FX</td><td>MASTER: the four-band EQ (a view per band), then the compressor.</td></tr>
@@ -245,7 +245,9 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
           <tr><td>LOOP</td><td>Before the first take: a length to stop at (FREE: when you press REC again). After: trims or extends the loop, a twentieth of a second a click.</td></tr>
           <tr><td>LEVEL</td><td>The tape's level into the mix.</td></tr>
         </table></div>
-        <h3>TRACK (HOME again)</h3>
+        <h3>LOOP (HOME again)</h3>
+        <p>Trims the loop at both ends, inside the take you recorded: <b>START</b> (a hundredth of a second a click), <b>END</b> (a twentieth), <b>SLIDE</b> (moves the loop along the take, keeping its length) and <b>FULL</b> (turn it: the whole take again). The tracks show the whole take, with what's outside the loop dimmed and START and END marked. Nothing outside the loop is lost: open it up again whenever you like.</p>
+        <h3>TRACK (HOME a third time)</h3>
         <p>The selected track (hold HOME and press its key, or turn ALGORITHM): its own <b>SPEED</b> (half to double, on top of the tape's), <b>PITCH</b> (±12 semitones, on top of the tape's), <b>DUB</b> level and <b>LEVEL</b>. Tracks at different speeds drift against each other round the loop; PLAY from stopped lines them up again. In the first take and in a bounce's print the tracks run at the tape's speed. At HI the tape and a track together reach double speed at most.</p>
         <h3>TAPE SPEED (PRESETS)</h3>
         <div class="tbl"><table>
@@ -261,7 +263,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
         <p class="eyebrow">07</p>
         <h2>Recording</h2>
         <ul>
-          <li><b>Arm</b> a track with its key (F3, G3, A3, B3). Its lamp lights, and blinks while it records. More than one can be armed.</li>
+          <li><b>Arm</b> a track with its key (F3, G3, A3, B3). Its lamp lights, and blinks while it records. One track is armed at a time: arming another disarms the first (and punches it out if it was recording).</li>
           <li><b>The first take</b>: on an empty tape, REC starts recording into the armed tracks; REC or PLAY ends it and the loop plays round. If LOOP is set, the take ends there by itself; a full track ends it too.</li>
           <li><b>Punching</b>: while the loop plays, REC punches the armed tracks in, REC again punches them out. Stopped, REC starts the tape and punches in.</li>
           <li><b>DUB or REPLACE</b> (INPUT, PRESETS): DUB adds to what's on the track, REPLACE records over it (you hear only the input while punched in). A hot DUB is taken softly by the tape.</li>

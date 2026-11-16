@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.3.0 — loop START and END; one track armed at a time
+
+- **Trim the loop at both ends**: HOME's new LOOP view (HOME, then HOME again) has START and END (a hundredth and a twentieth of a second a click), SLIDE (moves the loop along the take, its length kept) and FULL (back to the whole take). The tracks show the take with what's outside the loop dimmed and START and END marked. Punches and DUB passes run round the trimmed loop cleanly, wherever START falls.
+- **Arming a track disarms the one before** (and punches it out if it was recording): one track records at a time.
+- HOME's views are now TAPE, LOOP and TRACK.
+
 ## 2.2.0 — a start-up title
 
 - **At power-on, VISCERA: TAPE flashes up in a different face every beat** (block, condensed, wide, hollow, slanted, dotted; red on black, now and then in a green box or on a magenta slab), over three seconds of original 4-bit chip music: a four-on-the-floor kick, a buzzing bass, a pulse arpeggio and noise hats. Then the name holds for a moment. Any button or key skips it. Drawn and played by the firmware itself (no pictures, no samples), so it costs almost nothing.

@@ -95,6 +95,9 @@ W_EXPORT(has) unsigned w_has(unsigned t) { return t < VSC_TRACKS ? vsc_meter.has
 W_EXPORT(pos) unsigned w_pos(void) { return vsc_meter.pos; }
 W_EXPORT(loop) unsigned w_loop(void) { return vsc_meter.loop; }
 W_EXPORT(cap) unsigned w_cap(void) { return vsc_meter.cap; }
+W_EXPORT(lstart) unsigned w_lstart(void) { return vsc_meter.lstart; }
+W_EXPORT(lend) unsigned w_lend(void) { return vsc_meter.lend; }
+W_EXPORT(take) unsigned w_take(void) { return vsc_meter.take; }
 W_EXPORT(rate) float w_rate(void) { return vsc_meter.rate; }
 W_EXPORT(vu) float w_vu(unsigned t) { return t < VSC_TRACKS ? vsc_meter.vu[t] : t == 4 ? vsc_meter.vu_in : vsc_meter.vu_l; }
 W_EXPORT(peak) float w_peak(unsigned t) { return t < VSC_TRACKS ? vsc_meter.pk[t] : vsc_meter.pk_in; }

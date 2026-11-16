@@ -157,7 +157,8 @@ struct vsc_meter {
     uint8_t bounce_pct;
     uint8_t bounce_err;                      /* why the last one didn't start: BE_* */
     uint8_t bt_in, usb_in;                   /* audio arriving */
-    uint32_t pos, loop, cap;                 /* the tape: where (samples), the loop, the capacity */
+    uint32_t pos, loop, cap;                 /* the tape: where in the loop (samples), the loop's length, the capacity */
+    uint32_t lstart, lend, take;             /* the loop's START and END, and the take they sit in (samples) */
     float rate;                              /* the tape's sample rate now (Hz, with SPEED) */
     float robot[VSC_ROBOTS];                 /* each robot's output, -1..1 */
     uint8_t overview[VSC_TRACKS][60];        /* each track's shape over the loop, 0..15 */

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.5.4 — the intro's stab, retuned
+
+- **The vocal stab is clean now** (no 4-bit crush on it): a breathy "ah" with a little vibrato, through vowel resonances, in the same one-bar rhythm. Its line: D, D, B flat, D, G, then D, D, B flat, D, F.
+- **Choppier, and denser**: the bass and hats chop on every sixteenth, the longer stabs stutter in thirty-seconds; the kick and bass keep their 4-bit grit.
+- The bass is written under each chord (no sour notes at the drop to B flat). Same length (3.8 s) and level.
+
 ## 2.5.3 — the intro's vocal stab
 
 - **The intro music is rebuilt around a choppy, breathy vocal "ah" stab** (sawtooths through two vowel resonances, cut short) in a distinct one-bar rhythm, over the kick, clap and the gritty D bass, now at 129 BPM, dropping to B flat in the second bar. Our own notes.

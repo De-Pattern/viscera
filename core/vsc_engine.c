@@ -908,65 +908,83 @@ static VSC_HOT_SMALL void bounce_start(void)
 }
 
 /* ---------------------------------------------------------- the intro
- * Music at power-on, 32 sixteenths at 129 BPM (3.7 s): a hard kick on the beat, a clap on two and
- * four, a gritty sawtooth bass pulsing on D, and over it a choppy, breathy vocal "ah" stab, a bar
- * long pattern on sixteenths 1, 7, 9, 11 and 13/14. Our own notes, dropping to B flat halfway
- * through the second bar; crushed to 4 bits, at 60 %, fading over the last four sixteenths. */
+ * Music at power-on, 32 sixteenths at 129 BPM (3.7 s), chopped hard on the sixteenths: a kick on
+ * the beat, a clap on two and four, a gritty sawtooth bass, all crushed to 4 bits, and over them,
+ * clean, a breathy vocal "ah" stab (a buzzing voice through three vowel resonances, with a
+ * little vibrato) in a one-bar rhythm on sixteenths 1, 7, 9, 11 and 13/14 (D, D, B flat, D, G; then D, D, B flat, D, F), the longer ones
+ * stuttering in thirty-seconds. Our own notes, dropping to B flat halfway through the second bar.
+ * At 60 %, fading over the last four sixteenths. */
 #define IN_STEP 5128u   /* a sixteenth at 129 BPM */
 static uint32_t in_n, in_len;
-static float in_ph[5], in_kp, in_kf;
+static float in_ph[5], in_kp, in_kf, in_nzp;
 static uint32_t in_noise = 1;
-static VSC_HOTDATA const int8_t in_bass[8] = {38, 38, 50, 38, 38, 41, 50, 36};
+/* the bass, per sixteenth: D minor, then (from the second bar's middle) B flat; each under its stabs */
+static VSC_HOTDATA const int8_t in_bass[32] = {38, 38, 38, 50, 38, 38, 26, 38, 46, 38, 38, 26, 50, 38, 38, 45,
+                                               38, 38, 38, 50, 38, 38, 26, 38, 34, 34, 34, 46, 34, 41, 34, 46};
 /* the stab: per sixteenth of each bar, its note (0: none) and how long it speaks (in 1/64 s) */
-static VSC_HOTDATA const int8_t in_snote[2][16] = {{62, 0, 0, 0, 0, 0, 62, 0, 65, 0, 62, 0, 0, 60, 0, 0},
-                                                   {62, 0, 0, 0, 0, 0, 62, 0, 65, 0, 62, 0, 58, 0, 0, 0}};
-static VSC_HOTDATA const uint8_t in_slen[16] = {8, 0, 0, 0, 0, 0, 3, 0, 4, 0, 3, 0, 5, 6, 0, 0};
+static VSC_HOTDATA const int8_t in_snote[2][16] = {{62, 0, 0, 0, 0, 0, 62, 0, 58, 0, 62, 0, 0, 67, 0, 0},
+                                                   {62, 0, 0, 0, 0, 0, 62, 0, 58, 0, 62, 0, 65, 0, 0, 0}};
+static VSC_HOTDATA const uint8_t in_slen[16] = {12, 0, 0, 0, 0, 0, 4, 0, 5, 0, 4, 0, 9, 8, 0, 0};
 static uint32_t st_n = 0xffffffu, st_len;   /* the stab: samples since it spoke, and for how long */
-static float st_inc, st_b1, st_l1, st_b2, st_l2;
+static float st_inc, st_v[6], st_lp, st_vib;
 VSC_INL float midi_inc(int n) { return 440.f * exp2a(((float)n - 69.f) * (1.f / 12.f)) * (1.f / (float)VSC_SR); }
 static VSC_HOT_SMALL void intro(float *l, float *r, unsigned n)
 {
     for (unsigned i = 0; i < n && in_n < in_len; i += 16) {   /* (the pitches a 16th of a block at a time) */
         uint32_t step = in_n / IN_STEP, pos = in_n % IN_STEP;
-        const int low = step >= 24;   /* the second half of the last bar: B flat */
-        float bi = midi_inc(in_bass[step & 7u] - (low ? 4 : 0));
+        int bn = in_bass[step & 31u];
+        float bi = bn ? midi_inc(bn) : 0.f;
         float fade = step >= 28 ? 1.f - (float)(in_n - 28u * IN_STEP) / (4.f * (float)IN_STEP) : 1.f;
         for (unsigned j = i; j < i + 16 && j < n; ++j) {
             if (pos == 0u) {   /* a sixteenth starts: a stab? */
                 int nt = in_snote[(step >> 4) & 1u][step & 15u];
                 if (nt) { st_n = 0; st_len = (uint32_t)in_slen[step & 15u] * 689u; st_inc = midi_inc(nt); }
             }
-            /* the kick, on the beat: a pitch-dropping square, hard */
+            /* the kick, on the beat: a pitch-dropping square, hard and short */
             float k = 0.f;
-            if (!(step & 3u) && pos < 3600u) { float d = 1.f - (float)pos / 3600.f; in_kf = 0.0012f + 0.008f * d * d; in_kp += in_kf; if (in_kp >= 1.f) in_kp -= 1.f; k = (in_kp < 0.5f ? 1.f : -1.f) * d; }
-            /* the bass: two sawtooths a little apart, driven into a clip, gated to each sixteenth's first 60 % */
-            in_ph[0] += bi; if (in_ph[0] >= 1.f) in_ph[0] -= 1.f;
-            in_ph[1] += bi * 1.006f; if (in_ph[1] >= 1.f) in_ph[1] -= 1.f;
+            if (!(step & 3u) && pos < 3000u) { float d = 1.f - (float)pos / 3000.f; in_kf = 0.0012f + 0.008f * d * d; in_kp += in_kf; if (in_kp >= 1.f) in_kp -= 1.f; k = (in_kp < 0.5f ? 1.f : -1.f) * d; }
+            /* the bass: two sawtooths a little apart, driven into a clip, chopped to each sixteenth's first 45 % */
             float b = 0.f;
-            if (pos < 3100u) { b = (in_ph[0] + in_ph[1] - 1.f) * 2.f; b = b > 0.36f ? 0.36f : b < -0.36f ? -0.36f : b; }
-            /* the stab: three sawtooths, spread, through two vowel resonances ("ah" opening a little
-             * as it speaks), cut short: fast in, falling, then gone */
-            float st = 0.f;
-            if (st_n < st_len + 400u) {
-                in_ph[2] += st_inc; if (in_ph[2] >= 1.f) in_ph[2] -= 1.f;
-                in_ph[3] += st_inc * 1.009f; if (in_ph[3] >= 1.f) in_ph[3] -= 1.f;
-                in_ph[4] += st_inc * 0.992f; if (in_ph[4] >= 1.f) in_ph[4] -= 1.f;
-                float src = in_ph[2] + in_ph[3] + in_ph[4] - 1.5f;
-                float op = st_n < 3000u ? (float)st_n * (1.f / 3000.f) : 1.f;
-                float f1 = 0.064f + 0.03f * op, f2 = 0.235f;   /* about 450 -> 660 Hz, 1650 Hz */
-                st_l1 += f1 * st_b1; float h1 = src - st_l1 - 0.32f * st_b1; st_b1 += f1 * h1;
-                st_l2 += f2 * st_b2; float h2 = src - st_l2 - 0.22f * st_b2; st_b2 += f2 * h2;
-                float env = st_n < 90u ? (float)st_n * (1.f / 90.f) : st_n < st_len ? 1.f - 0.45f * (float)st_n / (float)st_len : 0.55f * (1.f - (float)(st_n - st_len) * (1.f / 400.f));
-                st = (st_b1 * 0.75f + st_b2 * 0.6f + src * 0.06f) * env;
-                ++st_n;
+            if (bn && pos < 3800u) {
+                in_ph[0] += bi; if (in_ph[0] >= 1.f) in_ph[0] -= 1.f;
+                in_ph[1] += bi * 1.006f; if (in_ph[1] >= 1.f) in_ph[1] -= 1.f;
+                b = (in_ph[0] + in_ph[1] - 1.f) * 2.f; b = b > 0.36f ? 0.36f : b < -0.36f ? -0.36f : b;
             }
             /* noise: a short hat on every offbeat sixteenth, a clap on two and four */
             in_noise ^= in_noise << 13; in_noise ^= in_noise >> 17; in_noise ^= in_noise << 5;
             float nz = (float)(in_noise >> 24) * (1.f / 128.f) - 1.f, h = 0.f;
-            if ((step & 1u) && pos < 700u) h = nz * 0.16f * (1.f - (float)pos / 700.f);
-            if ((step & 7u) == 4u && pos < 2600u) h += nz * 0.38f * (1.f - (float)pos / 2600.f);
-            float v = (k * 0.8f + b + st + h) * 0.25f * fade;
-            v = (float)(int)(v * 8.f + (v >= 0.f ? 0.5f : -0.5f)) * (1.f / 8.f) * 0.6f;   /* 4 bits; at 60 % */
+            float hp = nz - in_nzp; in_nzp = nz;   /* the noise, brightened */
+            if ((step & 1u) && pos < 1500u) h = hp * 0.55f * (1.f - (float)pos / 1500.f);
+            if ((step & 7u) == 4u && pos < 2200u) h += (nz * 0.25f + hp * 0.15f) * (1.f - (float)pos / 2200.f);
+            float v = (k * 0.8f + b) * 0.25f;
+            v = (float)(int)(v * 8.f + (v >= 0.f ? 0.5f : -0.5f)) * (1.f / 8.f);   /* the kick and bass in 4 bits */
+            v += (h + hp * 0.03f) * 0.25f;   /* the noise clean, over a faint hiss */
+            /* the stab: three sawtooths a little apart with breath, a 5.5 Hz vibrato, through
+             * the vowel resonances of "ah" (700, 1220, 2600 Hz) and a little of the voice itself;
+             * fast in, falling; past a thirty-second, stuttering on and off; then gone */
+            float st = 0.f;
+            if (st_n < st_len + 3000u) {
+                st_vib += 5.5f / (float)VSC_SR; if (st_vib >= 1.f) st_vib -= 1.f;
+                float vb = 1.f + 0.0025f * (st_vib < 0.5f ? 4.f * st_vib - 1.f : 3.f - 4.f * st_vib);
+                in_ph[2] += st_inc * vb; if (in_ph[2] >= 1.f) in_ph[2] -= 1.f;
+                in_ph[3] += st_inc * vb * 1.004f; if (in_ph[3] >= 1.f) in_ph[3] -= 1.f;
+                in_ph[4] += st_inc * vb * 0.996f; if (in_ph[4] >= 1.f) in_ph[4] -= 1.f;
+                float src = in_ph[2] + in_ph[3] + in_ph[4] - 1.5f + nz * 0.3f;
+                static VSC_HOTDATA const float ff[3] = {0.09964f, 0.2415f, 0.36833f}, fq[3] = {0.18f, 0.14f, 0.12f}, fg[3] = {0.07f, 0.06f, 0.09f};
+                float vo = 0.f;
+                for (unsigned f = 0; f < 3; ++f) {
+                    float *lo = &st_v[2 * f], *bp = &st_v[2 * f + 1];
+                    *lo += ff[f] * *bp; float hp = src - *lo - fq[f] * *bp; *bp += ff[f] * hp;
+                    vo += *bp * fg[f] * (1.f / fq[f]) * fq[f] * 5.f;
+                }
+                st_lp += 0.05f * (src - st_lp);
+                vo += st_lp * 0.35f;
+                float env = st_n < 220u ? (float)st_n * (1.f / 220.f) : st_n < st_len ? 1.f - 0.35f * (float)st_n / (float)st_len : 0.65f * (1.f - (float)(st_n - st_len) * (1.f / 3000.f));
+                if (st_n > 2756u && st_n < st_len && ((st_n / 1300u) & 1u)) env *= 0.3f;   /* the stutter */
+                st = vo * env * 0.3f;
+                ++st_n;
+            }
+            v = (v + st) * 0.5f * fade;   /* at 60 % of the first intro's level */
             l[j] += v; r[j] += v;
             ++in_n; ++pos;
             if (pos >= IN_STEP) { pos = 0; step = in_n / IN_STEP; in_kp = 0.f; }
@@ -1180,7 +1198,7 @@ static VSC_HOT_SMALL void handle(uint32_t e)
         else if (a <= VSC_TRACKS && sl_src != a - 1u) { slice_rec(0); sl_src = (uint8_t)(a - 1u); sv[0].on = sv[1].on = 0; }
         break;
     case EV_SLREC: slice_rec(a != 0); break;
-    case EV_INTRO: in_n = 0; in_len = a ? 32u * IN_STEP : 0u; in_ph[0] = in_ph[1] = in_kp = 0.f; st_n = 0xffffffu; st_b1 = st_l1 = st_b2 = st_l2 = 0.f; break;
+    case EV_INTRO: in_n = 0; in_len = a ? 32u * IN_STEP : 0u; in_ph[0] = in_ph[1] = in_kp = 0.f; st_n = 0xffffffu; for (unsigned q = 0; q < 6; ++q) st_v[q] = 0.f; st_lp = st_vib = 0.f; break;
     case EV_PANIC: rs_req = 0.f; vsc_memset(&rs, 0, offsetof(__typeof__(rs), ring)); rs.where = 255; break;
     default: break;
     }

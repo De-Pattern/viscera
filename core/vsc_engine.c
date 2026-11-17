@@ -908,46 +908,64 @@ static VSC_HOT_SMALL void bounce_start(void)
 }
 
 /* ---------------------------------------------------------- the intro
- * Three seconds of music at power-on: an original, frantic lo-fi piece (a hard kick on the beat,
- * a clap on two and four, a distorted sawtooth bass pulsing in sixteenths on D with octave
- * jumps, a strobing minor stab over it, dropping to B flat for the last bar), crushed to 4
- * bits. 32 sixteenths at 150 BPM; it fades over the last four. */
-#define IN_STEP 4410u
+ * Music at power-on, 32 sixteenths at 129 BPM (3.7 s): a hard kick on the beat, a clap on two and
+ * four, a gritty sawtooth bass pulsing on D, and over it a choppy, breathy vocal "ah" stab, a bar
+ * long pattern on sixteenths 1, 7, 9, 11 and 13/14. Our own notes, dropping to B flat halfway
+ * through the second bar; crushed to 4 bits, at 60 %, fading over the last four sixteenths. */
+#define IN_STEP 5128u   /* a sixteenth at 129 BPM */
 static uint32_t in_n, in_len;
-static float in_ph[4], in_kp, in_kf;
+static float in_ph[5], in_kp, in_kf;
 static uint32_t in_noise = 1;
 static VSC_HOTDATA const int8_t in_bass[8] = {38, 38, 50, 38, 38, 41, 50, 36};
-static VSC_HOTDATA const int8_t in_stab[2][3] = {{62, 65, 69}, {58, 62, 65}};
-static VSC_HOTDATA const uint8_t in_gate[8] = {1, 0, 1, 1, 0, 1, 1, 0};   /* the stab's strobe */
+/* the stab: per sixteenth of each bar, its note (0: none) and how long it speaks (in 1/64 s) */
+static VSC_HOTDATA const int8_t in_snote[2][16] = {{62, 0, 0, 0, 0, 0, 62, 0, 65, 0, 62, 0, 0, 60, 0, 0},
+                                                   {62, 0, 0, 0, 0, 0, 62, 0, 65, 0, 62, 0, 58, 0, 0, 0}};
+static VSC_HOTDATA const uint8_t in_slen[16] = {8, 0, 0, 0, 0, 0, 3, 0, 4, 0, 3, 0, 5, 6, 0, 0};
+static uint32_t st_n = 0xffffffu, st_len;   /* the stab: samples since it spoke, and for how long */
+static float st_inc, st_b1, st_l1, st_b2, st_l2;
 VSC_INL float midi_inc(int n) { return 440.f * exp2a(((float)n - 69.f) * (1.f / 12.f)) * (1.f / (float)VSC_SR); }
 static VSC_HOT_SMALL void intro(float *l, float *r, unsigned n)
 {
     for (unsigned i = 0; i < n && in_n < in_len; i += 16) {   /* (the pitches a 16th of a block at a time) */
         uint32_t step = in_n / IN_STEP, pos = in_n % IN_STEP;
-        const int low = step >= 24;   /* the last bar: B flat */
+        const int low = step >= 24;   /* the second half of the last bar: B flat */
         float bi = midi_inc(in_bass[step & 7u] - (low ? 4 : 0));
-        float si = midi_inc(in_stab[low][(in_n / 1100u) % 3u]);
         float fade = step >= 28 ? 1.f - (float)(in_n - 28u * IN_STEP) / (4.f * (float)IN_STEP) : 1.f;
-        const int gate = in_gate[step & 7u] && step >= 4;   /* the stab comes in after the first beat */
         for (unsigned j = i; j < i + 16 && j < n; ++j) {
+            if (pos == 0u) {   /* a sixteenth starts: a stab? */
+                int nt = in_snote[(step >> 4) & 1u][step & 15u];
+                if (nt) { st_n = 0; st_len = (uint32_t)in_slen[step & 15u] * 689u; st_inc = midi_inc(nt); }
+            }
             /* the kick, on the beat: a pitch-dropping square, hard */
             float k = 0.f;
-            if (!(step & 3u) && pos < 3400u) { float d = 1.f - (float)pos / 3400.f; in_kf = 0.0012f + 0.008f * d * d; in_kp += in_kf; if (in_kp >= 1.f) in_kp -= 1.f; k = (in_kp < 0.5f ? 1.f : -1.f) * d; }
-            /* the bass: two sawtooths a little apart, driven into a clip, gated to each sixteenth's first 70 % */
+            if (!(step & 3u) && pos < 3600u) { float d = 1.f - (float)pos / 3600.f; in_kf = 0.0012f + 0.008f * d * d; in_kp += in_kf; if (in_kp >= 1.f) in_kp -= 1.f; k = (in_kp < 0.5f ? 1.f : -1.f) * d; }
+            /* the bass: two sawtooths a little apart, driven into a clip, gated to each sixteenth's first 60 % */
             in_ph[0] += bi; if (in_ph[0] >= 1.f) in_ph[0] -= 1.f;
             in_ph[1] += bi * 1.006f; if (in_ph[1] >= 1.f) in_ph[1] -= 1.f;
             float b = 0.f;
-            if (pos < 3100u) { b = (in_ph[0] + in_ph[1] - 1.f) * 2.2f; b = b > 0.6f ? 0.6f : b < -0.6f ? -0.6f : b; }
-            /* the stab: a square arpeggiated fast across the chord, strobed on and off by the sixteenth */
-            in_ph[2] += si; if (in_ph[2] >= 1.f) in_ph[2] -= 1.f;
-            in_ph[3] += si * 2.003f; if (in_ph[3] >= 1.f) in_ph[3] -= 1.f;
-            float st = gate && pos < 2600u ? ((in_ph[2] < 0.5f ? 0.22f : -0.22f) + (in_ph[3] < 0.3f ? 0.1f : -0.05f)) : 0.f;
+            if (pos < 3100u) { b = (in_ph[0] + in_ph[1] - 1.f) * 2.f; b = b > 0.36f ? 0.36f : b < -0.36f ? -0.36f : b; }
+            /* the stab: three sawtooths, spread, through two vowel resonances ("ah" opening a little
+             * as it speaks), cut short: fast in, falling, then gone */
+            float st = 0.f;
+            if (st_n < st_len + 400u) {
+                in_ph[2] += st_inc; if (in_ph[2] >= 1.f) in_ph[2] -= 1.f;
+                in_ph[3] += st_inc * 1.009f; if (in_ph[3] >= 1.f) in_ph[3] -= 1.f;
+                in_ph[4] += st_inc * 0.992f; if (in_ph[4] >= 1.f) in_ph[4] -= 1.f;
+                float src = in_ph[2] + in_ph[3] + in_ph[4] - 1.5f;
+                float op = st_n < 3000u ? (float)st_n * (1.f / 3000.f) : 1.f;
+                float f1 = 0.064f + 0.03f * op, f2 = 0.235f;   /* about 450 -> 660 Hz, 1650 Hz */
+                st_l1 += f1 * st_b1; float h1 = src - st_l1 - 0.32f * st_b1; st_b1 += f1 * h1;
+                st_l2 += f2 * st_b2; float h2 = src - st_l2 - 0.22f * st_b2; st_b2 += f2 * h2;
+                float env = st_n < 90u ? (float)st_n * (1.f / 90.f) : st_n < st_len ? 1.f - 0.45f * (float)st_n / (float)st_len : 0.55f * (1.f - (float)(st_n - st_len) * (1.f / 400.f));
+                st = (st_b1 * 0.75f + st_b2 * 0.6f + src * 0.06f) * env;
+                ++st_n;
+            }
             /* noise: a short hat on every offbeat sixteenth, a clap on two and four */
             in_noise ^= in_noise << 13; in_noise ^= in_noise >> 17; in_noise ^= in_noise << 5;
             float nz = (float)(in_noise >> 24) * (1.f / 128.f) - 1.f, h = 0.f;
-            if ((step & 1u) && pos < 700u) h = nz * 0.22f * (1.f - (float)pos / 700.f);
-            if ((step & 7u) == 4u && pos < 2600u) h += nz * 0.45f * (1.f - (float)pos / 2600.f);
-            float v = (k * 0.9f + b + st + h) * 0.29f * fade;
+            if ((step & 1u) && pos < 700u) h = nz * 0.16f * (1.f - (float)pos / 700.f);
+            if ((step & 7u) == 4u && pos < 2600u) h += nz * 0.38f * (1.f - (float)pos / 2600.f);
+            float v = (k * 0.8f + b + st + h) * 0.25f * fade;
             v = (float)(int)(v * 8.f + (v >= 0.f ? 0.5f : -0.5f)) * (1.f / 8.f) * 0.6f;   /* 4 bits; at 60 % */
             l[j] += v; r[j] += v;
             ++in_n; ++pos;
@@ -1162,7 +1180,7 @@ static VSC_HOT_SMALL void handle(uint32_t e)
         else if (a <= VSC_TRACKS && sl_src != a - 1u) { slice_rec(0); sl_src = (uint8_t)(a - 1u); sv[0].on = sv[1].on = 0; }
         break;
     case EV_SLREC: slice_rec(a != 0); break;
-    case EV_INTRO: in_n = 0; in_len = a ? 32u * IN_STEP : 0u; in_ph[0] = in_ph[1] = in_kp = 0.f; break;
+    case EV_INTRO: in_n = 0; in_len = a ? 32u * IN_STEP : 0u; in_ph[0] = in_ph[1] = in_kp = 0.f; st_n = 0xffffffu; st_b1 = st_l1 = st_b2 = st_l2 = 0.f; break;
     case EV_PANIC: rs_req = 0.f; vsc_memset(&rs, 0, offsetof(__typeof__(rs), ring)); rs.where = 255; break;
     default: break;
     }

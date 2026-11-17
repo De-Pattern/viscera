@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.5.3 — the intro's vocal stab
+
+- **The intro music is rebuilt around a choppy, breathy vocal "ah" stab** (sawtooths through two vowel resonances, cut short) in a distinct one-bar rhythm, over the kick, clap and the gritty D bass, now at 129 BPM, dropping to B flat in the second bar. Our own notes.
+- The intro is half a second longer (3.8 s) to fit two bars. Still 4-bit, at about the same level.
+
 ## 2.5.2 — new intro music
 
 - **The intro has new music**: an original, frantic lo-fi piece: a hard kick, a clap on two and four, a distorted sawtooth bass pulsing in sixteenths on D with octave jumps, a strobing minor stab, dropping to B flat for the last bar. Still 4-bit, the same length and the same level.

@@ -1311,7 +1311,7 @@ static void draw_master(void)
 /* ---- the intro: VISCERA: TAPE in a different face every beat, red on black mostly, now and
  * then in a green box or on a magenta slab (after the title cards of a certain film), over three
  * seconds of music; then the name held. Any button skips it. */
-#define INTRO_MS 3300u
+#define INTRO_MS 3800u
 #define C_IRED  RGB(200, 16, 22)
 #define C_IGRN  RGB(200, 255, 200)
 #define C_IMAG  RGB(190, 40, 190)

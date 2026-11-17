@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.6.0 — delay and verb
+
+- **SEND on each mixer strip** (EDIT, after PAN), post-fader, into two new effects on the MASTER page (FX, after the compressor):
+  - **DELAY**: lo-fi, 8 bits at a quarter rate, up to 350 ms, its repeats darkening and saturating. TIME, FEEDBACK, MIX, TO VRB.
+  - **VERB**: 12-bit, after the Alesis era (Ravel's 12-BIT plate, one tank): SIZE, DAMP, MIX and BITS (12, 10, 8).
+- The sends start at zero: **nothing changes in the sound until you turn one up.**
+- **The tape is a little shorter to make room: 2.5 s a track at HI (was 2.8), 3.45 s at MID (3.8), 5 s at LO (5.6).**
+- Projects from 2.4 and 2.5 load (the sends at zero, the delay and verb at their defaults). The LFO matrix can move the sends, the feedback, size, damp and the returns.
+
 ## 2.5.6 — slice takes kept; meters while recording
 
 - **Fixed: a SLICE take could come back empty.** The take rewrote itself on every lap of the loop, so a lap with no slices played (say, the one before REC: KEEP) wiped what was played before. Now its first lap replaces the track and later laps add to it: every slice played stays.

@@ -15,10 +15,11 @@
 
 Viscera 4-Track records sound coming in over Bluetooth (a phone or tablet) or USB (a computer) onto four tracks of tape in the FM-1's memory, and overdubs them:
 
-- **The tape**: four mono tracks of 4-bit ADPCM, at three tape speeds (2.8, 3.8 or 5.6 s a track). The first take sets the loop; then punch in and out of the armed tracks, DUB or REPLACE. SPEED is varispeed (pitch and time together, as tape); PITCH shifts the mix without changing its time.
+- **The tape**: four mono tracks of 4-bit ADPCM, at three tape speeds (2.5, 3.45 or 5 s a track). The first take sets the loop; then punch in and out of the armed tracks, DUB or REPLACE. SPEED is varispeed (pitch and time together, as tape); PITCH shifts the mix without changing its time.
 - **The desk**: four channel strips with VU meters, each with a TRIM into a 424-style preamp (clean to 0 VU, then softly rounding with a little second harmonic), PAN and LEVEL; the input has its own preamp with DRIVE.
 - **Bounce**: print any tracks, through RESON and a preamp, onto a free track, one loop long.
 - **RESON**: an eight-band resonant filterbank (LIQUID, GLASS, THROAT, DUST, RADIO, DROPS) on a track, the input or a bounce.
+- **Delay and verb**: a send on each strip into a lo-fi 8-bit delay (up to 350 ms) and a 12-bit verb after the Alesis era (BITS: 12, 10, 8), on the MASTER page.
 - **Robots**: two, moving SPEED, PITCH, levels, pans or RESON as LFOs or as a recorded knob gesture, plus an eight-route LFO matrix: hold LFO and turn any knob to route a robot to it. MIDI learn for knobs and for REC, PLAY and the arm keys.
 
 The screen is drawn as a tape machine: reels that wind with the loop, a mechanical counter, amber VU meters, aluminium knobs.

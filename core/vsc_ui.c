@@ -186,8 +186,9 @@ static unsigned slot(unsigned k)
     case PG_SLICE: { static const uint8_t s[4] = {P_SLSRC, P_SLN, P_SLSNAP, P_SLDST}; return s[k]; }
     case PG_MASTER:
         if (view < 4) return P_EQ(view, k);
-        { static const uint8_t s[2][4] = {{P_CON, P_CTHR, P_CRATIO, P_CMAKE}, {P_CATK, P_CREL, P_CMIX, P_CKEY}}; return s[view - 4][k]; }
-    case PG_MIXER: return P_TRK(k, view == 0 ? S_LEVEL : view == 1 ? S_TRIM : S_PAN);
+        { static const uint8_t s[4][4] = {{P_CON, P_CTHR, P_CRATIO, P_CMAKE}, {P_CATK, P_CREL, P_CMIX, P_CKEY},
+                                          {P_DTIME, P_DFB, P_DMIX, P_DVERB}, {P_VSIZE, P_VDAMP, P_VMIX, P_VBITS}}; return s[(view - 4) & 3u][k]; }
+    case PG_MIXER: return view == 3 ? P_SEND0 + k : P_TRK(k, view == 0 ? S_LEVEL : view == 1 ? S_TRIM : S_PAN);
     case PG_INPUT: { static const uint8_t s[4] = {P_ISRC, P_ITRIM, P_IDRIVE, P_IMON}; return s[k]; }
     case PG_BOUNCE: {
         static const uint8_t s[2][4] = {{P_RMIX, P_BDRIVE, P_BLEVEL, P_BCLEAR}, {P_BDST, P_BRESON, K_NONE, K_NONE}};
@@ -210,7 +211,7 @@ static unsigned slot(unsigned k)
 }
 static unsigned views(void)
 {
-    return page == PG_MOTION ? 2 : page == PG_MASTER ? 6 : page == PG_TAPE ? 3 : page == PG_MIXER ? 3 : page == PG_BOUNCE || page == PG_RESON || page == PG_SETTINGS ? 2 : page == PG_ROBOTS ? V_LEARN + 1 : 1;
+    return page == PG_MOTION ? 2 : page == PG_MASTER ? 8 : page == PG_TAPE ? 3 : page == PG_MIXER ? 4 : page == PG_BOUNCE || page == PG_RESON || page == PG_SETTINGS ? 2 : page == PG_ROBOTS ? V_LEARN + 1 : 1;
 }
 static float tape_hz(void) { return vsc_tape_hz(vsc.p[P_TAPESPD] % 3u); }
 /* MOTION: the lane a parameter has (-1 none), and what it plays now */
@@ -875,8 +876,8 @@ static void draw_tape(void)
 /* ---- MIXER */
 static void draw_mixer(void)
 {
-    static const char *const row_name[3] = {"LEVEL", "TRIM", "PAN"};
-    header("MIXER", row_name[view % 3], C_DEEP, C_AMBER);
+    static const char *const row_name[4] = {"LEVEL", "TRIM", "PAN", "SEND"};
+    header("MIXER", row_name[view & 3u], C_DEEP, C_AMBER);
     for (unsigned t = 0; t < VSC_TRACKS; ++t) {
         int x = 4 + 59 * (int)t, cx = x + 27;
         int armed = vsc.p[P_TRK(t, S_ARM)], has = vsc_meter.has[t];
@@ -889,13 +890,15 @@ static void draw_mixer(void)
             const char *src = (vsc_meter.recording >> t & 1u) ? "REC" : armed ? "ARMED" : has ? "TAPE" : "EMPTY";
             text_c(cx, 61, src, (vsc_meter.recording >> t & 1u) ? C_RED : has ? C_CREAM : C_DIMR);
         }
-        unsigned row = view % 3;
+        unsigned row = view & 3u;
         knob(cx, 82, 9, (float)vsc.p[P_TRK(t, S_TRIM)] / 127.f, row == 1);
         disc(x + 47, 73, 2, vsc_meter.sat[t] > 40 ? C_AMBER : C_GLOW);
         if (vsc_meter.sat[t] > 40) ring(x + 47, 73, 4, C_GLOW);
         if (IN_BAND(94, 102)) text_c(cx, 95, "TRIM", row == 1 ? C_AMBER : C_DIM);
-        knob(cx, 114, 7, (float)vsc.p[P_TRK(t, S_PAN)] / 127.f, row == 2);
-        if (IN_BAND(124, 132)) text_c(cx, 125, "PAN", row == 2 ? C_AMBER : C_DIM);
+        /* PAN, and beside it the send to the delay and verb */
+        knob(cx - 12, 114, 7, (float)vsc.p[P_TRK(t, S_PAN)] / 127.f, row == 2);
+        knob(cx + 12, 114, 7, (float)vsc.p[P_SEND0 + t] / 127.f, row == 3);
+        if (IN_BAND(124, 132)) { text_c(cx - 12, 125, "PAN", row == 2 ? C_AMBER : C_DIM); text_c(cx + 12, 125, "SEND", row == 3 ? C_AMBER : C_DIM); }
         if (IN_BAND(136, 200)) {
             rect(cx - 1, 138, 3, 60, C_BLACK);
             for (int k = 0; k <= 4; ++k) hline(cx - 9, 138 + k * 15, 4, C_DEEP), hline(cx + 6, 138 + k * 15, 4, C_DEEP);
@@ -911,7 +914,7 @@ static void draw_mixer(void)
             if (vsc_solo >> t & 1u) text(x + 37, 209, "S", C_GREEN);
         }
     }
-    footer(view == 0 ? "F3-B3 MUTE  C4-F4 SOLO  EDIT: NEXT" : view == 1 ? "KNOBS 1-4: TRIM INTO PREAMP" : "KNOBS 1-4: PAN  EDIT: INPUT");
+    footer(view == 0 ? "F3-B3 MUTE  C4-F4 SOLO  EDIT: NEXT" : view == 1 ? "KNOBS 1-4: TRIM INTO PREAMP" : view == 2 ? "KNOBS 1-4: PAN  EDIT: SENDS" : "SENDS: DELAY + VERB (FX)  EDIT: IN");
 }
 
 /* ---- INPUT */
@@ -1260,9 +1263,50 @@ static void eq_curve_make(void)
         eq_curve[x] = (int8_t)(db * 2.f);
     }
 }
+/* MASTER's SPACE views: the delay's repeats, and the verb's tail in its steps */
+static void draw_space(void)
+{
+    const int dly = view == 6;
+    header("MASTER", dly ? "DELAY" : "VERB", C_DEEP, C_AMBER);
+    if (IN_BAND(18, 168)) {
+        box(6, 19, 228, 148, C_BLACK); frame(6, 19, 228, 148, C_LINE);
+        hline(14, 150, 212, C_PANEL);
+        if (dly) {   /* the source, then each repeat a TIME later, FEEDBACK lower */
+            const float fb = (float)vsc.p[P_DFB] * (0.92f / 127.f), ret = (float)vsc.p[P_DMIX] / 127.f;
+            const int dx = 6 + (int)vsc.p[P_DTIME] * 58 / 127;
+            rect(16, 40, 5, 110, C_CREAM);
+            float a = ret;
+            for (int x = 16 + dx, n = 0; x < 222 && n < 24; x += dx, ++n) {
+                int h = (int)(a * 110.f);
+                if (h < 1) break;
+                rect(x, 150 - h, 4, h, n ? C_AMBER : C_FACE);
+                a *= fb;
+            }
+            char b[10]; vsc_param_label(P_DTIME, vsc.p[P_DTIME], b);
+            text(16, 26, b, C_DIM);
+        } else {   /* the tail, held in BITS' steps */
+            const float fb = 0.80f + (float)vsc.p[P_VSIZE] * (0.185f / 127.f), ret = (float)vsc.p[P_VMIX] / 127.f;
+            const int steps = 8 << (2 * (2u - vsc.p[P_VBITS] % 3u));   /* (12 bits: 128 steps shown, 10: 32, 8: 8) */
+            float a = ret;
+            int py = 150;
+            for (int x = 16; x < 222; x += 3) {
+                int q = (int)(a * (float)steps) * 110 / steps;
+                rect(x, 150 - q, 3, q, C_AMBER);
+                if (q != py && x > 16) vline(x, 150 - (q > py ? q : py), (q > py ? q - py : py - q) + 1, C_FACE);
+                py = q;
+                a *= 0.93f + (fb - 0.8f) * 0.35f;
+            }
+            char b[10]; vsc_param_label(P_VBITS, vsc.p[P_VBITS], b);
+            text(16, 26, b, C_DIM);
+        }
+    }
+    knob_row(172);
+    footer(dly ? "SENDS: MIXER (EDIT)  SEL: VERB" : "12-BIT, AFTER THE ALESIS ERA");
+}
 static void draw_master(void)
 {
     char b[24], c[8];
+    if (view >= 6) { draw_space(); return; }
     if (view < 4) {
         cpy(b, "EQ BAND "); c[0] = (char)('1' + view); c[1] = 0; cat(b, c);
         header("MASTER", b, C_DEEP, C_AMBER);
@@ -1290,7 +1334,7 @@ static void draw_master(void)
             }
         }
         knob_row(172);
-        footer("SELECT: BAND, THEN COMP");
+        footer("SELECT: BAND, COMP, DELAY, VERB");
         return;
     }
     header("MASTER", "COMP", vsc.p[P_CON] ? C_AMBER : C_DEEP, vsc.p[P_CON] ? C_BODY : C_DIM);

@@ -19,7 +19,7 @@ const TRK = (t, k) => 10 + t * 8 + k, S = {TRIM: 0, PAN: 1, LEVEL: 2, MUTE: 3, A
 const EQ = (b, k) => P.EQ0 + b * 4 + k;
 const ROB = (r, k) => P.ROB0 + r * 5 + k, R = {TARGET: 0, RATE: 1, SHAPE: 2, SKEW: 3, DEPTH: 4};
 const EV = {NOTE_ON: 0, NOTE_OFF: 1, PLAY: 2, STOP: 3, REC: 4, CLEAR: 5, ERASE: 6, BOUNCE: 7, ARM: 8, CC: 9, PANIC: 10, LOOP: 11};
-ok(x.np() === 101, 'parameter count: ' + x.np());
+ok(x.np() === 113, 'parameter count: ' + x.np());
 x.init();
 const inbuf = new Float32Array(mem(), x.input_buffer(), 256), usbbuf = new Float32Array(mem(), x.usb_buffer(), 256);
 let fr = 0;
@@ -357,17 +357,52 @@ x.device_seal(); ok(x.device_check() === 1, 'the device settings check');
   // a knob an LFO can't move: no row
   press(B.FX); ctl(0, 1 << B.LFO); enc(2, 3, 1 << B.LFO); ctl(0, 0);
   ok(rt()[6] === 0 && rt()[10] === 0, 'the EQ (worked out on change) is not a route target');
-  // 2.4's projects (format 10, no matrix) load with an empty one
-  x.project_seal(0);
-  const hv = new Uint32Array(mem(), x.project(), 4), bytes = x.project_bytes();
-  const old = bytes - 32; rt()[0] = 1; rt()[2] = 50;
-  const u8 = new Uint8Array(mem(), x.project(), bytes);
-  let c = 0xffffffff; for (let i = 16; i < old; i++) { c ^= u8[i]; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1)); }
-  hv[1] = 10; hv[2] = old; hv[3] = (~c) >>> 0;
-  ok(x.project_check() === 1, 'a format 10 project checks (upgraded)');
-  ok(hv[1] === 11 && hv[2] === bytes && rt()[2] === 0, 'and gets this format and an empty matrix');
+  // 2.4's projects (format 10: 101 parameters, no matrix) and 2.5's (11: 101 and the matrix) load,
+  // their gestures, motion and routes moved to where this format has them, the new knobs at their defaults
+  const crc = (u, a, b) => { let c = 0xffffffff; for (let i = a; i < b; i++) { c ^= u[i]; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1)); } return (~c) >>> 0; };
+  for (const [fmt, ob] of [[11, 536], [10, 504]]) {
+    x.set_param(TRK(2, S.LEVEL), 77); x.set_param(ROB(1, R.RATE), 99);
+    rt()[0] = 1; rt()[1] = TRK(0, S.PAN); rt()[2] = 50;
+    x.project_seal(0);
+    const bytes = x.project_bytes(), u8 = () => new Uint8Array(mem(), x.project(), bytes);
+    const cur = u8().slice(), gestAt = 28 + 113 + 3;
+    for (let i = 0; i < bytes - gestAt; i++) cur[gestAt + i] = (i * 7 + 3) & 0x7f;   // (marks in the gestures, motion, routes)
+    cur[gestAt + 392 + 1] = TRK(0, S.PAN); cur[gestAt + 392 + 2] = 50; cur[gestAt + 392] = 1;   // (route 0, valid)
+    const old = new Uint8Array(ob);
+    old.set(cur.subarray(0, 28 + 101));
+    old.set(cur.subarray(gestAt, gestAt + ob - 132), 132);
+    const dv = new DataView(old.buffer); dv.setUint32(4, fmt, true); dv.setUint32(8, ob, true); dv.setUint32(12, crc(old, 16, ob), true);
+    u8().fill(0xee); u8().set(old);
+    ok(x.project_check() === 1, 'a format ' + fmt + ' project checks (upgraded)');
+    const nw = u8(), hv = new Uint32Array(mem(), x.project(), 4);
+    let same = true; for (let i = 28; i < 28 + 101; i++) if (nw[i] !== cur[i]) same = false;
+    let moved = true; for (let i = 0; i < ob - 132; i++) if (nw[gestAt + i] !== cur[gestAt + i]) moved = false;
+    ok(hv[1] === 12 && hv[2] === bytes && same && moved, 'format ' + fmt + ': this format, its knobs kept, the rest moved up');
+    ok(nw[28 + 101] === 0 && nw[28 + 105] === 60 && nw[28 + 112] === 0, 'the sends start at 0, the delay and verb at their defaults');
+    if (fmt === 10) { let z = true; for (let i = 0; i < 32; i++) if (nw[bytes - 32 + i]) z = false; ok(z, 'format 10: an empty LFO matrix'); }
+  }
+  { const b = x.project_bytes(), u = new Uint8Array(mem(), x.project(), b), g = 28 + 113 + 3;   // (back to flat gestures, no motion, no routes)
+    u.fill(0, g); new DataView(u.buffer, u.byteOffset).setUint16(g + 96, 1000, true); new DataView(u.buffer, u.byteOffset).setUint16(g + 98, 1000, true); }
   for (let i = 0; i < 32; i++) rt()[i] = 0;
   x.set_param(ROB(0, R.SHAPE), 0); x.set_param(ROB(0, R.RATE), 40);
+}
+
+// 14c. SPACE: the sends (mixer, after PAN) into the delay and the 12-bit verb (MASTER, after COMP)
+{
+  const SEND0 = 101, DTIME = 105, DFB = 106, DMIX = 107, DVERB = 108, VSIZE = 109, VDAMP = 110, VMIX = 111, VBITS = 112;
+  ok([0, 1, 2, 3].every(t => x.get_param(SEND0 + t) === 0), 'the sends start at 0 (no change to the sound)');
+  press(B.EDIT); enc(0, 3); paintCheck('mixer SEND'); enc(2, 40);
+  ok(x.get_param(SEND0) > 0, 'knob 1 on the mixer\'s SEND view: track 1\'s send ' + x.get_param(SEND0));
+  press(B.FX); enc(0, 6); paintCheck('master DELAY'); enc(0, 1); paintCheck('master VERB');
+  x.set_param(SEND0, 110); x.set_param(DMIX, 110); x.set_param(VMIX, 110); x.set_param(DFB, 90);
+  x.event(EV.PLAY, 1, 0); run(150);
+  x.event(EV.STOP, 0, 0); run(6);
+  sound(run(40), 'stopped: the delay and verb ring on');
+  for (const b of [0, 1, 2]) { x.set_param(VBITS, b); const r = run(20); ok(!r.nan && r.peak <= 1, 'BITS ' + b + ' ' + JSON.stringify(r)); }
+  x.set_param(SEND0, 0); run(800);
+  quiet(run(40), 'sends down: the tails die away');
+  x.set_param(VBITS, 0); x.set_param(DFB, 55); x.set_param(DMIX, 90); x.set_param(VMIX, 90);
+  press(B.HOME);
 }
 
 // 15. long run with everything moving: no NaN, in range

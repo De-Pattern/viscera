@@ -38,8 +38,14 @@ enum vsc_param {
     P_SLSRC, P_SLN, P_SLSNAP, P_SLDST,
     /* ROBOTS: two, each a target, a rate, a shape, its skew and depth */
     P_ROB0,
-    VSC_NP = P_ROB0 + VSC_ROBOTS * 5
+    /* SPACE (format 12): each track's send (post-fader) to a lo-fi delay (TIME, FEEDBACK, its
+     * return, how much of it goes on to the verb) and a 12-bit verb after the Alesis era
+     * (SIZE, DAMP, its return, BITS: 12, 10 or 8) */
+    P_SEND0 = P_ROB0 + VSC_ROBOTS * 5,
+    P_DTIME = P_SEND0 + VSC_TRACKS, P_DFB, P_DMIX, P_DVERB, P_VSIZE, P_VDAMP, P_VMIX, P_VBITS,
+    VSC_NP
 };
+#define VSC_NP_V11 101   /* the parameters of formats 10 and 11 (2.4, 2.5): those up to the robots */
 enum { S_TRIM, S_PAN, S_LEVEL, S_MUTE, S_ARM, S_SPEED, S_PITCH, S_DUB };
 enum { E_FREQ, E_GAIN, E_Q, E_TYPE };
 #define P_EQ(b, k) (P_EQ0 + (b) * 4 + (k))
@@ -96,8 +102,9 @@ struct vsc_project {
     struct vsc_route { uint8_t src, param; int8_t depth; uint8_t pad; } route[VSC_ROUTES];
 };
 #define VSC_MAGIC 0x34435356u /* "VSC4" */
-#define VSC_FORMAT 11         /* 9: per-track speed, pitch, dub; the master EQ and compressor; 11: the LFO matrix */
-#define VSC_FORMAT_10_BYTES offsetof(struct vsc_project, route)   /* a format 10 project: this one without the matrix */
+#define VSC_FORMAT 12         /* 9: per-track speed, pitch, dub; the master EQ and compressor; 11: the LFO matrix; 12: the sends, delay and verb */
+#define VSC_FORMAT_10_BYTES 504u   /* the earlier formats' sizes (2.4's: no LFO matrix; 2.5's: 101 parameters) */
+#define VSC_FORMAT_11_BYTES 536u
 /* MIDI learn: a CC (or a note, for an action) on a channel. kind 0: CC to a parameter;
  * 1: a note to an action. */
 struct vsc_learn { uint8_t ch, cc, kind, param; };
@@ -205,8 +212,9 @@ extern uint8_t vsc_eq_live;
 void vsc_project_defaults(struct vsc_project *p);
 uint32_t vsc_crc32(const void *data, size_t bytes);
 int vsc_project_valid(const struct vsc_project *p);
-/* a format 10 project read into p (its first VSC_FORMAT_10_BYTES): checks it, gives it an empty
- * matrix and makes it this format. 1 if it was one. */
+/* a format 10 or 11 project read into p (its first VSC_FORMAT_1x_BYTES): checks it, moves its
+ * parts to where this format has them, gives it the new parameters' defaults (and format 10 an
+ * empty LFO matrix), and makes it this format. 1 if it was one. */
 int vsc_project_upgrade(struct vsc_project *p);
 /* RESON's profiles: the values a profile sets (the knobs' too) */
 void vsc_reson_profile(unsigned n);

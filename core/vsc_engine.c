@@ -908,6 +908,80 @@ static VSC_HOT_SMALL void bounce_start(void)
     vsc_meter.bounce = 1; vsc_meter.bounce_dst = (uint8_t)dst;
 }
 
+/* ---------------------------------------------------------- SPACE: the delay and the verb
+ * The tracks' sends (post-fader) feed both. The delay is lo-fi: 8 bits at a quarter rate
+ * (11 kHz), up to 350 ms, its repeats darkening and saturating. The verb is after the Alesis
+ * era's (Ravel's 12-BIT, one tank here, for memory): four combs and, a side, two allpasses at
+ * half rate, kept in 12 bits (BITS takes it to 10 or 8), its output steps held so it lisps and
+ * aliases as early digital verbs did. Some of the delay goes on into the verb (TO VRB). */
+#define DL_LEN 3860u
+static VSC_HOTDATA const int16_t vb_len[8] = {558, 594, 639, 678, 113, 171, 124, 182};
+#define VB_MEM (558 + 594 + 639 + 678 + 113 + 171 + 124 + 182)
+static int8_t dl_buf[DL_LEN];
+static int16_t vb_mem[VB_MEM];
+static float fx_in[VSC_BLOCK];
+static uint32_t dl_w, dl_c, fx_tail;
+static float dl_acc, dl_lp, dl_out, dl_sm, vb_in, vb_l, vb_r, vb_clp[4];
+static uint16_t vb_w[8];
+static uint8_t vb_odd;
+VSC_INL int16_t vb_q(float x, int32_t q)
+{
+    int32_t v = (int32_t)clampf(x * 8192.f, -32000.f, 32000.f), sg = v >> 31;
+    return (int16_t)(((((v ^ sg) - sg) & -q) ^ sg) - sg);   /* (|v| down to the step, toward zero) */
+}
+static VSC_HOT void space_run(float *l, float *r, unsigned n)
+{
+    const float dfb = pf[P_DFB] * (0.92f / 127.f), dret = level_gain(pf[P_DMIX] * (100.f / 127.f)) * 0.9f;
+    const float dto = pf[P_DVERB] * (0.8f / 127.f), vret = level_gain(pf[P_VMIX] * (100.f / 127.f)) * 1.2f;
+    const float fb = 0.80f + pf[P_VSIZE] * (0.185f / 127.f), damp = 0.15f + (127.f - pf[P_VDAMP]) * (0.7f / 127.f);
+    const uint32_t dlen = 220u + (uint32_t)vsc.p[P_DTIME] * (DL_LEN - 221u) / 127u;
+    const int32_t q = 4 << (2 * (vsc.p[P_VBITS] % 3u));   /* 12 bits of full scale, 10, 8 */
+    for (unsigned i = 0; i < n; ++i) {
+        const float x = fx_in[i];
+        /* the delay: a quarter-rate line of 8 bits */
+        dl_acc += x;
+        if (++dl_c == 4u) {
+            uint32_t rp = dl_w >= dlen ? dl_w - dlen : dl_w + DL_LEN - dlen;
+            float y = (float)dl_buf[rp] * (1.f / 100.f);
+            dl_lp += 0.45f * (y - dl_lp);
+            float v = dl_acc * 0.25f + dl_lp * dfb;
+            v = v > 1.f ? 1.f : v < -1.f ? -1.f : v - v * v * v * 0.25f;   /* (the repeats saturate) */
+            dl_buf[dl_w] = (int8_t)(v * 100.f);
+            if (++dl_w == DL_LEN) dl_w = 0;
+            dl_out = y; dl_acc = 0.f; dl_c = 0;
+        }
+        dl_sm += 0.5f * (dl_out - dl_sm);
+        /* the verb: a pair in, one step of the tank */
+        vb_in += (x + dl_sm * dto) * 0.5f;
+        if (vb_odd) {
+            const float xin = vb_in * 0.6f;
+            float c[4];
+            int16_t *m = vb_mem;
+            for (unsigned k = 0; k < 4; ++k) {
+                uint32_t w = vb_w[k];
+                float y = (float)m[w] * (1.f / 8192.f);
+                vb_clp[k] += damp * (y - vb_clp[k]);
+                m[w] = vb_q(xin + vb_clp[k] * fb, q);
+                if (++w == (uint32_t)vb_len[k]) w = 0;
+                vb_w[k] = (uint16_t)w; c[k] = y; m += vb_len[k];
+            }
+            float a = (c[0] - c[1] + c[2] - c[3]) * 0.25f, b = (c[0] + c[1] - c[2] - c[3]) * 0.25f;
+            for (unsigned k = 4; k < 8; ++k) {   /* the allpasses: 4, 5 the left; 6, 7 the right */
+                uint32_t w = vb_w[k];
+                float *v = k < 6 ? &a : &b, z = (float)m[w] * (1.f / 8192.f);
+                m[w] = vb_q(*v + z * 0.5f, q);
+                *v = z - *v;
+                if (++w == (uint32_t)vb_len[k]) w = 0;
+                vb_w[k] = (uint16_t)w; m += vb_len[k];
+            }
+            vb_l = a; vb_r = b; vb_in = 0.f;   /* (held over the pair: the lisp) */
+        }
+        vb_odd ^= 1u;
+        l[i] += dl_sm * dret + vb_l * vret;
+        r[i] += dl_sm * dret + vb_r * vret;
+    }
+}
+
 /* ---------------------------------------------------------- the intro
  * Music at power-on, 32 sixteenths at 129 BPM (3.7 s), chopped hard on the sixteenths: a kick on
  * the beat, a clap on two and four, a gritty sawtooth bass, all crushed to 4 bits, and over them,
@@ -1248,7 +1322,10 @@ void vsc_bench_setup(void)
     vsc.p[P_PITCH] = 17; vsc.p[P_SPEED] = 80;
 #if VSC_BENCH >= 6
     vsc.p[P_RTGT] = RT_T2;
-    vsc_reson_profile(VSC_BENCH == 7 ? RP_DUST : RP_LIQUID);
+    vsc_reson_profile(VSC_BENCH >= 7 ? RP_DUST : RP_LIQUID);
+#endif
+#if VSC_BENCH >= 8
+    for (unsigned t = 0; t < VSC_TRACKS; ++t) vsc.p[P_SEND0 + t] = 100;   /* (8: and the delay and verb) */
 #endif
     play();
     rec();
@@ -1282,12 +1359,14 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
     const float inc = clampf(tape_hz * speed * (1.f / (float)VSC_SR), 0.f, 1.f);
     vsc_meter.rate = tape_hz * speed;
     const float head = clampf(tape_hz * speed * (6.2831853f * 0.42f / (float)VSC_SR), 0.05f, 1.f);   /* the head's roll-off: about 0.42 of the tape's rate */
-    float g_trim[VSC_TRACKS], g_l[VSC_TRACKS], g_r[VSC_TRACKS];
+    float g_trim[VSC_TRACKS], g_l[VSC_TRACKS], g_r[VSC_TRACKS], g_s[VSC_TRACKS];
+    int sends = 0;
     for (unsigned t = 0; t < VSC_TRACKS; ++t) {
         g_trim[t] = trim_gain(pf[P_TRK(t, S_TRIM)]);
         float lv = vsc.p[P_TRK(t, S_MUTE)] || (vsc_solo && !(vsc_solo >> t & 1u)) ? 0.f : level_gain(pf[P_TRK(t, S_LEVEL)]), pan = (pf[P_TRK(t, S_PAN)] - 64.f) * (1.f / 64.f);
         pan = clampf(pan, -1.f, 1.f);
         g_l[t] = lv * (pan > 0.f ? 1.f - pan : 1.f); g_r[t] = lv * (pan < 0.f ? 1.f + pan : 1.f);
+        { float sd = pf[P_SEND0 + t] * (1.f / 127.f); g_s[t] = lv * sd * sd; if (g_s[t] > 0.f) sends = 1; }   /* SPACE: post-fader */
     }
     const float tlev = level_gain(pf[P_TLEVEL]);
     const float semis = (pf[P_PITCH] - 12.f);
@@ -1431,13 +1510,14 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
         if (wrap_i >= 0) bounce_end(1);
         /* the mix */
         for (unsigned i = 0; i < n; ++i) {
-            float l = 0.f, r = 0.f;
+            float l = 0.f, r = 0.f, fs = 0.f;
             for (unsigned t = 0; t < VSC_TRACKS; ++t) {
                 if ((!tk[t].r.on && !(slicing && t == sl_src)) || (bounce_on && ((bounce_src >> t & 1u) || t == bounce_dst))) continue;
                 if (sl_rec && t == sl_dst) continue;   /* (the take: heard through the source as it's made) */
                 float v = tk[t].buf[i];
-                l += v * g_l[t]; r += v * g_r[t];
+                l += v * g_l[t]; r += v * g_r[t]; fs += v * g_s[t];
             }
+            fx_in[off + i] = fs * tlev;
             if (bounce_on) { l += bbuf[i] * 0.7f; r += bbuf[i] * 0.7f; }
             main_l[off + i] = l * tlev; main_r[off + i] = r * tlev;
         }
@@ -1455,6 +1535,14 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
         if (mon) for (unsigned i = 0; i < n; ++i) { main_l[off + i] += ibuf[i] * 0.8f; main_r[off + i] += ibuf[i] * 0.8f; }
     }
     if (keyed && vsc.p[P_CKEY] <= VSC_TRACKS && !tk[vsc.p[P_CKEY] - 1u].r.on) vsc_memset(key_buf, 0, sizeof key_buf);
+    /* SPACE: while a send is up, and for its tails a few seconds after */
+    if (sends) fx_tail = 5u * VSC_SR; else if (fx_tail) fx_tail = fx_tail > VSC_BLOCK ? fx_tail - VSC_BLOCK : 0u;
+    if (fx_tail) {
+        uint32_t s0 = vsc_clock_now ? vsc_clock_now() : 0;
+        if (!sends) vsc_memset(fx_in, 0, sizeof fx_in);
+        space_run(main_l, main_r, VSC_BLOCK);
+        if (vsc_clock_since) t_reson += vsc_clock_since(s0);
+    }
     if (in_n < in_len) intro(main_l, main_r, VSC_BLOCK);
     eq_run(main_l, main_r, VSC_BLOCK);
     comp_run(main_l, main_r, VSC_BLOCK, keyed ? key_buf : 0);

@@ -108,7 +108,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
   </header>
 
   <div class="top">
-    <p class="eyebrow">Manual · Viscera 2.5.6 · 4-Track</p>
+    <p class="eyebrow">Manual · Viscera 2.6.0 · 4-Track</p>
     <h1>Guide</h1>
     <p>Viscera 4-Track turns the M-VAVE FM-1 into an overdubbing tape machine. Four tracks of tape in its memory, a 424-style preamp on the input and every channel, VU meters, and RESON to print a bounce through. This page covers installing it safely, getting sound in, how the sound flows, and what every page and control does.</p>
   </div>
@@ -222,9 +222,9 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
           <tr><td>MASTER</td><td>Output level.</td></tr>
           <tr><td>HOME</td><td>TAPE, then (HOME again) LOOP: START, END, SLIDE, FULL; then TRACK: the selected track's own SPEED, PITCH, DUB and LEVEL. Held: a track's key selects it (without arming it); turn a knob to record a robot gesture.</td></tr>
           <tr><td>ARP (CLEAR)</td><td>Held: a track's key clears that track; PLAY erases the whole tape.</td></tr>
-          <tr><td>EDIT</td><td>MIXER (levels, then trims, then pans), then INPUT.</td></tr>
+          <tr><td>EDIT</td><td>MIXER (levels, trims, pans, then sends), then INPUT.</td></tr>
           <tr><td>SEL</td><td>MOTION (the TAPE screen; SEL again: the selected track), then SLICE.</td></tr>
-          <tr><td>FX</td><td>MASTER: the four-band EQ (a view per band), then the compressor.</td></tr>
+          <tr><td>FX</td><td>MASTER: the four-band EQ (a view per band), the compressor, then the DELAY and the VERB.</td></tr>
           <tr><td>SEQ</td><td>BOUNCE.</td></tr>
           <tr><td>ENV</td><td>RESON.</td></tr>
           <tr><td>LFO</td><td>ROBOTS, the LFO MATRIX and MIDI learn. Held: turn any knob to route a robot to it.</td></tr>
@@ -254,9 +254,9 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
         <h3>TAPE SPEED (PRESETS)</h3>
         <div class="tbl"><table>
           <tr><th>Speed</th><th>Rate</th><th>Per track</th></tr>
-          <tr><td>HI</td><td>22.05 kHz</td><td>2.8 s</td></tr>
-          <tr><td>MID</td><td>16 kHz</td><td>3.8 s</td></tr>
-          <tr><td>LO</td><td>11.025 kHz</td><td>5.6 s</td></tr>
+          <tr><td>HI</td><td>22.05 kHz</td><td>2.5 s</td></tr>
+          <tr><td>MID</td><td>16 kHz</td><td>3.45 s</td></tr>
+          <tr><td>LO</td><td>11.025 kHz</td><td>5.0 s</td></tr>
         </table></div>
         <p>Lower is longer and darker, as on a cassette. Switching with something on the tape plays it at the new speed: an octave up from LO to HI.</p>
       </section>
@@ -279,7 +279,8 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
       <section id="mixer">
         <p class="eyebrow">08</p>
         <h2>Mixer (EDIT)</h2>
-        <p>Four strips, each with its VU meter, what it holds (TAPE, ARMED, REC, EMPTY), TRIM with its preamp lamp, PAN, a fader and its ARM button. KNOB 1–4 work the four strips at once: <b>EDIT</b> steps through LEVEL, then TRIM, then PAN (the row in use is lit), then on to INPUT.</p>
+        <p>Four strips, each with its VU meter, what it holds (TAPE, ARMED, REC, EMPTY), TRIM with its preamp lamp, PAN and SEND, a fader and its ARM button. KNOB 1–4 work the four strips at once: <b>EDIT</b> steps through LEVEL, TRIM, PAN, then SEND (the row in use is lit), then on to INPUT.</p>
+        <p><b>SEND</b> is each track's send to the delay and the verb, after its fader (a muted track sends nothing). All four start at zero.</p>
         <p><b>Mute and solo</b>: on the mixer the track keys mute (F3, G3, A3, B3, lit while muted) and the next four white keys solo (C4, D4, E4, F4, lit while soloed). With any track soloed, the rest are silent; solo several to hear them together. Elsewhere the track keys arm.</p>
         <p><b>TRIM</b> drives the channel's preamp: 0 dB is clean; push it until the lamp glows for warmth, further for grit.</p>
       </section>
@@ -292,6 +293,13 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
         <p>Four bands, each FREQ (20 Hz to 20 kHz), GAIN (±15 dB), Q and TYPE. Bands 2 and 3 are bells; band 1 can be a bell, a low shelf or a LO CUT, band 4 a bell, a high shelf or a HI CUT (Q sets a cut's resonance). The screen draws the curve; a band at 0 dB is out of the way.</p>
         <h3>COMP (the last two views)</h3>
         <p>Ravel's glue compressor, after the SSL G bus compressor: <b>COMP</b> on or off, <b>THRESH</b> (−30 to 0 dB), <b>RATIO</b> (2:1, 4:1, 10:1), <b>MAKEUP</b>; then <b>ATTACK</b> (0.1 to 30 ms), <b>RELEASE</b> (0.1 to 1.2 s, or AUTO, two-stage), <b>MIX</b> (below 100 % the dry sound under it) and <b>KEY</b>, the sidechain: what it listens to. MIX, a track (after its strip, before its fader and mute, so a muted track can still push the rest down) or INPUT (the live input, monitored or not: talk or play over the tape and it ducks). The bar shows the gain reduction; the dot on the curve is the level going in.</p>
+        <h3>DELAY and VERB (after the compressor's views)</h3>
+        <p>Fed by the mixer's SENDs; their returns go into the master with the tape, before the EQ.</p>
+        <ul>
+          <li><b>DELAY</b>: lo-fi, 8 bits at a quarter rate, the repeats darkening and saturating. <b>TIME</b> (20 to 350 ms), <b>FEEDBACK</b>, <b>MIX</b> (its return) and <b>TO VRB</b> (how much of the repeats go on into the verb). The screen draws the repeats.</li>
+          <li><b>VERB</b>: after the Alesis era's (Ravel's 12-BIT plate, one tank): four combs and two allpasses a side at half rate, held in 12 bits, so it lisps and aliases as early digital verbs did. <b>SIZE</b> (how long it rings), <b>DAMP</b> (how dark), <b>MIX</b> (its return) and <b>BITS</b>: 12, 10 or 8, grittier each step. The screen draws the tail in its steps.</li>
+        </ul>
+        <p>Their memory came from the tape: a track is 2.5 s at HI now (2.8 s before 2.6).</p>
       </section>
 
       <section id="input">

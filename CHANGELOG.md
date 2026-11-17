@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.5.2 — new intro music
+
+- **The intro has new music**: an original, frantic lo-fi piece: a hard kick, a clap on two and four, a distorted sawtooth bass pulsing in sixteenths on D with octave jumps, a strobing minor stab, dropping to B flat for the last bar. Still 4-bit, the same length and the same level.
+- Nothing else changes in the sound.
+
 ## 2.5.1 — the VU meters lit
 
 - **The VU meters glow** a warm, deep orange from inside their corners, like a lamp behind the face.

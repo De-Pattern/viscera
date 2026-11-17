@@ -216,6 +216,30 @@ footer{padding:50px 0 60px;font:400 10px/1.9 var(--mono);letter-spacing:.08em;co
 .mtr .nm{font:400 9px/1 "Silkscreen",var(--mono);letter-spacing:0;color:#9a9da3}
 .mtr .lamp{width:6px;height:6px}
 .mscale{color:#6d7076;font-family:"Silkscreen",var(--mono)}
+
+/* phones: laid out as Ravel's emulator is, top to bottom as the hands use it: the four
+   encoders, the screen, the four knobs, the pads and OCT, the buttons, the meters */
+@media (max-width:720px){
+  .device{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 4px;padding:20px 12px 16px}
+  .device>*,.screenwrap,.righthand>*,.lefthand>.tray{grid-column:1/-1}
+  .upper,.righthand,.lefthand{display:contents}
+  .brand{order:0}
+  .lefthand>.enc{grid-column:auto;order:1}
+  .screenwrap{order:2}.knobs4{order:3}.keybed{order:4}
+  .lefthand>.tray{order:5;grid-column:1/-1;padding:6px}
+  .righthand>.tray{order:6;padding:7px}
+  .meters{order:7}.now{order:8}
+  .enc .lbl{font-size:9.5px;margin-bottom:7px}.enc .fn{font-size:7.5px}
+  .btns{gap:5px}
+  .btn{height:48px;gap:3px;padding:0 2px;overflow:hidden}
+  .btn.oct{height:34px}
+  .btn .l{font-size:8.5px;max-width:100%;overflow:hidden;white-space:nowrap}
+  .btn .f{font-size:6.5px;letter-spacing:0;white-space:normal;line-height:1.2;text-align:center}
+  .meters{column-gap:16px;padding:9px 12px 7px}
+}
+@media (max-width:360px){
+  .enc .lbl{font-size:8.5px}.btn .l{font-size:7.5px}.btn .f{font-size:6px}
+}
 </style>
 </head>
 <body>

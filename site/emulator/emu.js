@@ -21,7 +21,7 @@
   /* encoder indices as the FM-1 reports them: 0 SELECT, 1 ALGORITHM, 2-5 KNOB 1-4, 6 PRESETS */
   const ENC_FN = ['view', 'reson · robot', 'param 1', 'param 2', 'param 3', 'param 4', 'page\'s own'];
   const BTN_FN = {FX: 'master', SEL: 'motion · slice', ARP: 'clear', ENV: 'reson', LFO: 'robots', EDIT: 'mixer', GLO: 'settings',
-    HOME: 'tape', SAVE: 'projects', SEQ: 'bounce', REC: 'rec · punch'};
+    HOME: 'tape', SAVE: 'projects', SEQ: 'bounce', PLAY: 'play · stop', REC: 'rec · punch'};
   const ROW1 = ['FX', 'SEL', 'ENV', 'LFO', 'EDIT', 'GLO'], ROW2 = ['HOME', 'SAVE', 'ARP', 'SEQ', 'PLAY', 'REC'];
   let master = 0.8;
   function makeEnc(role, parent, label, fn) {
@@ -72,7 +72,7 @@
   function makeBtn(name, parent, extra) {
     const i = BUTTONS.indexOf(name), b = document.createElement('button');
     b.className = 'btn' + (extra ? ' ' + extra : '');
-    b.innerHTML = '<span class="l">' + (name === 'PLAY' ? 'PLAY/STOP' : name) + '</span>' + (BTN_FN[name] ? '<span class="f">' + BTN_FN[name] + '</span>' : '');
+    b.innerHTML = '<span class="l">' + name + '</span>' + (BTN_FN[name] ? '<span class="f">' + BTN_FN[name] + '</span>' : '');
     b.setAttribute('aria-label', name.replace('−', '-'));
     btnEls[i] = b;
     /* right-click latches the button held (for hold gestures: LFO + knob, ARP + pad, SAVE + knob);

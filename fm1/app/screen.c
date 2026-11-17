@@ -237,7 +237,14 @@ void groove_screen_control(void)
     boot_check(now);
 
     if (now - status_at >= 250u) {
-        status_at = now; refresh_status(); vsc_host.battery = (uint8_t)(c.battery >> 2);
+        status_at = now; refresh_status();
+        {   /* the battery: a slow average of its divider (10 bit), in Ravel's bars (531 / 561 / 591);
+             * on a USB host's power the reading says little, so a bolt */
+            static int32_t raw;
+            int32_t b = (int32_t)c.battery;
+            if (b > 0) raw = raw ? raw + (b - raw) / 8 : b;
+            vsc_host.battery = vsc_host.usb_connected ? 4u : !raw ? 255u : raw >= 591 ? 3u : raw >= 561 ? 2u : raw >= 531 ? 1u : 0u;
+        }
         { unsigned pk = 0, cpu = vsc_fm1_cpu(&pk); vsc_host.cpu = (uint8_t)(cpu > 254u ? 254u : cpu); vsc_host.cpu_peak = (uint8_t)(pk > 255u ? 255u : pk); }
         vsc_fm1_parts(vsc_host.part);
         { static uint8_t shown; uint8_t r = vsc_relief; vsc_host.relief = r;

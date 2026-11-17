@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.5.5 — the battery
+
+- **A battery glyph at the bottom right of every page**, as Ravel has: three bars from the battery's level (Ravel's thresholds), red and empty when it's low, a bolt on USB power. Footer hints lose whole words before they'd reach it. (The browser emulator shows a full battery.)
+- No change to the sound.
+
 ## 2.5.4 — the intro's stab, retuned
 
 - **The vocal stab is clean now** (no 4-bit crush on it): a breathy "ah" with a little vibrato, through vowel resonances, in the same one-bar rhythm. Its line: D, D, B flat, D, G, then D, D, B flat, D, F.

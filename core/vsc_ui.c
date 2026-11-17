@@ -678,11 +678,27 @@ static void header(const char *title, const char *badge, uint16_t bg, uint16_t f
     text(5, 4, title, C_CREAM);
     if (badge && *badge) { int w = text_w(badge) + 10; box(235 - w, 2, w, 11, bg); text(240 - w, 4, badge, fg); }
 }
+/* the footer: the page's hint, and at the very right the battery (as Ravel shows it): bars, a
+ * bolt on USB power, red when it's low. The hint loses whole words before it reaches it. */
 static void footer(const char *hint)
 {
     if (!IN_BAND(229, 240)) return;
     rect(0, 229, 240, 11, C_PANEL);
-    text(5, 231, hint, C_DIM);
+    const unsigned bt = vsc_host.battery;
+    char hb[40];
+    unsigned k = 0, room = bt <= 4u ? 35u : 38u;
+    while (hint[k] && k < 39u) { hb[k] = hint[k]; ++k; }
+    hb[k] = 0;
+    while (k > room) { hb[--k] = 0; while (k && hb[k - 1] != ' ') hb[--k] = 0; while (k && hb[k - 1] == ' ') hb[--k] = 0; }
+    text(5, 231, hb, C_DIM);
+    if (bt > 4u) return;
+    const uint16_t c = bt == 0u ? C_RED : C_DIM;
+    frame(224, 231, 11, 7, c); rect(235, 233, 1, 3, c);
+    if (bt == 4u) {   /* a bolt */
+        rect(230, 232, 2, 1, C_CREAM); rect(229, 233, 2, 1, C_CREAM); rect(228, 234, 4, 1, C_CREAM);
+        rect(229, 235, 2, 1, C_CREAM); rect(228, 236, 2, 1, C_CREAM);
+    } else
+        for (unsigned b = 0; b < bt; ++b) rect(226 + 3 * (int)b, 233, 2, 3, c);
 }
 /* a knob: aluminium, its pointer from -135 to 135 degrees */
 static void knob(int cx, int cy, int r, float f, int lit)

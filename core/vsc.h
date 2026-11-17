@@ -242,7 +242,7 @@ struct vsc_host_status {
     uint8_t relief;                  /* the CPU guard's relief level (0..2) */
     uint8_t slot_used[VSC_PROJECTS];
     char slot_name[VSC_PROJECTS][12];
-    uint8_t storage_ok, battery;
+    uint8_t storage_ok, battery;   /* battery: 0-3 bars, 4 on USB power, 255 none (the footer's glyph) */
 };
 extern struct vsc_host_status vsc_host;
 void vsc_ui_init(void);

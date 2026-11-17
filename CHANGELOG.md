@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.5.6 — slice takes kept; meters while recording
+
+- **Fixed: a SLICE take could come back empty.** The take rewrote itself on every lap of the loop, so a lap with no slices played (say, the one before REC: KEEP) wiped what was played before. Now its first lap replaces the track and later laps add to it: every slice played stays.
+- **A recording track's VU meter shows what's going to tape** (the input, a bounce, or the slices), as a Portastudio's does. It sat at rest while recording before.
+- No other change to the sound.
+
 ## 2.5.5 — the battery
 
 - **A battery glyph at the bottom right of every page**, as Ravel has: three bars from the battery's level (Ravel's thresholds), red and empty when it's low, a bolt on USB power. Footer hints lose whole words before they'd reach it. (The browser emulator shows a full battery.)

@@ -297,7 +297,11 @@ key(0); sound(run(30), 'white key 1 plays slice 1');
 key(4); key(7); sound(run(30), 'more slices');
 press(B.REC); ok((x.recording() & 2) === 2, 'REC on SLICE records into the free track 2: ' + x.recording());
 for (let i = 0; i < 12; i++) { key([0, 2, 4, 6][i % 4]); wait(3); }
+wait(260);   // (laps go by with no slices played before REC keeps it: they mustn't wipe the take)
 press(B.REC); ok(x.has(1) === 1 && (x.recording() & 2) === 0, 'the take is on track 2');
+{ const lv = x.get_param(TRK(0, S.LEVEL)); x.set_param(TRK(0, S.LEVEL), 0);
+  sound(run(200), 'the take keeps the slices, though laps went by after them (track 1 down)');
+  x.set_param(TRK(0, S.LEVEL), lv); }
 press(B.REC, 1 << B.ARP); ctl(); ok(x.has(1) === 0, 'ARP + REC clears the take to start over');
 press(B.HOME); ctl();
 sound(run(100), 'leaving SLICE: track 1 plays again');

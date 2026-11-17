@@ -148,6 +148,7 @@ static uint32_t loop_len;     /* the loop's END (exclusive); 0: no loop yet */
 static uint32_t loop_start;   /* the loop's START */
 static uint32_t take_len;     /* the furthest a take has gone: what START and END can reach (FULL) */
 static uint8_t sl_src = 255, sl_dst = 255, sl_rec;   /* SLICE: the track sliced, where a take goes, recording */
+static uint32_t sl_wn;   /* SLICE: the take's samples written: past a loop, later laps add to it */
 static uint8_t transport, bounce_on, bounce_dst, bounce_src, bounce_clear;
 static uint32_t bounce_done;  /* samples of the loop printed */
 
@@ -1079,7 +1080,7 @@ static VSC_HOT_SMALL void slice_rec(int on)
     sl_dst = (uint8_t)d;
     if (transport == TR_STOP) play();
     wr_start(sl_dst);
-    sl_rec = 1;
+    sl_rec = 1; sl_wn = 0;
 }
 
 /* ---------------------------------------------------------- MIDI learn */
@@ -1409,16 +1410,23 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
             struct trk *k = &tk[t];
             if (!k->w.on || !moving) continue;
             const int bw = bounce_on && t == bounce_dst;
-            const float *src = bw ? bbuf : sl_rec && t == sl_dst && slicing ? tk[sl_src].buf : ibuf;
+            const int take = sl_rec && t == sl_dst;
+            const float *src = bw ? bbuf : take && slicing ? tk[sl_src].buf : ibuf;
+            float acc = 0.f, pk = 0.f;   /* (its meter: what goes to tape) */
             for (unsigned i = 0; i < n; ++i) {
                 if (k->cr[i] && k->w.on) {
                     float v = k->w.cnt ? k->w.acc / (float)k->w.cnt : 0.f;
-                    wr_put(t, k->oldn[i], k->old[i], v, replace || bw || (sl_rec && t == sl_dst));
+                    /* a slice take: its first lap replaces what was there; later laps add to it, so
+                     * the slices played on any lap stay (and a lap left alone keeps the last) */
+                    if (take) { if (sl_wn < loop_end() - loop_start) { ++sl_wn; wr_put(t, k->oldn[i], k->old[i], v, 1); } else wr_put(t, k->oldn[i], k->old[i], k->old[i] + v, 1); }
+                    else wr_put(t, k->oldn[i], k->old[i], v, replace || bw);
                     k->w.acc = 0.f; k->w.cnt = 0;
                     if (bw && (int)i == wrap_i) { k->w.on = 0; break; }   /* the bounce's last sample */
                 }
                 k->w.acc += src[i]; ++k->w.cnt;
+                float a = absf(src[i]); acc += a; if (a > pk) pk = a;
             }
+            if (!bw) { tacc[t] += acc; if (pk > tpk[t]) tpk[t] = pk; }
         }
         if (wrap_i >= 0) bounce_end(1);
         /* the mix */

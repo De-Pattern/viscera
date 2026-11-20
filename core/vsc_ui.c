@@ -157,13 +157,16 @@ static void secs(char *o, float s)   /* "2.9S" */
 }
 
 /* ------------------------------------------------------------- pages */
-enum { PG_TAPE, PG_MIXER, PG_INPUT, PG_BOUNCE, PG_RESON, PG_ROBOTS, PG_SAVE, PG_SETTINGS, PG_MASTER, PG_MOTION, PG_SLICE, PG_COUNT };
+enum { PG_TAPE, PG_MIXER, PG_INPUT, PG_BOUNCE, PG_RESON, PG_ROBOTS, PG_SAVE, PG_SETTINGS, PG_MASTER, PG_MOTION, PG_SLICE, PG_SPLICE, PG_COUNT };
 static unsigned page, view, rsel = 1, rob, learn_sel, slot_sel, ble_sel, sel;   /* sel: the selected track */
 static uint32_t now_ms, notice_until, touch_at[4];
 static const char *notice;
 static char notice_buf[32];
 static uint32_t prev_buttons, prev_keys;
 static uint8_t learn_seen, used_mod;
+static uint8_t sp_key;   /* SPLICE: the key holding a print (1 F#3, 3 G#3), 0 none */
+static float sp_ang[2];   /* SPLICE: the spools' reels */
+static uint32_t sp_pos[2];
 static unsigned rob_sel, route_sel;     /* the robot LFO+TURN routes; the matrix's row */
 static uint32_t lfo_at; static uint8_t lfo_hint;   /* when LFO went down; its hint shown */
 enum { V_MATRIX = VSC_ROBOTS, V_LEARN = VSC_ROBOTS + 1 };   /* the ROBOTS page's views after the robots */
@@ -172,7 +175,7 @@ static uint8_t slice_open;                                 /* the SLICE page tol
 static uint32_t intro_at, frame_ms;   /* frame_ms: the time a frame is drawn at (one picture, however long its bands take) */
 static uint8_t intro_on, intro_fresh;   /* the start-up animation is on screen; its start time not yet taken from the clock */   /* a held modifier was used */
 /* a knob slot: a parameter, or one of the page's own controls */
-enum { K_NONE = 200, K_LSTART, K_LEND, K_LSLIDE, K_LFULL, K_LOOP, K_BTAUDIO, K_BTMIDI, K_LIGHT, K_KNOBCC, K_BLE, K_CLEARMAP, K_BAND, K_START, K_RSRC, K_RDST, K_RDEPTH, K_RDEL };
+enum { K_NONE = 200, K_LSTART, K_LEND, K_LSLIDE, K_LFULL, K_LOOP, K_BTAUDIO, K_BTMIDI, K_LIGHT, K_KNOBCC, K_BLE, K_CLEARMAP, K_BAND, K_START, K_RSRC, K_RDST, K_RDEPTH, K_RDEL, K_FINGER, K_DRAG };
 static unsigned slot(unsigned k)
 {
     switch (page) {
@@ -184,6 +187,10 @@ static unsigned slot(unsigned k)
         if (view == 1) { static const uint8_t s[4] = {S_SPEED, S_PITCH, S_PAN, S_LEVEL}; return P_TRK(sel, s[k]); }
         { static const uint8_t s[4] = {P_SPEED, P_PITCH, P_RMIX, P_TLEVEL}; return s[k]; }
     case PG_SLICE: { static const uint8_t s[4] = {P_SLSRC, P_SLN, P_SLSNAP, P_SLDST}; return s[k]; }
+    case PG_SPLICE: {   /* WEAR, BREAK, SCRUB */
+        static const uint8_t s[3][4] = {{P_WOW, P_SAT, P_AGE, P_DROP}, {P_CRUSH, P_LOSSY, P_CMP, P_XOR}, {K_FINGER, K_DRAG, K_NONE, K_NONE}};
+        return s[view % 3u][k];
+    }
     case PG_MASTER:
         if (view < 4) return P_EQ(view, k);
         { static const uint8_t s[4][4] = {{P_CON, P_CTHR, P_CRATIO, P_CMAKE}, {P_CATK, P_CREL, P_CMIX, P_CKEY},
@@ -211,7 +218,7 @@ static unsigned slot(unsigned k)
 }
 static unsigned views(void)
 {
-    return page == PG_MOTION ? 2 : page == PG_MASTER ? 8 : page == PG_TAPE ? 3 : page == PG_MIXER ? 4 : page == PG_BOUNCE || page == PG_RESON || page == PG_SETTINGS ? 2 : page == PG_ROBOTS ? V_LEARN + 1 : 1;
+    return page == PG_MOTION ? 2 : page == PG_MASTER ? 8 : page == PG_TAPE ? 3 : page == PG_MIXER ? 4 : page == PG_BOUNCE || page == PG_RESON || page == PG_SETTINGS ? 2 : page == PG_SPLICE ? 3 : page == PG_ROBOTS ? V_LEARN + 1 : 1;
 }
 static float tape_hz(void) { return vsc_tape_hz(vsc.p[P_TAPESPD] % 3u); }
 /* MOTION: the lane a parameter has (-1 none), and what it plays now */
@@ -249,6 +256,13 @@ static void slot_text(unsigned s, char name[10], char val[10])
     case K_RSRC: { const struct vsc_route *r = &vsc.route[route_sel]; cpy(name, "FROM"); cpy(val, !r->depth ? "-" : r->src ? "LFO 2" : "LFO 1"); break; }
     case K_RDST: { const struct vsc_route *r = &vsc.route[route_sel]; cpy(name, "TO"); if (r->depth) vsc_route_name(r->param, val); else cpy(val, "-"); val[7] = 0; break; }
     case K_RDEPTH: { const struct vsc_route *r = &vsc.route[route_sel]; cpy(name, "DEPTH"); if (r->depth > 0) { cpy(val, "+"); char b[6]; num(b, r->depth); cat(val, b); } else num(val, r->depth); break; }
+    case K_FINGER: {   /* the record's speed under the hand */
+        cpy(name, "FINGER");
+        if (!vsc_meter.sp_print) cpy(val, "-");
+        else { float v = vsc_meter.sp_speed; int c = (int)((v < 0.f ? -v : v) * 100.f + 0.5f); char b[8]; cpy(val, v < 0.f ? "R" : "F"); num(b, c / 100); cat(val, b); cat(val, "."); b[0] = (char)('0' + c / 10 % 10); b[1] = (char)('0' + c % 10); b[2] = 0; cat(val, b); }
+        break;
+    }
+    case K_DRAG: cpy(name, "DRAG"); if (vsc_meter.sp_print) { num(val, vsc_meter.sp_drag); cat(val, "%"); } else cpy(val, "-"); break;
     case K_RDEL: cpy(name, "DELETE"); cpy(val, vsc.route[route_sel].depth ? ">" : "-"); break;
     case K_BAND: { char b[8]; cpy(name, "BAND "); b[0] = (char)('1' + rsel); b[1] = 0; cat(name, b); vsc_param_label(P_RG0 + rsel, vsc.p[P_RG0 + rsel], val); break; }
     default: break;
@@ -262,6 +276,8 @@ static float slot_frac(unsigned s)
     if (s == K_BAND) return (float)vsc.p[P_RG0 + rsel] / 127.f;
     if (s == K_LIGHT) return (float)vsc_dev.backlight / 3.f;
     if (s == K_START) return vsc_dev.start_blank ? 0.f : 1.f;
+    if (s == K_FINGER) { float f = 0.5f + vsc_meter.sp_speed * 0.25f; return !vsc_meter.sp_print ? 0.75f : f < 0.f ? 0.f : f > 1.f ? 1.f : f; }
+    if (s == K_DRAG) return (float)vsc_meter.sp_drag * 0.01f;
     if (s == K_RDEPTH) return 0.5f + (float)vsc.route[route_sel].depth * (0.5f / 127.f);
     if (s == K_RSRC) return vsc.route[route_sel].depth ? (vsc.route[route_sel].src ? 1.f : 0.5f) : 0.f;
     return 0.f;
@@ -372,6 +388,10 @@ static void edit(unsigned s, int d, unsigned *req, unsigned *arg)
         if (d > 0 && vsc_dev.learn[learn_sel].param != 255) { vsc_dev.learn[learn_sel].param = 255; ++vsc_dev_changed; vsc_ui_notice("MAPPING CLEARED", 900); }
         break;
     case K_BAND: vsc.p[P_RG0 + rsel] = (uint8_t)clampi((int)vsc.p[P_RG0 + rsel] + d, 0, 127); break;
+    case K_FINGER: case K_DRAG:   /* SPLICE: a hand on the record, while a print is held */
+        if (vsc_meter.sp_print) vsc_event(EV_SCRUB, s == K_DRAG, (unsigned)(d & 255));
+        else vsc_ui_notice("HOLD F#3 OR G#3 (A PRINT), THEN TURN", 1200);
+        break;
     case K_RSRC: case K_RDST: case K_RDEPTH: case K_RDEL: {
         struct vsc_route *r = &vsc.route[route_sel];
         if (s == K_RDEL) { if (d > 0 && r->depth) { r->depth = 0; vsc_ui_notice("ROW DELETED", 800); } break; }
@@ -532,7 +552,11 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
     }
     if (page != PG_MOTION && mrec) motion_stop();
     if (down & B(BTN_ENV)) open_page(PG_RESON);
-    if (down & B(BTN_SEQ)) open_page(PG_BOUNCE);
+    if (down & B(BTN_SEQ)) {   /* SEQ: BOUNCE (and its RESON), then SPLICE */
+        if (page == PG_BOUNCE && view == 1) { page = PG_SPLICE; view = 0; }
+        else if (page == PG_SPLICE) { page = PG_BOUNCE; view = 0; }
+        else open_page(PG_BOUNCE);
+    }
     if ((up & B(BTN_LFO)) && !used_mod) { if (lfo_hint) notice_until = now_ms; open_page(PG_ROBOTS); }
     if (down & B(BTN_GLO)) open_page(PG_SETTINGS);
     if ((up & B(BTN_HOME)) && g_rec >= 0) gesture_end();
@@ -611,6 +635,9 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
             else if (view == V_MATRIX) route_sel = (unsigned)clampi((int)route_sel + d, 0, VSC_ROUTES - 1);
             else learn_sel = (unsigned)clampi((int)learn_sel + d, 0, VSC_LEARN - 1);
             break;
+        case PG_SPLICE:   /* PRE: FROM, the other spool (a new generation: the knobs to 0) */
+            if (!vsc_meter.sp_print) { vsc_event(EV_SPOOL, 3, 0); vsc_ui_notice(vsc.p[P_SPFROM] ? "FROM SPOOL 2: KNOBS RESET" : "FROM SPOOL 1: KNOBS RESET", 900); }
+            break;
         case PG_SAVE: slot_sel = (unsigned)clampi((int)slot_sel + d, 0, VSC_PROJECTS - 1); break;
         case PG_SETTINGS: ble_sel = (unsigned)clampi((int)ble_sel + d, 0, vsc_host.ble_count ? vsc_host.ble_count - 1 : 0); break;
         default: break;
@@ -640,8 +667,16 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
     /* keys: the four lowest white keys are the tracks: arm (on BOUNCE: pick the sources;
      * with HOME: clear); on RESON the next eight white keys pick a band; the others play
      * RESON */
+    /* SPLICE: F#3 prints spool 2 onto spool 1 while it's held, G#3 spool 1 onto spool 2 */
+    if (sp_key && (page != PG_SPLICE || !(in->keys & B(sp_key)))) { vsc_event(EV_SPOOL, 2, 0); sp_key = 0; }
+    if (page == PG_SPLICE && !sp_key && !clr_held && !save_held) {
+        if (kdown & B(1u)) { vsc_event(EV_SPOOL, 0, 0); sp_key = 1; }
+        else if (kdown & B(3u)) { vsc_event(EV_SPOOL, 1, 0); sp_key = 3; }
+        if (sp_key && !vsc_meter.sp_print && !vsc_meter.has[VSC_SPOOL0 + (sp_key == 1 ? 1u : 0u)]) vsc_ui_notice(sp_key == 1 ? "SPOOL 2 (TRACK 4) IS EMPTY" : "SPOOL 1 (TRACK 3) IS EMPTY", 1200);
+    }
     for (unsigned kk = 0; kk < 27; ++kk) {
         if (!(kdown & B(kk))) continue;
+        if (page == PG_SPLICE && (kk == 1u || kk == 3u)) continue;
         unsigned k = key_track(kk), band = key_band(kk);
         if (page == PG_MIXER && !save_held && !clr_held && !home_held) {   /* the mixer: F3-B3 mute, C4-F4 solo */
             int w = white_of(kk);
@@ -1263,6 +1298,60 @@ static void eq_curve_make(void)
         eq_curve[x] = (int8_t)(db * 2.f);
     }
 }
+/* SPLICE: the two spools (tracks 3, 4) on their reels, their shapes round the loop, which one
+ * prints (FROM, its reel lit), and the print as it goes */
+static void draw_splice(void)
+{
+    static const char *const vn[3] = {"WEAR", "BREAK", "SCRUB"};
+    const unsigned pr = vsc_meter.sp_print, from = vsc.p[P_SPFROM] & 1u;
+    char b[24];
+    header("SPLICE", pr ? (pr == 1 ? "PRINT 2>1" : "PRINT 1>2") : vn[view % 3u], pr ? C_RED : C_DEEP, pr ? C_BODY : C_AMBER);
+    if (IN_BAND(18, 104)) {
+        box(6, 19, 228, 84, C_BLACK); frame(6, 19, 228, 84, C_LINE);
+        for (unsigned k = 0; k < 2; ++k) {
+            const int cx = k ? 180 : 60, cy = 58, has = vsc_meter.has[VSC_SPOOL0 + k];
+            reel(cx, cy, has ? 32 : 18, sp_ang[k]);
+            if (k == from) ring(cx, cy, has ? 34 : 20, pr ? C_RED : C_AMBER);
+        }
+        /* the tape between, and which way a print goes */
+        hline(92, 90, 56, C_TAPE3); hline(92, 91, 56, C_TAPE3);
+        box(110, 84, 20, 12, C_ALU); vline(119, 84, 12, C_HUB2);
+        if (pr) {
+            const int l = pr == 1;   /* onto spool 1: right to left */
+            for (int i = 0; i < 5; ++i) { int x = l ? 104 - i : 136 + i; vline(x, 88 - i, 1 + 2 * i, C_RED); }
+            if ((now_ms / 150u) & 1u) disc(120, 78, 2, C_RED);
+        }
+        /* the generation, and the hand on the record */
+        cpy(b, "GEN "); { char c[8]; num(c, vsc_meter.sp_gen); cat(b, c); }
+        text_c(120, 24, b, C_CREAM);
+        if (pr && (vsc_meter.sp_rev || vsc_meter.sp_drag || vsc_meter.sp_speed > 1.05f || vsc_meter.sp_speed < 0.95f))
+            text_c(120, 36, vsc_meter.sp_rev ? "REVERSE" : "HAND", vsc_meter.sp_rev ? C_RED : C_AMBER);
+        text_c(60, 94, "1", from == 0 ? C_AMBER : C_DIM); text_c(180, 94, "2", from == 1 ? C_AMBER : C_DIM);
+    }
+    /* each spool's shape round the loop, and where it is */
+    if (IN_BAND(105, 166)) {
+        for (unsigned k = 0; k < 2; ++k) {
+            const unsigned t = VSC_SPOOL0 + k;
+            const int y = 107 + 30 * (int)k, mid = y + 13, onto = pr == k + 1u;
+            box(6, y, 228, 27, onto ? C_DARK : C_PANEL);
+            if (onto) frame(6, y, 228, 27, C_RED); else if (k == from) frame(6, y, 228, 27, C_AMBER);
+            text(11, y + 4, k ? "2" : "1", k == from ? C_AMBER : C_DIM);
+            text(11, y + 15, k == from ? "FR" : onto ? "TO" : "", k == from ? C_AMBER : C_RED);
+            if (!vsc_meter.has[t]) { text(30, mid - 3, k ? "EMPTY: RECORD TRACK 4" : "EMPTY: RECORD TRACK 3", C_DIMR); continue; }
+            for (int i = 0; i < 60; ++i) {
+                unsigned v = vsc_meter.overview[t][i];
+                int h = (int)v * 11 / 15;
+                vline(30 + 3 * i, mid - h, 2 * h + 1, k == from ? C_HUB2 : C_DEEP);
+            }
+            uint32_t e = vsc_meter.loop ? vsc_meter.loop : vsc_meter.cap;
+            int ph = (int)((float)vsc_meter.tpos[t] * 180.f / (float)(e ? e : 1u));
+            vline(30 + (ph > 179 ? 179 : ph < 0 ? 0 : ph), y + 2, 23, onto ? C_RED : C_CREAM);
+        }
+    }
+    knob_row(172);
+    if (view % 3u == 2u) footer(pr ? "FINGER: PUSH, BACK: REVERSE" : "HOLD F#3/G#3, TURN: THE RECORD");
+    else footer(pr ? "LET GO: THE PRINT STOPS" : "HOLD F#3: 2>1  G#3: 1>2  PRE: FROM");
+}
 /* MASTER's SPACE views: the delay's repeats, and the verb's tail in its steps */
 static void draw_space(void)
 {
@@ -1465,6 +1554,15 @@ void vsc_ui_frame(uint32_t now)
         if (reel_ang > 62.83f) reel_ang -= 62.83f;
     }
     reel_pos = p;
+    for (unsigned k = 0; k < 2; ++k) {   /* SPLICE: each spool's reel with its track (backward too, under the hand) */
+        uint32_t q = vsc_meter.tpos[VSC_SPOOL0 + k];
+        int32_t d = (int32_t)(q - sp_pos[k]);
+        int32_t l = (int32_t)(vsc_meter.loop ? vsc_meter.loop : vsc_meter.cap);
+        if (d > l / 2) d -= l; else if (d < -l / 2) d += l;
+        if (vsc_meter.playing) sp_ang[k] += (float)d / tape_hz() * 3.9f;
+        if (sp_ang[k] > 62.83f) sp_ang[k] -= 62.83f; else if (sp_ang[k] < -62.83f) sp_ang[k] += 62.83f;
+        sp_pos[k] = q;
+    }
 }
 void vsc_ui_paint_band(unsigned y0, uint16_t *pixels)
 {
@@ -1479,6 +1577,7 @@ void vsc_ui_paint_band(unsigned y0, uint16_t *pixels)
     case PG_MIXER: draw_mixer(); break;
     case PG_INPUT: draw_input(); break;
     case PG_BOUNCE: draw_bounce(); break;
+    case PG_SPLICE: draw_splice(); break;
     case PG_RESON: draw_reson(); break;
     case PG_ROBOTS: draw_robots(); break;
     case PG_SAVE: draw_save(); break;
@@ -1496,7 +1595,7 @@ void vsc_ui_leds(uint8_t out[41])
 {
     uint8_t glow = vsc_dev.backlight ? 1 : 0;
     for (unsigned i = 0; i < 41; ++i) out[i] = glow;
-    static const uint8_t page_btn[PG_COUNT] = {BTN_HOME, BTN_EDIT, BTN_EDIT, BTN_SEQ, BTN_ENV, BTN_LFO, BTN_SAVE, BTN_GLO, BTN_FX, BTN_SCL, BTN_SCL};
+    static const uint8_t page_btn[PG_COUNT] = {BTN_HOME, BTN_EDIT, BTN_EDIT, BTN_SEQ, BTN_ENV, BTN_LFO, BTN_SAVE, BTN_GLO, BTN_FX, BTN_SCL, BTN_SCL, BTN_SEQ};
     out[page_btn[page]] = 2;
     if (vsc_meter.playing) out[BTN_PLAY] = 2;
     if (vsc_meter.transport == TR_FIRST || vsc_meter.bounce) out[BTN_REC] = 2;

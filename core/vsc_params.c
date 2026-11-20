@@ -38,6 +38,7 @@ static const struct vsc_pinfo info[VSC_NP] = {
     C("SEND 1", 0), C("SEND 2", 0), C("SEND 3", 0), C("SEND 4", 0),
     C("TIME", 60), C("FEEDBK", 55), C("MIX", 90), C("TO VRB", 30),
     C("SIZE", 70), C("DAMP", 60), C("MIX", 90), E("BITS", 2, 0),
+    E("FROM", 1, 1), C("WOW", 0), C("SAT", 0), C("AGE", 0), C("DROP", 0), C("CRUSH", 0), C("LOSSY", 0), C("CMP", 0), C("XOR", 0),
 };
 const struct vsc_pinfo *vsc_param_info(unsigned p) { return p < VSC_NP ? &info[p] : &info[0]; }
 
@@ -67,6 +68,7 @@ int vsc_modulatable(unsigned p)
     if (p == P_BDRIVE || p == P_BLEVEL) return 1;
     if (p >= P_SEND0 && p < P_SEND0 + VSC_TRACKS) return 1;
     if (p == P_DFB || p == P_DMIX || p == P_DVERB || p == P_VSIZE || p == P_VDAMP || p == P_VMIX) return 1;
+    if (p >= P_WOW && p <= P_XOR) return 1;
     return p >= P_RMIX && p <= P_RG0 + 7;
 }
 void vsc_route_name(unsigned p, char out[10])
@@ -81,6 +83,7 @@ void vsc_route_name(unsigned p, char out[10])
     else if (p >= P_RMIX && p <= P_RG0 + 7) pre = "R ";
     else if (p >= P_DTIME && p <= P_DVERB) pre = "D ";
     else if (p >= P_VSIZE && p <= P_VBITS) pre = "V ";
+    else if (p >= P_WOW && p <= P_XOR) pre = "SP ";
     else if (p >= P_STRIP && p < P_STRIP + VSC_TRACKS * VSC_TP) { t[1] = (char)('1' + (p - P_STRIP) / VSC_TP); pre = t; }
     unsigned i = 0;
     for (; *pre && i < 9; ++pre) out[i++] = *pre;
@@ -187,6 +190,7 @@ void vsc_param_label(unsigned p, unsigned v, char out[8])
     case P_SLSNAP: put_str(out, v ? "HITS" : "GRID"); return;
     case P_SLDST: put_str(out, n_bdst[v % 5]); return;
     case P_DTIME: put_unit(out, 20 + (int)v * 330 / 127, "MS"); return;
+    case P_SPFROM: put_str(out, v ? "SPOOL 2" : "SPOOL 1"); return;
     case P_VBITS: { static const char *const b[3] = {"12 BIT", "10 BIT", "8 BIT"}; put_str(out, b[v % 3]); return; }
     default: break;
     }
@@ -254,15 +258,16 @@ int vsc_project_valid(const struct vsc_project *p)
 int vsc_project_upgrade(struct vsc_project *p)
 {
     if (p->magic != VSC_MAGIC) return 0;
-    const uint32_t ob = p->version == 10 ? VSC_FORMAT_10_BYTES : p->version == 11 ? VSC_FORMAT_11_BYTES : 0;
+    const uint32_t ob = p->version == 10 ? VSC_FORMAT_10_BYTES : p->version == 11 ? VSC_FORMAT_11_BYTES : p->version == 12 ? VSC_FORMAT_12_BYTES : 0;
+    const unsigned onp = p->version == 12 ? VSC_NP_V12 : VSC_NP_V11;
     if (!ob || p->bytes != ob) return 0;
     if (vsc_crc32(&p->name, ob - offsetof(struct vsc_project, name)) != p->crc) return 0;
     /* the parts after the parameters move up to make room for the new ones (from the end down) */
     {
         uint8_t *b = (uint8_t *)p;
-        const uint32_t from = (uint32_t)offsetof(struct vsc_project, p) + ((VSC_NP_V11 + 3u) & ~3u), to = (uint32_t)offsetof(struct vsc_project, gest);
+        const uint32_t from = (uint32_t)offsetof(struct vsc_project, p) + ((onp + 3u) & ~3u), to = (uint32_t)offsetof(struct vsc_project, gest);
         for (uint32_t i = ob; i-- > from;) b[to + (i - from)] = b[i];
-        for (unsigned i = VSC_NP_V11; i < VSC_NP; ++i) p->p[i] = info[i].def;
+        for (unsigned i = onp; i < VSC_NP; ++i) p->p[i] = info[i].def;
         vsc_memset(p->pad, 0, sizeof p->pad);
     }
     if (ob == VSC_FORMAT_10_BYTES) vsc_memset(p->route, 0, sizeof p->route);

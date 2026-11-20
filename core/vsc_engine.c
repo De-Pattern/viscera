@@ -151,6 +151,7 @@ static uint8_t sl_src = 255, sl_dst = 255, sl_rec;   /* SLICE: the track sliced,
 static uint32_t sl_wn;   /* SLICE: the take's samples written: past a loop, later laps add to it */
 static uint8_t transport, bounce_on, bounce_dst, bounce_src, bounce_clear;
 static uint32_t bounce_done;  /* samples of the loop printed */
+static VSC_HOT_SMALL void sp_release(void);
 
 VSC_INL uint32_t loop_end(void) { return loop_len ? loop_len : TCAP; }
 VSC_INL float tape_rate(unsigned s) { return s == TS_HI ? 22050.f : s == TS_MID ? 16000.f : 11025.f; }
@@ -832,6 +833,7 @@ static VSC_HOT_SMALL void stop(void)
     for (unsigned t = 0; t < VSC_TRACKS; ++t) wr_finish(t);
     if (transport == TR_FIRST) { loop_len = (uint32_t)tp + 1u; if (loop_len >= TCAP) loop_len = TCAP; }
     bounce_end(0);
+    sp_release();
     sl_rec = 0;
     if (transport == TR_FIRST) take_len = loop_len;
     transport = TR_STOP;
@@ -906,6 +908,136 @@ static VSC_HOT_SMALL void bounce_start(void)
     vsc_meter.has[dst] = 1;
     bounce_on = 1; bounce_done = 0;
     vsc_meter.bounce = 1; vsc_meter.bounce_dst = (uint8_t)dst;
+}
+
+/* ---------------------------------------------------------- SPLICE: tracks 3 and 4 as two spools
+ * Hold a key and the spool FROM prints onto the other, an overdub (the other's DUB sets how much
+ * of what was there stays), from where the tape is, for as long as the key is held: sections
+ * spliced back and forth. On the way it goes through the degrader (on FROM, so it's heard as it
+ * will print): WEAR (wow and flutter, saturation, age, dropouts, after tape's generation loss) and
+ * BREAK (crush, a lossy codec's smear, a comparator, XOR against what's under the print). While a
+ * print is held, a hand on the source as on a record: FINGER pushes it (far enough back: reversed;
+ * forward again: forward), DRAG holds it back. */
+struct dgr {
+    float lp1, lp2, dg, dtar, hold, hacc, ba, bb, bg[3], be[3], cy, env;
+    uint32_t dleft, dcnt, lcnt;
+};
+static struct dgr dgs[2];
+static uint8_t sp_on, sp_src, sp_dst, sp_rev, sp_hand;
+static float sp_push, sp_drag, sp_acc, sp_wow[3];
+static int16_t sc[2][VSC_TAPE_BLK];
+static int32_t sc_blk[2] = {-1, -1};
+/* a sample of the source, anywhere: its block decoded once into a two-block cache */
+static VSC_HOT float sc_at(unsigned t, uint32_t n)
+{
+    uint32_t b = n / VSC_TAPE_BLK;
+    unsigned sl = b & 1u;
+    if (sc_blk[sl] != (int32_t)b) {
+        int32_t p = hpred[t][b], x = hidx[t][b];
+        for (uint32_t j = 0; j < VSC_TAPE_BLK; ++j) sc[sl][j] = (int16_t)(dec(tape[t], b * VSC_TAPE_BLK + j, &p, &x) * 32767.f);
+        sc_blk[sl] = (int32_t)b;
+    }
+    return (float)sc[sl][n & (VSC_TAPE_BLK - 1u)] * (1.f / 32768.f);
+}
+VSC_INL float psin(float p) { float q = p < 0.5f ? p : p - 0.5f, v = 16.f * q * (0.5f - q); return p < 0.5f ? v : -v; }
+/* the degrader, on a spool's playback (x, n samples); partner: what's under it on the other spool */
+static VSC_HOT void degrade(struct dgr *d, float *x, unsigned n, const float *partner)
+{
+    const float sat = pf[P_SAT] * (1.f / 127.f), age = pf[P_AGE] * (1.f / 127.f), drop = pf[P_DROP] * (1.f / 127.f);
+    const float cru = pf[P_CRUSH] * (1.f / 127.f), los = pf[P_LOSSY] * (1.f / 127.f), cmp = pf[P_CMP] * (1.f / 127.f), xo = pf[P_XOR] * (1.f / 127.f);
+    const float g = 1.f + sat * sat * 20.f, makeup = 1.f / (1.f + sat * 1.4f), even = sat * 0.25f;
+    const float ac = 1.f - age * 0.88f, hiss = age * 0.025f;
+    const float per = 1.f + cru * cru * 31.f, lv = exp2a(15.f - cru * 13.f), ilv = 1.f / lv;
+    const float h0 = 0.002f, hk = 0.5f * (1.f - cmp);
+    const int nb = 1 + (int)(xo * 12.f);
+    const int32_t m = (int32_t)(~((1u << (16 - nb)) - 1u) & 0xffffu);
+    const float xm = xo * 2.f > 1.f ? 1.f : xo * 2.f;
+    for (unsigned i = 0; i < n; ++i) {
+        float v = x[i];
+        if (drop > 0.f) {   /* dropouts: a gap now and then, more and deeper with DROP */
+            if (++d->dcnt >= 256u) {
+                d->dcnt = 0;
+                if (d->dleft) { if (--d->dleft == 0) d->dtar = 1.f; }
+                else if ((float)(rnd() >> 8) * (1.f / 16777216.f) < drop * 0.08f) { d->dleft = 3u + (rnd() >> 28); d->dtar = (1.f - drop) * 0.25f; }
+            }
+            d->dg += (d->dtar - d->dg) * 0.004f;
+            v *= d->dg;
+        } else d->dg = d->dtar = 1.f;
+        if (age > 0.f) {   /* age: the top end going, and hiss */
+            d->lp1 += ac * (v - d->lp1); d->lp2 += ac * (d->lp1 - d->lp2);
+            v = d->lp2 + ((float)(int32_t)rnd() * (1.f / 2147483648.f)) * hiss;
+        }
+        if (sat > 0.f) { float sv = v * g; sv += even * sv * sv; v = sv / (1.f + absf(sv)) * (1.f + sat) * makeup; }
+        if (los > 0.f) {   /* lossy: three bands, each frame the quiet ones dropped, the top flickering */
+            d->ba += 0.042f * (v - d->ba); d->bb += 0.39f * (v - d->bb);
+            float b0 = d->ba, b1 = d->bb - d->ba, b2 = v - d->bb;
+            d->be[0] += b0 * b0; d->be[1] += b1 * b1; d->be[2] += b2 * b2;
+            if (++d->lcnt >= 256u) {
+                const float thr = los * los * 0.0008f * 256.f;
+                for (unsigned k = 0; k < 3; ++k) { d->bg[k] = d->be[k] > thr ? 1.f : 0.f; d->be[k] = 0.f; }
+                if ((float)(rnd() >> 8) * (1.f / 16777216.f) < los * 0.55f) d->bg[2] = 0.f;
+                d->bg[2] *= 1.f - los * 0.6f;
+                d->bg[1] *= 1.f - los * 0.5f * (float)(rnd() >> 8) * (1.f / 16777216.f);
+                d->lcnt = 0;
+            }
+            v = b0 * d->bg[0] + b1 * d->bg[1] + b2 * d->bg[2];
+        }
+        if (cru > 0.f) {   /* crush: fewer bits, a lower rate */
+            d->hacc += 1.f;
+            if (d->hacc >= per) { d->hacc -= per; float q = v * lv; d->hold = (float)(int32_t)(q + (q >= 0.f ? 0.5f : -0.5f)) * ilv; }
+            v = d->hold;
+        }
+        if (cmp > 0.f) {   /* the comparator: past its threshold, a hard square at the level */
+            d->env += (absf(v) - d->env) * 0.002f;
+            float h = d->env * hk + h0;
+            if (v > h) d->cy = 1.f; else if (v < -h) d->cy = -1.f;
+            v += (d->cy * d->env * 1.6f - v) * cmp;
+        }
+        if (xo > 0.f) {   /* XOR: the top bits of what's under it (or, alone, of itself) flip these */
+            int32_t xi = (int32_t)(clampf(v, -1.f, 1.f) * 32767.f) & 0xffff;
+            int32_t pi = partner ? (int32_t)(clampf(partner[i], -1.f, 1.f) * 32767.f) & 0xffff : (xi << 3) & 0xffff;
+            int32_t r = xi ^ (pi & m);
+            float y = (float)(int16_t)r * (1.f / 32768.f);
+            v += (y - v) * xm;
+        }
+        x[i] = v;
+    }
+}
+static VSC_HOT_SMALL void sp_generation(unsigned from)
+{
+    if (vsc.p[P_SPFROM] == from) return;
+    vsc.p[P_SPFROM] = (uint8_t)from;
+    for (unsigned q = P_WOW; q <= P_XOR; ++q) vsc.p[q] = 0;
+    ++vsc_meter.sp_gen;
+}
+static VSC_HOT_SMALL void sp_release(void)
+{
+    if (!sp_on) return;
+    wr_stop(sp_dst);
+    if (sp_hand) rd_seek(sp_src, (uint32_t)tk[sp_src].tp);   /* (the reader back where the hand left it) */
+    sp_on = sp_rev = sp_hand = 0; sp_push = sp_drag = sp_acc = 0.f;
+    vsc_meter.sp_print = 0; vsc_meter.sp_rev = 0; vsc_meter.sp_speed = 1.f; vsc_meter.sp_drag = 0;
+}
+static VSC_HOT_SMALL void sp_press(unsigned to)
+{
+    const unsigned dst = VSC_SPOOL0 + to, src = VSC_SPOOL0 + (to ^ 1u);
+    if (sp_on || bounce_on || !loop_len || !vsc_meter.has[src] || transport == TR_FIRST) return;
+    sp_generation(to ^ 1u);
+    if (transport == TR_STOP) play();
+    sp_src = (uint8_t)src; sp_dst = (uint8_t)dst; sp_on = 1;
+    sc_blk[0] = sc_blk[1] = -1;
+    wr_start(dst);
+    vsc_meter.sp_print = (uint8_t)(to + 1u);
+}
+static VSC_HOT_SMALL void sp_scrub(unsigned which, int clicks)
+{
+    if (!sp_on) return;
+    if (which == 0) {
+        sp_push += (float)clicks * 0.35f; sp_acc += (float)clicks;
+        if (!sp_rev && sp_acc <= -6.f) { sp_rev = 1; sp_acc = 0.f; }
+        else if (sp_rev && sp_acc >= 6.f) { sp_rev = 0; sp_acc = 0.f; }
+    } else sp_drag = clampf(sp_drag + (float)clicks * 0.06f, 0.f, 1.f);
+    if (!sp_hand) { sp_hand = 1; sc_blk[0] = sc_blk[1] = -1; }
 }
 
 /* ---------------------------------------------------------- SPACE: the delay and the verb
@@ -1273,6 +1405,8 @@ static VSC_HOT_SMALL void handle(uint32_t e)
         else if (a <= VSC_TRACKS && sl_src != a - 1u) { slice_rec(0); sl_src = (uint8_t)(a - 1u); sv[0].on = sv[1].on = 0; }
         break;
     case EV_SLREC: slice_rec(a != 0); break;
+    case EV_SPOOL: if (a < 2) sp_press(a); else if (a == 2) sp_release(); else if (!sp_on) sp_generation(vsc.p[P_SPFROM] ^ 1u); break;
+    case EV_SCRUB: sp_scrub(a, (int)(int8_t)(uint8_t)b); break;   /* (b: signed clicks in a byte) */
     case EV_INTRO: in_n = 0; in_len = a ? 32u * IN_STEP : 0u; in_ph[0] = in_ph[1] = in_kp = 0.f; st_n = 0xffffffu; for (unsigned q = 0; q < 6; ++q) st_v[q] = 0.f; st_lp = st_vib = 0.f; break;
     case EV_PANIC: rs_req = 0.f; vsc_memset(&rs, 0, offsetof(__typeof__(rs), ring)); rs.where = 255; break;
     default: break;
@@ -1327,8 +1461,16 @@ void vsc_bench_setup(void)
 #if VSC_BENCH >= 8
     for (unsigned t = 0; t < VSC_TRACKS; ++t) vsc.p[P_SEND0 + t] = 100;   /* (8: and the delay and verb) */
 #endif
+#if VSC_BENCH >= 9
+    for (unsigned q = P_WOW; q <= P_XOR; ++q) vsc.p[q] = 100;   /* (9: and a SPLICE print, the degrader up, a hand on it) */
+#endif
     play();
     rec();
+#if VSC_BENCH >= 9
+    vsc.p[P_SPFROM] = 1; sp_press(0);
+    for (unsigned q = P_WOW; q <= P_XOR; ++q) vsc.p[q] = 100;
+    sp_scrub(0, -3);
+#endif
 }
 #endif
 static float main_l[VSC_BLOCK], main_r[VSC_BLOCK];
@@ -1371,12 +1513,31 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
     const float tlev = level_gain(pf[P_TLEVEL]);
     const float semis = (pf[P_PITCH] - 12.f);
     float t_semis[VSC_TRACKS];
+    /* SPLICE: the spool FROM, its wow and flutter (a slow wander, a quicker flutter, a drift) */
+    const unsigned sp_from = VSC_SPOOL0 + (vsc.p[P_SPFROM] & 1u);
+    const int sp_deg = vsc_meter.has[sp_from] && (pf[P_WOW] > 0.f || pf[P_SAT] > 0.f || pf[P_AGE] > 0.f || pf[P_DROP] > 0.f ||
+                       pf[P_CRUSH] > 0.f || pf[P_LOSSY] > 0.f || pf[P_CMP] > 0.f || pf[P_XOR] > 0.f);
+    float wowv = 0.f;
+    if (pf[P_WOW] > 0.f) {
+        const float w = pf[P_WOW] * (1.f / 127.f), bt = (float)VSC_BLOCK / (float)VSC_SR;
+        sp_wow[0] += 0.55f * bt; if (sp_wow[0] >= 1.f) sp_wow[0] -= 1.f;
+        sp_wow[1] += 6.3f * bt; if (sp_wow[1] >= 1.f) sp_wow[1] -= 1.f;
+        sp_wow[2] = clampf(sp_wow[2] * 0.995f + (float)(int32_t)rnd() * (0.02f / 2147483648.f), -1.f, 1.f);
+        wowv = w * (0.018f * psin(sp_wow[0]) + 0.006f * w * psin(sp_wow[1]) + 0.01f * sp_wow[2]);
+    }
+    if (sp_on) { sp_push *= 0.97f; sp_acc *= 0.995f; vsc_meter.sp_rev = sp_rev; }
     /* each track's step: the tape's, times its own SPEED (all together in the first take; a
      * bounce's print at the tape's), at most a sample a frame */
     for (unsigned t = 0; t < VSC_TRACKS; ++t) {
         struct trk *k = &tk[t];
         float ts = exp2a((pf[P_TRK(t, S_SPEED)] - 64.f) * (1.f / 64.f));
         k->inc = transport == TR_FIRST || (bounce_on && t == bounce_dst) ? inc : clampf(inc * ts, 0.f, 1.f);
+        if (t == sp_from) k->inc *= 1.f + wowv;   /* SPLICE: WOW on the spool FROM */
+        if (sp_on && t == sp_src) {   /* SPLICE: the hand on the source, as on a record */
+            float v = (sp_rev ? -1.f : 1.f) * (1.f - sp_drag) + sp_push;
+            vsc_meter.sp_speed = v; vsc_meter.sp_drag = (uint8_t)(sp_drag * 100.f);
+            k->inc = clampf(k->inc * v, -1.f, 1.f);
+        }
         k->dg = pf[P_TRK(t, S_DUB)] * (1.f / 127.f);
         t_semis[t] = semis + pf[P_TRK(t, S_PITCH)] - 12.f;
     }
@@ -1432,6 +1593,18 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
                 struct trk *k = &tk[t];
                 k->cr[i] = 0;
                 if (!k->r.on) { k->buf[i] = 0.f; continue; }
+                if (sp_hand && t == sp_src) {   /* SPLICE: the source under the hand, either way round the loop */
+                    float q = k->tp + k->inc;
+                    const float ls = (float)loop_start, le = (float)e;
+                    if (q >= le) q -= le - ls; else if (q < ls) q += le - ls;
+                    k->tp = q;
+                    uint32_t n0 = (uint32_t)q, n1 = n0 + 1u >= e ? loop_start : n0 + 1u;
+                    float a0 = sc_at(t, n0), a1 = sc_at(t, n1);
+                    float v = a0 + (a1 - a0) * (q - (float)n0);
+                    k->lp += (v - k->lp) * head;
+                    k->buf[i] = k->lp;
+                    continue;
+                }
                 float q = k->tp + k->inc;
                 if ((uint32_t)q != (uint32_t)k->tp) {
                     k->cr[i] = 1;
@@ -1440,7 +1613,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
                     if (q >= (float)e) q -= (float)(e - loop_start);
                 }
                 k->tp = q;
-                if (replace && k->w.on && !k->w.ending && !bounce_on) { k->buf[i] = 0.f; continue; }
+                if (replace && k->w.on && !k->w.ending && !bounce_on && !(sp_on && t == sp_dst)) { k->buf[i] = 0.f; continue; }
                 if (t == sl_src) continue;   /* (SLICE: the source's tape isn't heard; its slices are) */
                 float v = k->r.s0 + (k->r.s1 - k->r.s0) * (q - (float)(uint32_t)q);
                 k->lp += (v - k->lp) * head;
@@ -1452,6 +1625,11 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
         if (slicing) {
             slice_voices(n, tk[sl_src].inc > 0.f ? tk[sl_src].inc : inc);
             for (unsigned i = 0; i < n; ++i) tk[sl_src].buf[i] = sl_buf[i];
+        }
+        /* SPLICE: the degrader on the spool FROM (XOR against the other spool, what's under its print) */
+        if (sp_deg && tk[sp_from].r.on) {
+            const unsigned o = sp_from ^ 1u;   /* (tracks 3 and 4: 2 ^ 1 = 3) */
+            degrade(&dgs[sp_from - VSC_SPOOL0], tk[sp_from].buf, n, tk[o].r.on ? tk[o].buf : 0);
         }
         /* RESON on a track's playback (before its strip) */
         if (rtgt >= RT_T1 && rtgt <= RT_T4 && !rs_bounce) {
@@ -1489,8 +1667,8 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
             struct trk *k = &tk[t];
             if (!k->w.on || !moving) continue;
             const int bw = bounce_on && t == bounce_dst;
-            const int take = sl_rec && t == sl_dst;
-            const float *src = bw ? bbuf : take && slicing ? tk[sl_src].buf : ibuf;
+            const int take = sl_rec && t == sl_dst, sp = sp_on && t == sp_dst;
+            const float *src = bw ? bbuf : sp ? tk[sp_src].buf : take && slicing ? tk[sl_src].buf : ibuf;
             float acc = 0.f, pk = 0.f;   /* (its meter: what goes to tape) */
             for (unsigned i = 0; i < n; ++i) {
                 if (k->cr[i] && k->w.on) {
@@ -1498,7 +1676,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
                     /* a slice take: its first lap replaces what was there; later laps add to it, so
                      * the slices played on any lap stay (and a lap left alone keeps the last) */
                     if (take) { if (sl_wn < loop_end() - loop_start) { ++sl_wn; wr_put(t, k->oldn[i], k->old[i], v, 1); } else wr_put(t, k->oldn[i], k->old[i], k->old[i] + v, 1); }
-                    else wr_put(t, k->oldn[i], k->old[i], v, replace || bw);
+                    else wr_put(t, k->oldn[i], k->old[i], v, (replace && !sp) || bw);   /* (SPLICE: always an overdub) */
                     k->w.acc = 0.f; k->w.cnt = 0;
                     if (bw && (int)i == wrap_i) { k->w.on = 0; break; }   /* the bounce's last sample */
                 }

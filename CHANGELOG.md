@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.7.0 — SPLICE
+
+- **SPLICE** (SEQ, after BOUNCE): tracks 3 and 4 as two spools. **Hold F#3** and spool 2 prints onto spool 1, from where the tape is, for as long as it's held (an overdub; the other spool's DUB sets how much of what was there stays); **hold G#3** for spool 1 onto spool 2. Splice sections back and forth: generation loss by hand.
+- **The degrader**, on the spool printed FROM (so it's heard as it'll print). WEAR: WOW, SAT, AGE, DROP. BREAK: CRUSH, LOSSY (a starved codec's smear), CMP (a comparator), XOR (the other spool's bits, under the print, flipping this one's). Printing the other way (or PRESETS) starts a new generation: the knobs go back to 0, GEN counts up.
+- **SCRUB**: while a print is held, KNOB 1 is a finger on the source as on a record: flicks push it; pull back far enough and it plays reversed, push forward and it plays forward; KNOB 2 drags it toward a stop.
+- **Fixed: projects saved by 2.5 didn't open on the FM-1 under 2.6** (the emulator was fine). 2.4, 2.5 and 2.6 projects all open now.
+- The tape is a touch shorter for the memory: 2.44 s a track at HI (was 2.5), 3.36 at MID, 4.9 at LO.
+- Nothing changes in the sound until a spool is degraded or printed.
+
 ## 2.6.0 — delay and verb
 
 - **SEND on each mixer strip** (EDIT, after PAN), post-fader, into two new effects on the MASTER page (FX, after the compressor):

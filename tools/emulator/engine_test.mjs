@@ -19,7 +19,7 @@ const TRK = (t, k) => 10 + t * 8 + k, S = {TRIM: 0, PAN: 1, LEVEL: 2, MUTE: 3, A
 const EQ = (b, k) => P.EQ0 + b * 4 + k;
 const ROB = (r, k) => P.ROB0 + r * 5 + k, R = {TARGET: 0, RATE: 1, SHAPE: 2, SKEW: 3, DEPTH: 4};
 const EV = {NOTE_ON: 0, NOTE_OFF: 1, PLAY: 2, STOP: 3, REC: 4, CLEAR: 5, ERASE: 6, BOUNCE: 7, ARM: 8, CC: 9, PANIC: 10, LOOP: 11};
-ok(x.np() === 113, 'parameter count: ' + x.np());
+ok(x.np() === 122, 'parameter count: ' + x.np());
 x.init();
 const inbuf = new Float32Array(mem(), x.input_buffer(), 256), usbbuf = new Float32Array(mem(), x.usb_buffer(), 256);
 let fr = 0;
@@ -360,28 +360,29 @@ x.device_seal(); ok(x.device_check() === 1, 'the device settings check');
   // 2.4's projects (format 10: 101 parameters, no matrix) and 2.5's (11: 101 and the matrix) load,
   // their gestures, motion and routes moved to where this format has them, the new knobs at their defaults
   const crc = (u, a, b) => { let c = 0xffffffff; for (let i = a; i < b; i++) { c ^= u[i]; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1)); } return (~c) >>> 0; };
-  for (const [fmt, ob] of [[11, 536], [10, 504]]) {
+  for (const [fmt, ob, onp] of [[12, 548, 113], [11, 536, 101], [10, 504, 101]]) {
     x.set_param(TRK(2, S.LEVEL), 77); x.set_param(ROB(1, R.RATE), 99);
     rt()[0] = 1; rt()[1] = TRK(0, S.PAN); rt()[2] = 50;
     x.project_seal(0);
     const bytes = x.project_bytes(), u8 = () => new Uint8Array(mem(), x.project(), bytes);
-    const cur = u8().slice(), gestAt = 28 + 113 + 3;
+    const cur = u8().slice(), gestAt = 28 + 124, oldGest = 28 + ((onp + 3) & ~3);
     for (let i = 0; i < bytes - gestAt; i++) cur[gestAt + i] = (i * 7 + 3) & 0x7f;   // (marks in the gestures, motion, routes)
-    cur[gestAt + 392 + 1] = TRK(0, S.PAN); cur[gestAt + 392 + 2] = 50; cur[gestAt + 392] = 1;   // (route 0, valid)
+    cur[gestAt + 372 + 1] = TRK(0, S.PAN); cur[gestAt + 372 + 2] = 50; cur[gestAt + 372] = 1;   // (route 0, valid)
     const old = new Uint8Array(ob);
-    old.set(cur.subarray(0, 28 + 101));
-    old.set(cur.subarray(gestAt, gestAt + ob - 132), 132);
+    old.set(cur.subarray(0, 28 + onp));
+    old.set(cur.subarray(gestAt, gestAt + ob - oldGest), oldGest);
     const dv = new DataView(old.buffer); dv.setUint32(4, fmt, true); dv.setUint32(8, ob, true); dv.setUint32(12, crc(old, 16, ob), true);
     u8().fill(0xee); u8().set(old);
     ok(x.project_check() === 1, 'a format ' + fmt + ' project checks (upgraded)');
     const nw = u8(), hv = new Uint32Array(mem(), x.project(), 4);
-    let same = true; for (let i = 28; i < 28 + 101; i++) if (nw[i] !== cur[i]) same = false;
-    let moved = true; for (let i = 0; i < ob - 132; i++) if (nw[gestAt + i] !== cur[gestAt + i]) moved = false;
-    ok(hv[1] === 12 && hv[2] === bytes && same && moved, 'format ' + fmt + ': this format, its knobs kept, the rest moved up');
-    ok(nw[28 + 101] === 0 && nw[28 + 105] === 60 && nw[28 + 112] === 0, 'the sends start at 0, the delay and verb at their defaults');
+    let same = true; for (let i = 28; i < 28 + onp; i++) if (nw[i] !== cur[i]) same = false;
+    let moved = true; for (let i = 0; i < ob - oldGest; i++) if (nw[gestAt + i] !== cur[gestAt + i]) moved = false;
+    ok(hv[1] === 13 && hv[2] === bytes && same && moved, 'format ' + fmt + ': this format, its knobs kept, the rest moved up');
+    if (onp === 101) ok(nw[28 + 101] === 0 && nw[28 + 105] === 60 && nw[28 + 112] === 0, 'the sends start at 0, the delay and verb at their defaults');
+    ok(nw[28 + 113] === 1 && nw[28 + 114] === 0 && nw[28 + 121] === 0, 'SPLICE: FROM spool 2, the degrader at 0');
     if (fmt === 10) { let z = true; for (let i = 0; i < 32; i++) if (nw[bytes - 32 + i]) z = false; ok(z, 'format 10: an empty LFO matrix'); }
   }
-  { const b = x.project_bytes(), u = new Uint8Array(mem(), x.project(), b), g = 28 + 113 + 3;   // (back to flat gestures, no motion, no routes)
+  { const b = x.project_bytes(), u = new Uint8Array(mem(), x.project(), b), g = 28 + 124;   // (back to flat gestures, no motion, no routes)
     u.fill(0, g); new DataView(u.buffer, u.byteOffset).setUint16(g + 96, 1000, true); new DataView(u.buffer, u.byteOffset).setUint16(g + 98, 1000, true); }
   for (let i = 0; i < 32; i++) rt()[i] = 0;
   x.set_param(ROB(0, R.SHAPE), 0); x.set_param(ROB(0, R.RATE), 40);
@@ -403,6 +404,35 @@ x.device_seal(); ok(x.device_check() === 1, 'the device settings check');
   quiet(run(40), 'sends down: the tails die away');
   x.set_param(VBITS, 0); x.set_param(DFB, 55); x.set_param(DMIX, 90); x.set_param(VMIX, 90);
   press(B.HOME);
+}
+
+// 14d. SPLICE: tracks 3 and 4 as spools; hold to print one onto the other through the degrader
+{
+  const SPOOL = 16, SCRUB = 17, FROM = 113, WOW = 114, XOR = 121;
+  const has = () => [0, 1, 2, 3].map(t => x.has(t));
+  x.event(EV.ERASE, 0, 0);
+  for (let t = 0; t < 4; t++) x.set_param(TRK(t, S.ARM), t === 3 ? 1 : 0);
+  gen = music; x.event(EV.REC, 0, 0); run(200); x.event(EV.REC, 0, 0); x.set_param(TRK(3, S.ARM), 0); run(20);
+  ok(has()[3] === 1 && has()[2] === 0, 'spool 2 (track 4) holds a take, spool 1 is empty: ' + has());
+  x.event(SPOOL, 0, 0); run(120); x.event(SPOOL, 2, 0); run(10);
+  ok(has()[2] === 1, 'holding the print: spool 2 onto spool 1 (track 3 has audio now)');
+  ok(x.get_param(FROM) === 1, 'FROM is spool 2');
+  for (const t of [0, 1, 3]) x.set_param(TRK(t, S.MUTE), 1);
+  gen = silence; sound(run(400), 'spool 1 alone: the print plays');
+  for (const t of [0, 1, 3]) x.set_param(TRK(t, S.MUTE), 0);
+  x.set_param(WOW, 80);
+  x.event(SPOOL, 1, 0); run(1);   // the other way: a new generation
+  ok(x.get_param(FROM) === 0 && x.get_param(WOW) === 0, 'a new direction: FROM spool 1, the knobs back to 0');
+  x.event(SCRUB, 0, (-8) & 255); let r = run(60); ok(!r.nan && r.peak <= 1, 'the hand pulls it back: reversed ' + JSON.stringify(r));
+  x.event(SCRUB, 1, 10); r = run(40); ok(!r.nan && r.peak <= 1, 'DRAG ' + JSON.stringify(r));
+  x.event(SCRUB, 0, 12); r = run(40); ok(!r.nan && r.peak <= 1, 'pushed forward again ' + JSON.stringify(r));
+  x.event(SPOOL, 2, 0); run(10);
+  sound(run(300), 'let go: both spools play on');
+  for (let q = WOW; q <= XOR; q++) { x.set_param(q, 127); const r2 = run(60); ok(!r2.nan && r2.peak <= 1 && r2.rms > 1e-4, 'the degrader at full, knob ' + (q - WOW) + ' ' + JSON.stringify(r2)); x.set_param(q, 0); }
+  x.set_param(XOR, 100); x.event(SPOOL, 1, 0); r = run(80); x.event(SPOOL, 2, 0);
+  ok(!r.nan && r.peak <= 1, 'XOR against what is under the print ' + JSON.stringify(r));
+  x.set_param(XOR, 0); x.event(SPOOL, 3, 0); run(1); ok(x.get_param(FROM) === 1, 'PRE flips FROM');
+  x.event(EV.STOP, 0, 0); gen = music;
 }
 
 // 15. long run with everything moving: no NaN, in range

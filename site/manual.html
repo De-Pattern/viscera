@@ -108,7 +108,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
   </header>
 
   <div class="top">
-    <p class="eyebrow">Manual · Viscera 2.6.0 · 4-Track</p>
+    <p class="eyebrow">Manual · Viscera 2.7.0 · 4-Track</p>
     <h1>Guide</h1>
     <p>Viscera 4-Track turns the M-VAVE FM-1 into an overdubbing tape machine. Four tracks of tape in its memory, a 424-style preamp on the input and every channel, VU meters, and RESON to print a bounce through. This page covers installing it safely, getting sound in, how the sound flows, and what every page and control does.</p>
   </div>
@@ -127,6 +127,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
       <a href="#input">Input</a>
       <a href="#motion">Motion &amp; slice</a>
       <a href="#bounce">Bounce</a>
+      <a href="#splice">Splice</a>
       <a href="#reson">RESON</a>
       <a href="#robots">Robots</a>
       <a href="#midi">MIDI</a>
@@ -254,9 +255,9 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
         <h3>TAPE SPEED (PRESETS)</h3>
         <div class="tbl"><table>
           <tr><th>Speed</th><th>Rate</th><th>Per track</th></tr>
-          <tr><td>HI</td><td>22.05 kHz</td><td>2.5 s</td></tr>
-          <tr><td>MID</td><td>16 kHz</td><td>3.45 s</td></tr>
-          <tr><td>LO</td><td>11.025 kHz</td><td>5.0 s</td></tr>
+          <tr><td>HI</td><td>22.05 kHz</td><td>2.44 s</td></tr>
+          <tr><td>MID</td><td>16 kHz</td><td>3.36 s</td></tr>
+          <tr><td>LO</td><td>11.025 kHz</td><td>4.9 s</td></tr>
         </table></div>
         <p>Lower is longer and darker, as on a cassette. Switching with something on the tape plays it at the new speed: an octave up from LO to HI.</p>
       </section>
@@ -299,7 +300,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
           <li><b>DELAY</b>: lo-fi, 8 bits at a quarter rate, the repeats darkening and saturating. <b>TIME</b> (20 to 350 ms), <b>FEEDBACK</b>, <b>MIX</b> (its return) and <b>TO VRB</b> (how much of the repeats go on into the verb). The screen draws the repeats.</li>
           <li><b>VERB</b>: after the Alesis era's (Ravel's 12-BIT plate, one tank): four combs and two allpasses a side at half rate, held in 12 bits, so it lisps and aliases as early digital verbs did. <b>SIZE</b> (how long it rings), <b>DAMP</b> (how dark), <b>MIX</b> (its return) and <b>BITS</b>: 12, 10 or 8, grittier each step. The screen draws the tail in its steps.</li>
         </ul>
-        <p>Their memory came from the tape: a track is 2.5 s at HI now (2.8 s before 2.6).</p>
+        <p>Their memory came from the tape: a track was 2.8 s at HI before 2.6.</p>
       </section>
 
       <section id="input">
@@ -344,6 +345,24 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
           <tr><td>TO, RESON (SELECT)</td><td>Where it goes, and RESON in or out.</td></tr>
         </table></div>
         <p>Only the picked tracks go into the print (nothing else, such as the monitored input). The sources' levels, speeds and pitches set what's printed. "NO FREE TRACK" means every track not being bounced holds something: clear one (ARP + its key).</p>
+      </section>
+
+      <section id="splice">
+        <p class="eyebrow">10b</p>
+        <h2>Splice (SEQ, after BOUNCE)</h2>
+        <p>Tracks 3 and 4 become two spools, and you print one onto the other through a degrader, a section at a time, back and forth: generation loss by hand. Press <kbd>SEQ</kbd> past BOUNCE's two views. Record something on track 3 or 4 first (as any take).</p>
+        <ul>
+          <li><b>Hold F#3</b>: spool 2 prints onto spool 1, from where the tape is, for as long as you hold it. <b>Hold G#3</b>: spool 1 onto spool 2. A print is an overdub: the other spool's DUB knob (on HOME's TRACK view) sets how much of what was there stays. Hold it for a moment to splice a fragment in; for a whole loop to print it all.</li>
+          <li>The degrader is on the spool you print <b>FROM</b> (its reel lit), so you hear what will print. <b>PRESETS</b> swaps FROM without printing.</li>
+          <li><b>A new generation</b>: printing the other way round (or swapping FROM) starts one: the eight knobs go back to zero and GEN counts up. Splices the same way keep the knobs.</li>
+        </ul>
+        <div class="tbl"><table>
+          <tr><th>View (SELECT)</th><th>Knobs</th></tr>
+          <tr><td>WEAR</td><td><b>WOW</b> (the spool's speed wandering, and flutter), <b>SAT</b> (saturation), <b>AGE</b> (the top end going, hiss), <b>DROP</b> (dropouts: gaps, more and deeper).</td></tr>
+          <tr><td>BREAK</td><td><b>CRUSH</b> (fewer bits, a lower rate), <b>LOSSY</b> (three bands, each moment the quiet ones dropped and the top flickering, as a starved codec), <b>CMP</b> (a comparator: past its threshold a hard square at the level), <b>XOR</b> (the top bits of what's on the other spool, under the print, flip the bits of this one: the spool's own past, scrambled in).</td></tr>
+          <tr><td>SCRUB</td><td>While a print is held: a hand on the source, as on a record. <b>FINGER</b> pushes it (a flick speeds it up or slows it, settling back); pull back far enough and it plays <b>reversed</b>, push forward far enough and it plays forward again. <b>DRAG</b> holds it back toward a stop. Let go of the key and the hand comes off.</td></tr>
+        </table></div>
+        <p>The spools are tracks 3 and 4: they play in the mixer, and the robots and LFO matrix can move the degrader's knobs. Its memory came from the tape: a track is 2.44 s at HI now.</p>
       </section>
 
       <section id="reson">

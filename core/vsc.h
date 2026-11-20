@@ -43,9 +43,14 @@ enum vsc_param {
      * (SIZE, DAMP, its return, BITS: 12, 10 or 8) */
     P_SEND0 = P_ROB0 + VSC_ROBOTS * 5,
     P_DTIME = P_SEND0 + VSC_TRACKS, P_DFB, P_DMIX, P_DVERB, P_VSIZE, P_VDAMP, P_VMIX, P_VBITS,
+    /* SPOOLS (format 13): tracks 3 and 4 as two spools; which one prints (FROM: 0 spool 1, 1 spool 2),
+     * and the degrader on it: WEAR (WOW, SAT, AGE, DROP), BREAK (CRUSH, LOSSY, CMP, XOR) */
+    P_SPFROM, P_WOW, P_SAT, P_AGE, P_DROP, P_CRUSH, P_LOSSY, P_CMP, P_XOR,
     VSC_NP
 };
+#define VSC_SPOOL0 2u    /* spool 1 is track 3, spool 2 track 4 */
 #define VSC_NP_V11 101   /* the parameters of formats 10 and 11 (2.4, 2.5): those up to the robots */
+#define VSC_NP_V12 113   /* format 12 (2.6): those up to the verb */
 enum { S_TRIM, S_PAN, S_LEVEL, S_MUTE, S_ARM, S_SPEED, S_PITCH, S_DUB };
 enum { E_FREQ, E_GAIN, E_Q, E_TYPE };
 #define P_EQ(b, k) (P_EQ0 + (b) * 4 + (k))
@@ -102,9 +107,10 @@ struct vsc_project {
     struct vsc_route { uint8_t src, param; int8_t depth; uint8_t pad; } route[VSC_ROUTES];
 };
 #define VSC_MAGIC 0x34435356u /* "VSC4" */
-#define VSC_FORMAT 12         /* 9: per-track speed, pitch, dub; the master EQ and compressor; 11: the LFO matrix; 12: the sends, delay and verb */
+#define VSC_FORMAT 13         /* 9: per-track speed, pitch, dub; the master EQ and compressor; 11: the LFO matrix; 12: the sends, delay and verb; 13: the spools */
 #define VSC_FORMAT_10_BYTES 504u   /* the earlier formats' sizes (2.4's: no LFO matrix; 2.5's: 101 parameters) */
 #define VSC_FORMAT_11_BYTES 536u
+#define VSC_FORMAT_12_BYTES 548u
 /* MIDI learn: a CC (or a note, for an action) on a channel. kind 0: CC to a parameter;
  * 1: a note to an action. */
 struct vsc_learn { uint8_t ch, cc, kind, param; };
@@ -146,7 +152,13 @@ void vsc_render(const struct vsc_inputs *in, float *out);
 
 /* Events from control or MIDI into the audio context (lock-free queue). */
 enum { EV_NOTE_ON, EV_NOTE_OFF, EV_PLAY, EV_STOP, EV_REC, EV_CLEAR, EV_ERASE, EV_BOUNCE,
-       EV_ARM, EV_CC, EV_PANIC, EV_LOOP, EV_INTRO, EV_SLICE, EV_SLMODE, EV_SLREC };
+       EV_ARM, EV_CC, EV_PANIC, EV_LOOP, EV_INTRO, EV_SLICE, EV_SLMODE, EV_SLREC, EV_SPOOL, EV_SCRUB };
+/* SPLICE (tracks 3 and 4 as two spools). EV_SPOOL a: 0 print spool 2 onto spool 1 while held (an
+ * overdub, from where the tape is), 1 spool 1 onto spool 2, 2 let go (the print punches out),
+ * 3 flip FROM without printing. A new direction is a new generation: the degrader's knobs go back
+ * to 0. EV_SCRUB (while printing; a: 0 FINGER, 1 DRAG; b: clicks, signed, in a byte): a hand on the source
+ * spool as on a record: FINGER pushes it (past a point back: it plays reversed; forward again:
+ * forward), DRAG holds it back toward a stop. */
 /* SLICE: EV_SLMODE a: the source track + 1 while the page is open (it is muted; the slices
  * play through its strip), 0 off. EV_SLICE a: play slice a. EV_SLREC a: 1 record what the
  * slices play into a free track (P_SLDST), 0 stop. The UI finds the slices (vsc_slice_at). */
@@ -201,6 +213,10 @@ struct vsc_meter {
     uint8_t sl_rec, sl_dst, sl_err, sl_on;   /* SLICE: recording, where to, why it couldn't (BE_*), voices playing */
     uint32_t tpos[VSC_TRACKS];               /* each track's own place on the tape (its SPEED) */
     float comp_gr, comp_in;                  /* the compressor: reduction now (dB), the level it hears (dB) */
+    uint16_t sp_gen;                         /* SPLICE: the generation (a change of direction) */
+    uint8_t sp_print, sp_rev;                /* SPLICE: printing now (0 no, 1 onto spool 1, 2 onto spool 2); the source reversed */
+    float sp_speed;                          /* SPLICE: the source's speed under the hand (1 as it plays; below 0 reversed) */
+    uint8_t sp_drag, sp_pad2[3];             /* SPLICE: DRAG, 0..100 */
 };
 extern struct vsc_project vsc;   /* the live project */
 extern struct vsc_meter vsc_meter;

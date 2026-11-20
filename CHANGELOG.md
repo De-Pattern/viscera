@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.7.1 — sends you can hear
+
+- **The sends come in early in the turn.** Their curve was squared, so the first third of the knob did next to nothing (a quarter turn was about −30 dB). Now a quarter turn is clearly there, half is a full send.
+- **The delay and verb returns are louder** (the verb by about 8 dB, the delay by about 3): with a send at half, the verb's tail sits about 2 dB under the dry sound, the delay's about 5.
+- **On the mixer's SEND view the faders flip to the sends** (lit amber), as a console's do, so you see them move; the small SEND knobs still show them too.
+- Emulator: the meter bridge's arm lights followed the wrong tracks; fixed.
+- Audible change: anything already sent to the delay or verb comes back louder.
+
 ## 2.7.0 — SPLICE
 
 - **SPLICE** (SEQ, after BOUNCE): tracks 3 and 4 as two spools. **Hold F#3** and spool 2 prints onto spool 1, from where the tape is, for as long as it's held (an overdub; the other spool's DUB sets how much of what was there stays); **hold G#3** for spool 1 onto spool 2. Splice sections back and forth: generation loss by hand.

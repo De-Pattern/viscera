@@ -937,8 +937,10 @@ static void draw_mixer(void)
         if (IN_BAND(136, 200)) {
             rect(cx - 1, 138, 3, 60, C_BLACK);
             for (int k = 0; k <= 4; ++k) hline(cx - 9, 138 + k * 15, 4, C_DEEP), hline(cx + 6, 138 + k * 15, 4, C_DEEP);
-            int fy = 138 + (int)((1.f - (float)vsc.p[P_TRK(t, S_LEVEL)] / 127.f) * 52.f);
-            box(cx - 10, fy, 21, 9, row == 0 ? C_AMBER : C_ALU2); hline(cx - 10, fy + 4, 21, C_BODY);
+            /* on the SEND view the faders flip to the sends, as a console's do */
+            const unsigned fp = row == 3 ? P_SEND0 + t : P_TRK(t, S_LEVEL);
+            int fy = 138 + (int)((1.f - (float)vsc.p[fp] / 127.f) * 52.f);
+            box(cx - 10, fy, 21, 9, row == 0 || row == 3 ? C_AMBER : C_ALU2); hline(cx - 10, fy + 4, 21, C_BODY);
         }
         if (IN_BAND(203, 221)) {
             box(x + 8, 204, 39, 16, armed ? C_REDK : C_DEEP);

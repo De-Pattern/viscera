@@ -1063,8 +1063,8 @@ VSC_INL int16_t vb_q(float x, int32_t q)
 }
 static VSC_HOT void space_run(float *l, float *r, unsigned n)
 {
-    const float dfb = pf[P_DFB] * (0.92f / 127.f), dret = level_gain(pf[P_DMIX] * (100.f / 127.f)) * 0.9f;
-    const float dto = pf[P_DVERB] * (0.8f / 127.f), vret = level_gain(pf[P_VMIX] * (100.f / 127.f)) * 1.2f;
+    const float dfb = pf[P_DFB] * (0.92f / 127.f), dret = level_gain(pf[P_DMIX] * (100.f / 127.f)) * 1.3f;
+    const float dto = pf[P_DVERB] * (0.8f / 127.f), vret = level_gain(pf[P_VMIX] * (100.f / 127.f)) * 3.f;
     const float fb = 0.80f + pf[P_VSIZE] * (0.185f / 127.f), damp = 0.15f + (127.f - pf[P_VDAMP]) * (0.7f / 127.f);
     const uint32_t dlen = 220u + (uint32_t)vsc.p[P_DTIME] * (DL_LEN - 221u) / 127u;
     const int32_t q = 4 << (2 * (vsc.p[P_VBITS] % 3u));   /* 12 bits of full scale, 10, 8 */
@@ -1508,7 +1508,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
         float lv = vsc.p[P_TRK(t, S_MUTE)] || (vsc_solo && !(vsc_solo >> t & 1u)) ? 0.f : level_gain(pf[P_TRK(t, S_LEVEL)]), pan = (pf[P_TRK(t, S_PAN)] - 64.f) * (1.f / 64.f);
         pan = clampf(pan, -1.f, 1.f);
         g_l[t] = lv * (pan > 0.f ? 1.f - pan : 1.f); g_r[t] = lv * (pan < 0.f ? 1.f + pan : 1.f);
-        { float sd = pf[P_SEND0 + t] * (1.f / 127.f); g_s[t] = lv * sd * sd; if (g_s[t] > 0.f) sends = 1; }   /* SPACE: post-fader */
+        { float sd = pf[P_SEND0 + t] * (1.f / 127.f); g_s[t] = lv * sd * (2.f - sd); if (g_s[t] > 0.f) sends = 1; }   /* SPACE: post-fader (heard from early in the turn) */
     }
     const float tlev = level_gain(pf[P_TLEVEL]);
     const float semis = (pf[P_PITCH] - 12.f);

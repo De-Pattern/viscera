@@ -23,7 +23,7 @@ class Viscera extends AudioWorkletProcessor {
       x.paint(this.now());
       const px = new Uint16Array(this.mem(), x.screen(), 240 * 240).slice();
       const leds = new Uint8Array(this.mem(), x.leds(), 41).slice();
-      const meters = {pk: [0, 1, 2, 3].map(t => x.peak(t)), rec: x.recording(), arm: [0, 1, 2, 3].reduce((m, t) => m | (x.get_param(10 + t * 5 + 4) ? 1 << t : 0), 0)};
+      const meters = {pk: [0, 1, 2, 3].map(t => x.peak(t)), rec: x.recording(), arm: [0, 1, 2, 3].reduce((m, t) => m | (x.get_param(10 + t * 8 + 4) ? 1 << t : 0), 0)};
       this.port.postMessage({type: 'screen', px, leds, meters}, [px.buffer]);
       /* the FM-1's own settings changed: hand them to the page to keep */
       const g = x.device_changed();

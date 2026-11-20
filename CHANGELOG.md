@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.7.2 — quicker knobs; SPLICE's reels
+
+- **The knobs accelerate**: a slow turn still moves one step a click; a quicker turn covers ground (up to six or more a click), so 0 to full is a turn or two, not many. Switches, LFO+TURN's depth and MIDI learn take the clicks as they come.
+- **SPLICE's SCRUB view: KNOB 3 and KNOB 4 are REEL 1 and REEL 2**, the two spools' levels.
+- **SPLICE: A#3 and C#4** (the two black keys after the print keys) **mute spool 1 and spool 2**; lit when muted, and the spool's strip says MUTE. The print keys light while printing.
+- No change to the sound.
+
 ## 2.7.1 — sends you can hear
 
 - **The sends come in early in the turn.** Their curve was squared, so the first third of the knob did next to nothing (a quarter turn was about −30 dB). Now a quarter turn is clearly there, half is a full send.

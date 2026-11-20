@@ -282,7 +282,7 @@ gen = music; x.set_param(TRK(0, S.ARM), 1); press(B.REC); wait(60); press(B.REC)
 gen = silence;
 press(B.SCL); paintCheck('motion');
 press(B.REC); ok(x.transport() === 1, 'MOTION REC plays the tape');
-for (let i = 0; i < 40; i++) enc(2, i < 20 ? 3 : -3);
+for (let i = 0; i < 20; i++) { enc(2, i < 10 ? 1 : -1); ctl(); ctl(); }   // (one pass of the loop, up then down)
 press(B.REC);
 x.set_param(P.SPEED, 64);
 { const seen = new Set(); for (let i = 0; i < 60; i++) { run(5); seen.add(Math.round(x.rate())); }
@@ -433,6 +433,24 @@ x.device_seal(); ok(x.device_check() === 1, 'the device settings check');
   ok(!r.nan && r.peak <= 1, 'XOR against what is under the print ' + JSON.stringify(r));
   x.set_param(XOR, 0); x.event(SPOOL, 3, 0); run(1); ok(x.get_param(FROM) === 1, 'PRE flips FROM');
   x.event(EV.STOP, 0, 0); gen = music;
+}
+
+// 14e. knobs: slow turns step finely, quick ones accelerate; SPLICE's mute keys and reel levels
+{
+  press(B.HOME); press(B.EDIT);   // (the mixer's LEVEL view: knob 1 is track 1's level)
+  const TL = TRK(0, S.LEVEL); x.set_param(TL, 40);
+  for (let i = 0; i < 5; i++) { enc(2, 1); ctl(); ctl(); ctl(); ctl(); ctl(); ctl(); }
+  ok(x.get_param(TL) === 45, 'slow clicks: one step each (' + x.get_param(TL) + ')');
+  x.set_param(TL, 40); for (let i = 0; i < 5; i++) enc(2, 1);
+  ok(x.get_param(TL) >= 60, 'quick clicks accelerate (' + x.get_param(TL) + ')');
+  press(B.SEQ); press(B.SEQ); press(B.SEQ);
+  key(5); ok(x.get_param(TRK(2, S.MUTE)) === 1, 'SPLICE: A#3 mutes spool 1'); key(5); ok(x.get_param(TRK(2, S.MUTE)) === 0, 'and again unmutes it');
+  key(8); ok(x.get_param(TRK(3, S.MUTE)) === 1, 'C#4 mutes spool 2'); paintCheck('SPLICE muted'); key(8);
+  enc(0, 2); const l0 = x.get_param(TRK(2, S.LEVEL)), l1 = x.get_param(TRK(3, S.LEVEL));
+  enc(4, -1); ctl(); ctl(); ctl(); ctl(); ctl(); ctl(); enc(5, -1);
+  ok(x.get_param(TRK(2, S.LEVEL)) === l0 - 1 && x.get_param(TRK(3, S.LEVEL)) === l1 - 1, 'SCRUB: KNOB 3 and 4 are the reels\' levels');
+  paintCheck('SPLICE scrub');
+  press(B.HOME);
 }
 
 // 15. long run with everything moving: no NaN, in range

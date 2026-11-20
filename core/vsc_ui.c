@@ -188,7 +188,7 @@ static unsigned slot(unsigned k)
         { static const uint8_t s[4] = {P_SPEED, P_PITCH, P_RMIX, P_TLEVEL}; return s[k]; }
     case PG_SLICE: { static const uint8_t s[4] = {P_SLSRC, P_SLN, P_SLSNAP, P_SLDST}; return s[k]; }
     case PG_SPLICE: {   /* WEAR, BREAK, SCRUB */
-        static const uint8_t s[3][4] = {{P_WOW, P_SAT, P_AGE, P_DROP}, {P_CRUSH, P_LOSSY, P_CMP, P_XOR}, {K_FINGER, K_DRAG, K_NONE, K_NONE}};
+        static const uint8_t s[3][4] = {{P_WOW, P_SAT, P_AGE, P_DROP}, {P_CRUSH, P_LOSSY, P_CMP, P_XOR}, {K_FINGER, K_DRAG, P_TRK(VSC_SPOOL0, S_LEVEL), P_TRK(VSC_SPOOL0 + 1u, S_LEVEL)}};
         return s[view % 3u][k];
     }
     case PG_MASTER:
@@ -232,6 +232,8 @@ static void slot_text(unsigned s, char name[10], char val[10])
         cpy(name, vsc_param_info(s)->name);
         if (page == PG_BOUNCE && s == P_RMIX) cpy(name, "WET");
         if (page == PG_MOTION && s == P_RMIX) cpy(name, "R.MIX");
+        if (page == PG_SPLICE && (s == P_TRK(VSC_SPOOL0, S_LEVEL) || s == P_TRK(VSC_SPOOL0 + 1u, S_LEVEL)))
+            cpy(name, s == P_TRK(VSC_SPOOL0, S_LEVEL) ? "REEL 1" : "REEL 2");
         if (lane_of(s) >= 0) { char t[10]; cpy(t, "M "); cat(t, name); cpy(name, t); }   /* M: it moves by itself */
         vsc_param_label(s, shown(s), val);
         return;
@@ -648,12 +650,27 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
         int d = in->enc[e];
         if (!d) continue;
         unsigned s = slot(e - 2);
+        /* acceleration: a quick turn covers ground, a slow one stays fine (continuous knobs only;
+         * not for LFO+TURN's depth or MIDI learn, which take the clicks as they come) */
+        const int d_raw = d;
+        {
+            static uint32_t at[4]; static int8_t last_dir[4];
+            const uint32_t dt = now_ms - at[e - 2];
+            const int dir = d > 0 ? 1 : -1, ad = d > 0 ? d : -d;
+            const int cont = (s < VSC_NP && vsc_param_info(s)->max >= 24) || s == K_DRAG || s == K_BAND;
+            if (cont && dir == last_dir[e - 2]) {
+                int m = dt < 30u ? 6 : dt < 60u ? 4 : dt < 110u ? 2 : 1;
+                if (ad > 1) m += ad;   /* (several clicks in one frame: faster still) */
+                d *= m;
+            }
+            at[e - 2] = now_ms; last_dir[e - 2] = (int8_t)dir;
+        }
         touch_at[e - 2] = now_ms | 1u;
         if (save_held && s < VSC_NP) { learn_arm(0, s, "MOVE A MIDI CC"); continue; }
         if (lfo_held) {
             unsigned p = s == K_BAND ? P_RG0 + rsel : s;
             used_mod = 1;
-            if (p < VSC_NP) route_turn(p, d); else vsc_ui_notice("AN LFO CAN'T MOVE THAT ONE", 1100);
+            if (p < VSC_NP) route_turn(p, d_raw); else vsc_ui_notice("AN LFO CAN'T MOVE THAT ONE", 1100);
             continue;
         }
         if (clr_held && s < VSC_NP && lane_of(s) >= 0) { int m = lane_of(s); vsc.motion[m].on = 0; vsc_ui_notice("MOTION ERASED", 900); used_mod = 1; continue; }
@@ -674,9 +691,15 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
         else if (kdown & B(3u)) { vsc_event(EV_SPOOL, 1, 0); sp_key = 3; }
         if (sp_key && !vsc_meter.sp_print && !vsc_meter.has[VSC_SPOOL0 + (sp_key == 1 ? 1u : 0u)]) vsc_ui_notice(sp_key == 1 ? "SPOOL 2 (TRACK 4) IS EMPTY" : "SPOOL 1 (TRACK 3) IS EMPTY", 1200);
     }
+    /* SPLICE: A#3 and C#4 (the next two black keys) mute spool 1 and spool 2 */
+    if (page == PG_SPLICE) for (unsigned k = 0; k < 2; ++k) if (kdown & B(k ? 8u : 5u)) {
+        uint8_t *m = &vsc.p[P_TRK(VSC_SPOOL0 + k, S_MUTE)];
+        *m = !*m;
+        vsc_ui_notice(*m ? (k ? "SPOOL 2 MUTED" : "SPOOL 1 MUTED") : (k ? "SPOOL 2 ON" : "SPOOL 1 ON"), 700);
+    }
     for (unsigned kk = 0; kk < 27; ++kk) {
         if (!(kdown & B(kk))) continue;
-        if (page == PG_SPLICE && (kk == 1u || kk == 3u)) continue;
+        if (page == PG_SPLICE && (kk == 1u || kk == 3u || kk == 5u || kk == 8u)) continue;
         unsigned k = key_track(kk), band = key_band(kk);
         if (page == PG_MIXER && !save_held && !clr_held && !home_held) {   /* the mixer: F3-B3 mute, C4-F4 solo */
             int w = white_of(kk);
@@ -1340,18 +1363,20 @@ static void draw_splice(void)
             text(11, y + 4, k ? "2" : "1", k == from ? C_AMBER : C_DIM);
             text(11, y + 15, k == from ? "FR" : onto ? "TO" : "", k == from ? C_AMBER : C_RED);
             if (!vsc_meter.has[t]) { text(30, mid - 3, k ? "EMPTY: RECORD TRACK 4" : "EMPTY: RECORD TRACK 3", C_DIMR); continue; }
+            const int muted = vsc.p[P_TRK(t, S_MUTE)] != 0;
             for (int i = 0; i < 60; ++i) {
                 unsigned v = vsc_meter.overview[t][i];
                 int h = (int)v * 11 / 15;
-                vline(30 + 3 * i, mid - h, 2 * h + 1, k == from ? C_HUB2 : C_DEEP);
+                vline(30 + 3 * i, mid - h, 2 * h + 1, muted ? C_DARK : k == from ? C_HUB2 : C_DEEP);
             }
+            if (muted) { box(196, y + 8, 32, 11, C_REDK); text_c(212, y + 10, "MUTE", C_RED); }
             uint32_t e = vsc_meter.loop ? vsc_meter.loop : vsc_meter.cap;
             int ph = (int)((float)vsc_meter.tpos[t] * 180.f / (float)(e ? e : 1u));
             vline(30 + (ph > 179 ? 179 : ph < 0 ? 0 : ph), y + 2, 23, onto ? C_RED : C_CREAM);
         }
     }
     knob_row(172);
-    if (view % 3u == 2u) footer(pr ? "FINGER: PUSH, BACK: REVERSE" : "HOLD F#3/G#3, TURN: THE RECORD");
+    if (view % 3u == 2u) footer(pr ? "FINGER: PUSH, BACK: REVERSE" : "A#3/C#4: MUTE  HOLD F#3/G#3: SCRUB");
     else footer(pr ? "LET GO: THE PRINT STOPS" : "HOLD F#3: 2>1  G#3: 1>2  PRE: FROM");
 }
 /* MASTER's SPACE views: the delay's repeats, and the verb's tail in its steps */
@@ -1614,6 +1639,10 @@ void vsc_ui_leds(uint8_t out[41])
     if (page == PG_MIXER) for (unsigned t = 0; t < VSC_TRACKS; ++t) {
         out[14 + white_key[t]] = vsc.p[P_TRK(t, S_MUTE)] ? 2 : glow;
         out[14 + white_key[4 + t]] = vsc_solo >> t & 1u ? 2 : glow;
+    }
+    if (page == PG_SPLICE) {
+        out[14 + 1] = vsc_meter.sp_print == 1 ? 2 : glow; out[14 + 3] = vsc_meter.sp_print == 2 ? 2 : glow;
+        out[14 + 5] = vsc.p[P_TRK(VSC_SPOOL0, S_MUTE)] ? 2 : glow; out[14 + 8] = vsc.p[P_TRK(VSC_SPOOL0 + 1u, S_MUTE)] ? 2 : glow;
     }
     if (page == PG_RESON) for (unsigned k = 0; k < VSC_RBANDS; ++k) out[14 + band_key[k]] = k == rsel || vsc_meter.rb_level[k] > 30 ? 2 : glow;
     for (unsigned k = 0; k < 27; ++k) if (prev_keys & (1u << k)) out[14 + k] = 2;

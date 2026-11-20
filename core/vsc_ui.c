@@ -175,7 +175,7 @@ static uint8_t slice_open;                                 /* the SLICE page tol
 static uint32_t intro_at, frame_ms;   /* frame_ms: the time a frame is drawn at (one picture, however long its bands take) */
 static uint8_t intro_on, intro_fresh;   /* the start-up animation is on screen; its start time not yet taken from the clock */   /* a held modifier was used */
 /* a knob slot: a parameter, or one of the page's own controls */
-enum { K_NONE = 200, K_LSTART, K_LEND, K_LSLIDE, K_LFULL, K_LOOP, K_BTAUDIO, K_BTMIDI, K_LIGHT, K_KNOBCC, K_BLE, K_CLEARMAP, K_BAND, K_START, K_RSRC, K_RDST, K_RDEPTH, K_RDEL, K_FINGER, K_DRAG };
+enum { K_NONE = 200, K_LSTART, K_LEND, K_LSLIDE, K_LFULL, K_LOOP, K_BTAUDIO, K_BTMIDI, K_LIGHT, K_KNOBCC, K_BLE, K_CLEARMAP, K_BAND, K_START, K_RSRC, K_RDST, K_RDEPTH, K_RDEL, K_FINGER, K_DRAG, K_KNOBSPD };
 static unsigned slot(unsigned k)
 {
     switch (page) {
@@ -210,7 +210,7 @@ static unsigned slot(unsigned k)
         if (view >= V_LEARN) return k == 3 ? K_CLEARMAP : K_NONE;
         return P_ROB(view, k == 0 ? R_RATE : k == 1 ? R_SHAPE : k == 2 ? R_SKEW : R_DEPTH);
     case PG_SETTINGS: {
-        static const uint8_t s[2][4] = {{K_BTAUDIO, K_BTMIDI, K_LIGHT, K_START}, {K_BLE, K_KNOBCC, K_NONE, K_NONE}};
+        static const uint8_t s[2][4] = {{K_BTAUDIO, K_BTMIDI, K_LIGHT, K_START}, {K_BLE, K_KNOBCC, K_KNOBSPD, K_NONE}};
         return s[view & 1][k];
     }
     default: return K_NONE;
@@ -252,6 +252,7 @@ static void slot_text(unsigned s, char name[10], char val[10])
     case K_BTMIDI: cpy(name, "BT MID"); cpy(val, vsc_host.bt_midi ? "ON" : "OFF"); break;
     case K_LIGHT: { static const char *const l[4] = {"OFF", "LOW", "MID", "HIGH"}; cpy(name, "LIGHT"); cpy(val, l[vsc_dev.backlight & 3]); break; }
     case K_KNOBCC: cpy(name, "CC 110"); cpy(val, vsc_dev.knob_cc ? "KNOBS" : "OFF"); break;
+    case K_KNOBSPD: { static const char *const n[3] = {"SLOW", "MEDIUM", "FAST"}; cpy(name, "KNOBS"); cpy(val, n[vsc_dev.knob_speed % 3u]); break; }
     case K_BLE: cpy(name, "BLE"); cpy(val, vsc_host.ble_role ? "CENTRL" : "PERIPH"); break;
     case K_START: cpy(name, "START"); cpy(val, vsc_dev.start_blank ? "BLANK" : "LAST"); break;
     case K_CLEARMAP: cpy(name, "CLEAR"); cpy(val, ">"); break;
@@ -384,6 +385,7 @@ static void edit(unsigned s, int d, unsigned *req, unsigned *arg)
     case K_BTMIDI: *req = HOST_BT_MIDI; *arg = d > 0; break;
     case K_LIGHT: vsc_dev.backlight = (uint8_t)clampi((int)vsc_dev.backlight + d, 0, BACKLIGHT_HIGH); ++vsc_dev_changed; break;
     case K_KNOBCC: vsc_dev.knob_cc = d > 0; ++vsc_dev_changed; break;
+    case K_KNOBSPD: vsc_dev.knob_speed = (uint8_t)clampi((int)vsc_dev.knob_speed + (d > 0 ? 1 : -1), 0, 2); ++vsc_dev_changed; break;
     case K_START: vsc_dev.start_blank = d < 0; ++vsc_dev_changed; break;
     case K_BLE: *req = HOST_BLE_ROLE; *arg = d > 0; break;
     case K_CLEARMAP:
@@ -657,10 +659,20 @@ unsigned vsc_ui_update(const struct vsc_ui_input *in, unsigned *arg)
             static uint32_t at[4]; static int8_t last_dir[4];
             const uint32_t dt = now_ms - at[e - 2];
             const int dir = d > 0 ? 1 : -1, ad = d > 0 ? d : -d;
-            const int cont = (s < VSC_NP && vsc_param_info(s)->max >= 24) || s == K_DRAG || s == K_BAND;
-            if (cont && dir == last_dir[e - 2]) {
-                int m = dt < 30u ? 6 : dt < 60u ? 4 : dt < 110u ? 2 : 1;
-                if (ad > 1) m += ad;   /* (several clicks in one frame: faster still) */
+            /* KNOB SPEED (SETTINGS): per click at a slow turn (on the 0-127 knobs; finer ranges such
+             * as semitones keep 1), and how far a quick turn goes */
+            static const uint8_t base[3] = {1, 2, 3}, acc[3][3] = {{4, 3, 2}, {8, 5, 3}, {12, 8, 4}};
+            const unsigned ks = vsc_dev.knob_speed % 3u;
+            const int wide = (s < VSC_NP && vsc_param_info(s)->max >= 100) || s == K_DRAG || s == K_BAND;
+            const int cont = wide || (s < VSC_NP && vsc_param_info(s)->max >= 24);
+            if (cont) {
+                int m = 1;
+                if (dir == last_dir[e - 2]) {
+                    m = dt < 30u ? acc[ks][0] : dt < 60u ? acc[ks][1] : dt < 110u ? acc[ks][2] : 1;
+                    if (ad > 1) m += ad;   /* (several clicks in one frame: faster still) */
+                }
+                if (wide && m < base[ks]) m = base[ks];
+                if (!wide && m > 4) m = 4;   /* (finer ranges: never too far) */
                 d *= m;
             }
             at[e - 2] = now_ms; last_dir[e - 2] = (int8_t)dir;

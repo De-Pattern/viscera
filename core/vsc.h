@@ -123,13 +123,16 @@ struct vsc_device {
     uint8_t backlight, knob_cc;
     uint8_t start_blank, last_slot;   /* START WITH: 0 the last project saved or loaded (last_slot, 1..8; 0 none), 1 a blank one */
     struct vsc_learn learn[VSC_LEARN];
+    uint8_t knob_speed, pad[3];       /* the knobs' travel: 0 SLOW, 1 MEDIUM, 2 FAST (version 5) */
 };
 #define VSC_DEV_MAGIC 0x44435356u   /* 'VSCD' */
-#define VSC_DEV_VERSION 4           /* 4: the 4-track */
+#define VSC_DEV_VERSION 5           /* 4: the 4-track; 5: KNOB SPEED */
 extern struct vsc_device vsc_dev;
 extern volatile uint32_t vsc_dev_changed;   /* bumped on every change */
 void vsc_device_defaults(void);
 int vsc_device_valid(const struct vsc_device *d);
+/* version 4's settings (2.x before KNOB SPEED) read into d: checked, given MEDIUM, made this version. 1 if they were */
+int vsc_device_upgrade(struct vsc_device *d);
 void vsc_device_seal(void);
 /* Learned controls let go and wait to be picked up again (after a project change). */
 void vsc_learn_release(void);

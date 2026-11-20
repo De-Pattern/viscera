@@ -117,6 +117,6 @@ W_EXPORT(leds) uint8_t *w_leds(void) { vsc_ui_leds(leds); return leds; }
 W_EXPORT(device) struct vsc_device *w_device(void) { return &vsc_dev; }
 W_EXPORT(device_bytes) unsigned w_device_bytes(void) { return sizeof vsc_dev; }
 W_EXPORT(device_seal) void w_device_seal(void) { vsc_device_seal(); }
-W_EXPORT(device_check) int w_device_check(void) { return vsc_device_valid(&vsc_dev); }
+W_EXPORT(device_check) int w_device_check(void) { return vsc_device_valid(&vsc_dev) || vsc_device_upgrade(&vsc_dev); }
 W_EXPORT(device_changed) unsigned w_device_changed(void) { return vsc_dev_changed; }
 W_EXPORT(cpu_set) void w_cpu_set(unsigned cpu) { vsc_host.cpu = (uint8_t)cpu; }

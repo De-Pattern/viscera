@@ -279,7 +279,7 @@ int vsc_project_upgrade(struct vsc_project *p)
 void vsc_device_defaults(void)
 {
     vsc_memset(&vsc_dev, 0, sizeof vsc_dev);
-    vsc_dev.backlight = BACKLIGHT_LOW; vsc_dev.knob_cc = 1;
+    vsc_dev.backlight = BACKLIGHT_LOW; vsc_dev.knob_cc = 1; vsc_dev.knob_speed = 1;
     for (unsigned l = 0; l < VSC_LEARN; ++l) vsc_dev.learn[l].param = 255;
 }
 void vsc_device_seal(void)
@@ -295,5 +295,15 @@ int vsc_device_valid(const struct vsc_device *d)
         const struct vsc_learn *e = &d->learn[l];
         if (e->param != 255 && (e->kind > 1 || (e->kind == 0 && e->param >= VSC_NP) || (e->kind == 1 && e->param >= ACT_COUNT))) return 0;
     }
-    return d->backlight <= BACKLIGHT_HIGH;
+    return d->backlight <= BACKLIGHT_HIGH && d->knob_speed <= 2;
+}
+int vsc_device_upgrade(struct vsc_device *d)
+{
+    const uint32_t ob = (uint32_t)offsetof(struct vsc_device, knob_speed);
+    if (d->magic != VSC_DEV_MAGIC || d->version != 4 || d->bytes != ob) return 0;
+    if (d->crc != vsc_crc32(&d->backlight, ob - offsetof(struct vsc_device, backlight))) return 0;
+    d->knob_speed = 1; d->pad[0] = d->pad[1] = d->pad[2] = 0;
+    d->version = VSC_DEV_VERSION; d->bytes = sizeof *d;
+    d->crc = vsc_crc32(&d->backlight, sizeof *d - offsetof(struct vsc_device, backlight));
+    return vsc_device_valid(d);
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.7.3 — KNOB SPEED
+
+- **The knobs travel further.** At the new default, MEDIUM, a slow click moves a 0–127 knob two steps, and a quick turn up to eight a click (with more when the clicks come fast). Knobs with finer ranges (semitones and the like) keep single steps on a slow turn.
+- **KNOB SPEED on SETTINGS** (second view, KNOB 3): SLOW (2.7.2's feel, a step a click), MEDIUM, FAST (three a click, up to twelve). Saved with the settings.
+- Your settings and MIDI learn carry over from earlier 2.x.
+- No change to the sound.
+
 ## 2.7.2 — quicker knobs; SPLICE's reels
 
 - **The knobs accelerate**: a slow turn still moves one step a click; a quicker turn covers ground (up to six or more a click), so 0 to full is a turn or two, not many. Switches, LFO+TURN's depth and MIDI learn take the clicks as they come.

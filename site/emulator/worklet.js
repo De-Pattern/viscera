@@ -53,8 +53,8 @@ class Viscera extends AudioWorkletProcessor {
       this.port.postMessage({type: 'loaded', ok});
     } else if (m.type === 'device-load') {
       const d = new Uint8Array(this.mem(), x.device(), x.device_bytes());
-      if (m.bytes.length === d.length) {
-        const keep = d.slice(); d.set(m.bytes);
+      if (m.bytes.length <= d.length) {   // (2.x's shorter settings, before KNOB SPEED, upgrade)
+        const keep = d.slice(); d.fill(0); d.set(m.bytes);
         if (x.device_check() !== 1) d.set(keep);
       }
     } else if (m.type === 'midi') {

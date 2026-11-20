@@ -438,9 +438,16 @@ x.device_seal(); ok(x.device_check() === 1, 'the device settings check');
 // 14e. knobs: slow turns step finely, quick ones accelerate; SPLICE's mute keys and reel levels
 {
   press(B.HOME); press(B.EDIT);   // (the mixer's LEVEL view: knob 1 is track 1's level)
+  const dv = () => new Uint8Array(mem(), x.device(), x.device_bytes()), KS = 16 + 4 + 16 * 4;
+  dv()[KS] = 1;   // (MEDIUM, the default; earlier pages' tests may have turned it)
   const TL = TRK(0, S.LEVEL); x.set_param(TL, 40);
-  for (let i = 0; i < 5; i++) { enc(2, 1); ctl(); ctl(); ctl(); ctl(); ctl(); ctl(); }
-  ok(x.get_param(TL) === 45, 'slow clicks: one step each (' + x.get_param(TL) + ')');
+  for (let i = 0; i < 5; i++) { enc(2, 1); for (let g = 0; g < 10; g++) ctl(); }
+  ok(x.get_param(TL) === 50, 'slow clicks at MEDIUM: two steps each on a 0-127 knob (' + x.get_param(TL) + ')');
+  dv()[KS] = 0; x.set_param(TL, 40); for (let i = 0; i < 5; i++) { enc(2, 1); for (let g = 0; g < 10; g++) ctl(); }
+  ok(x.get_param(TL) === 45, 'SLOW: one step a slow click (' + x.get_param(TL) + ')');
+  dv()[KS] = 2; x.set_param(TL, 40); for (let i = 0; i < 5; i++) { enc(2, 1); for (let g = 0; g < 10; g++) ctl(); }
+  ok(x.get_param(TL) === 55, 'FAST: three (' + x.get_param(TL) + ')');
+  dv()[KS] = 1;
   x.set_param(TL, 40); for (let i = 0; i < 5; i++) enc(2, 1);
   ok(x.get_param(TL) >= 60, 'quick clicks accelerate (' + x.get_param(TL) + ')');
   press(B.SEQ); press(B.SEQ); press(B.SEQ);
@@ -448,9 +455,23 @@ x.device_seal(); ok(x.device_check() === 1, 'the device settings check');
   key(8); ok(x.get_param(TRK(3, S.MUTE)) === 1, 'C#4 mutes spool 2'); paintCheck('SPLICE muted'); key(8);
   enc(0, 2); const l0 = x.get_param(TRK(2, S.LEVEL)), l1 = x.get_param(TRK(3, S.LEVEL));
   enc(4, -1); ctl(); ctl(); ctl(); ctl(); ctl(); ctl(); enc(5, -1);
-  ok(x.get_param(TRK(2, S.LEVEL)) === l0 - 1 && x.get_param(TRK(3, S.LEVEL)) === l1 - 1, 'SCRUB: KNOB 3 and 4 are the reels\' levels');
+  ok(x.get_param(TRK(2, S.LEVEL)) === l0 - 2 && x.get_param(TRK(3, S.LEVEL)) === l1 - 2, 'SCRUB: KNOB 3 and 4 are the reels\' levels');
   paintCheck('SPLICE scrub');
   press(B.HOME);
+}
+
+// 14f. the settings of 2.x before KNOB SPEED (version 4) carry over: MIDI learn kept, KNOB SPEED MEDIUM
+{
+  const n = x.device_bytes(), d = new Uint8Array(mem(), x.device(), n), ob = n - 4;
+  const cur = d.slice(); cur[16] = 2; cur[20] = 3; cur[21] = 74; cur[22] = 0; cur[23] = 5;   // (a backlight, a learned CC)
+  const old = cur.slice(0, ob), dv = new DataView(old.buffer);
+  dv.setUint32(4, 4, true); dv.setUint32(8, ob, true);
+  let c = 0xffffffff; for (let i = 16; i < ob; i++) { c ^= old[i]; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1)); }
+  dv.setUint32(12, (~c) >>> 0, true);
+  d.fill(0xee); d.set(old);
+  ok(x.device_check() === 1, 'version 4 settings check (upgraded)');
+  const hv = new DataView(mem(), x.device(), 16);
+  ok(hv.getUint32(4, true) === 5 && d[16] === 2 && d[21] === 74 && d[ob] === 1, 'kept: the backlight, the learned CC; KNOB SPEED MEDIUM');
 }
 
 // 15. long run with everything moving: no NaN, in range

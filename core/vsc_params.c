@@ -39,6 +39,7 @@ static const struct vsc_pinfo info[VSC_NP] = {
     C("TIME", 60), C("FEEDBK", 55), C("MIX", 90), C("TO VRB", 30),
     C("SIZE", 70), C("DAMP", 60), C("MIX", 90), E("BITS", 2, 0),
     E("FROM", 1, 1), C("WOW", 0), C("SAT", 0), C("AGE", 0), C("DROP", 0), C("CRUSH", 0), C("LOSSY", 0), C("CMP", 0), C("XOR", 0),
+    E("WHERE", 6, 0), C("TUNE", 64), C("AMOUNT", 96), C("MIX", 127),
 };
 const struct vsc_pinfo *vsc_param_info(unsigned p) { return p < VSC_NP ? &info[p] : &info[0]; }
 
@@ -69,6 +70,7 @@ int vsc_modulatable(unsigned p)
     if (p >= P_SEND0 && p < P_SEND0 + VSC_TRACKS) return 1;
     if (p == P_DFB || p == P_DMIX || p == P_DVERB || p == P_VSIZE || p == P_VDAMP || p == P_VMIX) return 1;
     if (p >= P_WOW && p <= P_XOR) return 1;
+    if (p >= P_TTUNE && p <= P_TMIX) return 1;
     return p >= P_RMIX && p <= P_RG0 + 7;
 }
 void vsc_route_name(unsigned p, char out[10])
@@ -84,6 +86,7 @@ void vsc_route_name(unsigned p, char out[10])
     else if (p >= P_DTIME && p <= P_DVERB) pre = "D ";
     else if (p >= P_VSIZE && p <= P_VBITS) pre = "V ";
     else if (p >= P_WOW && p <= P_XOR) pre = "SP ";
+    else if (p >= P_TWHERE && p <= P_TMIX) pre = "TP ";
     else if (p >= P_STRIP && p < P_STRIP + VSC_TRACKS * VSC_TP) { t[1] = (char)('1' + (p - P_STRIP) / VSC_TP); pre = t; }
     unsigned i = 0;
     for (; *pre && i < 9; ++pre) out[i++] = *pre;
@@ -190,6 +193,7 @@ void vsc_param_label(unsigned p, unsigned v, char out[8])
     case P_SLSNAP: put_str(out, v ? "HITS" : "GRID"); return;
     case P_SLDST: put_str(out, n_bdst[v % 5]); return;
     case P_DTIME: put_unit(out, 20 + (int)v * 330 / 127, "MS"); return;
+    case P_TWHERE: { static const char *const w[7] = {"OFF", "TRK 1", "TRK 2", "TRK 3", "TRK 4", "INPUT", "BOUNCE"}; put_str(out, w[v % 7]); return; }
     case P_SPFROM: put_str(out, v ? "SPOOL 2" : "SPOOL 1"); return;
     case P_VBITS: { static const char *const b[3] = {"12 BIT", "10 BIT", "8 BIT"}; put_str(out, b[v % 3]); return; }
     default: break;
@@ -258,8 +262,9 @@ int vsc_project_valid(const struct vsc_project *p)
 int vsc_project_upgrade(struct vsc_project *p)
 {
     if (p->magic != VSC_MAGIC) return 0;
-    const uint32_t ob = p->version == 10 ? VSC_FORMAT_10_BYTES : p->version == 11 ? VSC_FORMAT_11_BYTES : p->version == 12 ? VSC_FORMAT_12_BYTES : 0;
-    const unsigned onp = p->version == 12 ? VSC_NP_V12 : VSC_NP_V11;
+    const uint32_t ob = p->version == 10 ? VSC_FORMAT_10_BYTES : p->version == 11 ? VSC_FORMAT_11_BYTES : p->version == 12 ? VSC_FORMAT_12_BYTES :
+                        p->version == 13 ? VSC_FORMAT_13_BYTES : 0;
+    const unsigned onp = p->version == 13 ? VSC_NP_V13 : p->version == 12 ? VSC_NP_V12 : VSC_NP_V11;
     if (!ob || p->bytes != ob) return 0;
     if (vsc_crc32(&p->name, ob - offsetof(struct vsc_project, name)) != p->crc) return 0;
     /* the parts after the parameters move up to make room for the new ones (from the end down) */

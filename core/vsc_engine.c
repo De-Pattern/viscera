@@ -1040,6 +1040,83 @@ static VSC_HOT_SMALL void sp_scrub(unsigned which, int clicks)
     if (!sp_hand) { sp_hand = 1; sc_blk[0] = sc_blk[1] = -1; }
 }
 
+/* ---------------------------------------------------------- TAPE: Ravel's worn reel-to-reel
+ * Ported from Ravel 1.43.1 (its INSERT TAPE), matched there by measurement to a slowed tape-synth
+ * lead: its spectrum within about 3 dB from 500 Hz to 16 kHz, its wow about 55 cents peak to peak
+ * at 1.5 Hz. The sound read back from a short loop of tape (6.8 ms) by two heads: the tape's speed
+ * sways (TUNE: 0.3 to 7 Hz, 1.5 at the middle), drifting as a tired motor does, with a little
+ * flutter; the second head sways partly the other way (a slow, detuned chorus). AMOUNT: how far it
+ * sways (up to 3.3 ms), and with it the tape's age: the highs worn away, the tape driven, its hiss
+ * under the note. One, placed (WHERE): a track after its preamp, the input, or the bounce. */
+#define TP_RING 300
+static struct {
+    int16_t ring[TP_RING];
+    int32_t w, cnt;
+    uint32_t rnd;
+    float ph, phf, drift, target, lp, l2, l3, env;
+} tpe;
+static uint8_t tp_at = 255;   /* (where it was: a move starts it afresh) */
+/* sin(2 pi p), any p: a parabola, refined (within about 0.1 %) */
+VSC_INL float tsin(float p)
+{
+    p -= (float)(int32_t)p; if (p < 0.f) p += 1.f;
+    float x = p < 0.5f ? p : p - 0.5f, y = 16.f * x * (0.5f - x);
+    y = 0.225f * (y * y - y) + y;
+    return p < 0.5f ? y : -y;
+}
+VSC_INL float tsat(float x)
+{
+    if (x > 3.f) return 1.f;
+    if (x < -3.f) return -1.f;
+    const float x2 = x * x;
+    return x * (27.f + x2) / (27.f + 9.f * x2);
+}
+static VSC_HOT void tape_run(float *x, unsigned n)
+{
+    const float a = pf[P_TTUNE] * (1.f / 127.f), b = pf[P_TAMT] * (1.f / 127.f), mix = pf[P_TMIX] * (1.f / 127.f);
+    const float rate = 0.3f * exp2a(a * 4.6f), dep = b * 3.3f * 0.001f * (float)VSC_SR;
+    const float kq = (1.f - b) * (1.f - b), c1 = 0.075f + 0.875f * kq, c2 = 0.68f + 0.27f * kq;
+    const float drive = 1.f + b * 1.4f, dnorm = 1.f / (1.f + b * 0.45f), h2 = 0.15f + 0.5f * b, hn = 1.f / (1.f + 0.3f * b);
+    float m = 0.f;
+    for (unsigned i = 0; i < n; ++i) {
+        const float in = x[i];
+        tpe.ph += rate * (1.f / (float)VSC_SR); if (tpe.ph >= 1.f) tpe.ph -= 1.f;
+        tpe.phf += 7.1f * (1.f / (float)VSC_SR); if (tpe.phf >= 1.f) tpe.phf -= 1.f;
+        tpe.rnd = tpe.rnd * 1103515245u + 12345u;
+        float nz = (float)((tpe.rnd >> 9) & 0xFFFFu) * (2.f / 65535.f) - 1.f;   /* (the hiss, and now and then the motor's next whim) */
+        if (!((++tpe.cnt) & 4095)) tpe.target = nz;
+        tpe.drift += (tpe.target - tpe.drift) * 0.00006f;
+        m = 0.55f * tsin(tpe.ph) + 0.4f * tpe.drift + 0.06f * tsin(tpe.phf);
+        const float m2 = -0.45f * tsin(tpe.ph + 0.13f) + 0.4f * tpe.drift - 0.06f * tsin(tpe.phf + 0.5f);
+        const int32_t w = tpe.w;
+        tpe.ring[w] = (int16_t)clampf(in * 16384.f, -32000.f, 32000.f);
+        float y, y2;
+        {   /* the first head */
+            float d = 1.f + dep * (1.f + m); int32_t di = (int32_t)d; float fd = d - (float)di; int32_t i0 = w - di;
+            if (i0 < 0) i0 += TP_RING;
+            float z = (float)tpe.ring[i0];
+            y = (z + ((float)tpe.ring[i0 ? i0 - 1 : TP_RING - 1] - z) * fd) * (1.f / 16384.f);
+        }
+        {   /* the second */
+            float d = 1.f + dep * (1.f + m2); int32_t di = (int32_t)d; float fd = d - (float)di; int32_t i0 = w - di;
+            if (i0 < 0) i0 += TP_RING;
+            float z = (float)tpe.ring[i0];
+            y2 = (z + ((float)tpe.ring[i0 ? i0 - 1 : TP_RING - 1] - z) * fd) * (1.f / 16384.f);
+        }
+        tpe.w = w + 1 >= TP_RING ? 0 : w + 1;
+        y = (y + y2 * h2) * hn;
+        const float ax = absf(in);
+        tpe.env += (ax - tpe.env) * (ax > tpe.env ? 0.01f : 0.00005f);   /* (the hiss follows the note, slowly away) */
+        y = tsat(y * drive) * dnorm;
+        const float hiss = nz * tpe.env * b * 0.011f;                 /* (after the wear: the brightest thing left) */
+        tpe.lp += (y - tpe.lp) * c1;                                    /* (the highs worn away: open at 0, about 1 kHz at 96) */
+        tpe.l2 += (tpe.lp - tpe.l2) * c2;                                /* (and past about 4 kHz, more steeply) */
+        tpe.l3 += (tpe.l2 - tpe.l3) * c2;
+        x[i] = in + (tpe.l3 + hiss - in) * mix;
+    }
+    vsc_meter.tape_m = m;
+}
+
 /* ---------------------------------------------------------- SPACE: the delay and the verb
  * The tracks' sends (post-fader) feed both. The delay is lo-fi: 8 bits at a quarter rate
  * (11 kHz), up to 350 ms, its repeats darkening and saturating. The verb is after the Alesis
@@ -1464,6 +1541,9 @@ void vsc_bench_setup(void)
 #if VSC_BENCH >= 9
     for (unsigned q = P_WOW; q <= P_XOR; ++q) vsc.p[q] = 100;   /* (9: and a SPLICE print, the degrader up, a hand on it) */
 #endif
+#if VSC_BENCH >= 10
+    vsc.p[P_TWHERE] = 1;   /* (10: and TAPE on track 1) */
+#endif
     play();
     rec();
 #if VSC_BENCH >= 9
@@ -1513,6 +1593,9 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
     const float tlev = level_gain(pf[P_TLEVEL]);
     const float semis = (pf[P_PITCH] - 12.f);
     float t_semis[VSC_TRACKS];
+    /* TAPE: where it is (a move, or MIX at 0: it rests, and starts afresh) */
+    const unsigned tpw = pf[P_TMIX] > 0.f ? vsc.p[P_TWHERE] % 7u : 0u;
+    if (tpw != tp_at) { vsc_memset(&tpe, 0, sizeof tpe); tp_at = (uint8_t)tpw; }
     /* SPLICE: the spool FROM, its wow and flutter (a slow wander, a quicker flutter, a drift) */
     const unsigned sp_from = VSC_SPOOL0 + (vsc.p[P_SPFROM] & 1u);
     const int sp_deg = vsc_meter.has[sp_from] && (pf[P_WOW] > 0.f || pf[P_SAT] > 0.f || pf[P_AGE] > 0.f || pf[P_DROP] > 0.f ||
@@ -1558,6 +1641,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
             ibuf[i] = v;
             float a = absf(v); iacc += a; if (a > ipk) ipk = a;
         }
+        if (tpw == 5u) tape_run(ibuf, n);   /* TAPE on the input: what's heard and recorded (the meter shows the input before it) */
         if (keyed && vsc.p[P_CKEY] == VSC_TRACKS + 1u) for (unsigned i = 0; i < n; ++i) key_buf[off + i] = ibuf[i];   /* the input, after its preamp */
         if (rtgt == RT_INPUT && !rs_bounce) {
             uint32_t r0 = vsc_clock_now ? vsc_clock_now() : 0;
@@ -1646,6 +1730,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
             const float bg = bounce_on && (bounce_src >> t & 1u) ? level_gain(pf[P_TRK(t, S_LEVEL)]) : 0.f;
             for (unsigned i = 0; i < n; ++i) k->buf[i] = pre(k->buf[i] * g_trim[t], 0.04f, &k->dc, &thit[t]);
             shifter(k, k->buf, n, t_semis[t]);
+            if (tpw == t + 1u) tape_run(k->buf, n);   /* TAPE on this track, after its preamp */
             for (unsigned i = 0; i < n; ++i) {
                 float v = k->buf[i];
                 float a = absf(v); acc += a; if (a > pk) pk = a;
@@ -1661,6 +1746,7 @@ VSC_HOT void vsc_render(const struct vsc_inputs *in, float *out)
                 if (vsc_clock_since) t_reson += vsc_clock_since(r0);
             }
             for (unsigned i = 0; i < n; ++i) bbuf[i] = pre(bbuf[i] * bpre, beven, &bdc, &bhit) * bpost * blev;
+            if (tpw == 6u) tape_run(bbuf, n);   /* TAPE on the bounce: printed through it */
         }
         /* pass B: the writers take this sub-block's input (or the bounce) */
         for (unsigned t = 0; t < VSC_TRACKS; ++t) {

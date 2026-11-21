@@ -108,7 +108,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
   </header>
 
   <div class="top">
-    <p class="eyebrow">Manual · Viscera 2.7.3 · 4-Track</p>
+    <p class="eyebrow">Manual · Viscera 2.8.0 · 4-Track</p>
     <h1>Guide</h1>
     <p>Viscera 4-Track turns the M-VAVE FM-1 into an overdubbing tape machine. Four tracks of tape in its memory, a 424-style preamp on the input and every channel, VU meters, and RESON to print a bounce through. This page covers installing it safely, getting sound in, how the sound flows, and what every page and control does.</p>
   </div>
@@ -128,6 +128,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
       <a href="#motion">Motion &amp; slice</a>
       <a href="#bounce">Bounce</a>
       <a href="#splice">Splice</a>
+      <a href="#tapefx">Tape (ENV)</a>
       <a href="#reson">RESON</a>
       <a href="#robots">Robots</a>
       <a href="#midi">MIDI</a>
@@ -227,7 +228,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
           <tr><td>SEL</td><td>MOTION (the TAPE screen; SEL again: the selected track), then SLICE.</td></tr>
           <tr><td>FX</td><td>MASTER: the four-band EQ (a view per band), the compressor, then the DELAY and the VERB.</td></tr>
           <tr><td>SEQ</td><td>BOUNCE.</td></tr>
-          <tr><td>ENV</td><td>RESON.</td></tr>
+          <tr><td>ENV</td><td>RESON (two views), then TAPE.</td></tr>
           <tr><td>LFO</td><td>ROBOTS, the LFO MATRIX and MIDI learn. Held: turn any knob to route a robot to it.</td></tr>
           <tr><td>SAVE</td><td>PROJECTS. Held: turn a knob, or press REC, PLAY or a track's key, for MIDI learn.</td></tr>
           <tr><td>GLO</td><td>SETTINGS.</td></tr>
@@ -255,9 +256,9 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
         <h3>TAPE SPEED (PRESETS)</h3>
         <div class="tbl"><table>
           <tr><th>Speed</th><th>Rate</th><th>Per track</th></tr>
-          <tr><td>HI</td><td>22.05 kHz</td><td>2.44 s</td></tr>
-          <tr><td>MID</td><td>16 kHz</td><td>3.36 s</td></tr>
-          <tr><td>LO</td><td>11.025 kHz</td><td>4.9 s</td></tr>
+          <tr><td>HI</td><td>22.05 kHz</td><td>2.39 s</td></tr>
+          <tr><td>MID</td><td>16 kHz</td><td>3.3 s</td></tr>
+          <tr><td>LO</td><td>11.025 kHz</td><td>4.78 s</td></tr>
         </table></div>
         <p>Lower is longer and darker, as on a cassette. Switching with something on the tape plays it at the new speed: an octave up from LO to HI.</p>
       </section>
@@ -363,7 +364,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
           <tr><td>BREAK</td><td><b>CRUSH</b> (fewer bits, a lower rate), <b>LOSSY</b> (three bands, each moment the quiet ones dropped and the top flickering, as a starved codec), <b>CMP</b> (a comparator: past its threshold a hard square at the level), <b>XOR</b> (the top bits of what's on the other spool, under the print, flip the bits of this one: the spool's own past, scrambled in).</td></tr>
           <tr><td>SCRUB</td><td>While a print is held: a hand on the source, as on a record. <b>FINGER</b> pushes it (a flick speeds it up or slows it, settling back); pull back far enough and it plays <b>reversed</b>, push forward far enough and it plays forward again. <b>DRAG</b> holds it back toward a stop. Let go of the key and the hand comes off. <b>REEL 1</b> and <b>REEL 2</b> (KNOB 3, 4): the spools' levels.</td></tr>
         </table></div>
-        <p>The spools are tracks 3 and 4: they play in the mixer, and the robots and LFO matrix can move the degrader's knobs. Its memory came from the tape: a track is 2.44 s at HI now.</p>
+        <p>The spools are tracks 3 and 4: they play in the mixer, and the robots and LFO matrix can move the degrader's knobs. </p>
       </section>
 
       <section id="reson">
@@ -379,6 +380,18 @@ footer .wrap{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
           <tr><td>SHIFT, DUST, BAND (SELECT)</td><td>The whole bank up or down an octave; how many specks; the picked band's level (the white keys C4 to C5 pick it, PRESETS too).</td></tr>
         </table></div>
         <p>The keys outside the tracks' and bands' ping it. The lamps over the sliders light as the bands ring.</p>
+      </section>
+
+      <section id="tapefx">
+        <p class="eyebrow">ENV, third view</p>
+        <h2>TAPE</h2>
+        <p>Ravel's worn reel-to-reel, brought over from Ravel as it is: the sound read back from a short loop of tape by two heads, the tape's speed swaying as a tired motor's does, with a little flutter, the second head swaying partly the other way so the sound doubles into a slow, detuned chorus; and the tape's age: the highs worn away, the tape driven, its hiss under the note. At its defaults it matches, by measurement, a slowed tape-synth lead. Press <kbd>ENV</kbd> past RESON's two views.</p>
+        <ul>
+          <li><b>WHERE</b>: OFF, a track (TRK 1–4, after its preamp, as it plays), the INPUT (what you hear and record), or the BOUNCE (printed through it). There's one TAPE: put it where you want it.</li>
+          <li><b>TUNE</b>: the wow's rate, 0.3 to 7 Hz (1.5 at the middle). <b>AMOUNT</b>: how far it sways (up to 3.3 ms), and with it the age: darker, driven, more hiss. <b>MIX</b>: dry to all tape.</li>
+          <li>The reference settings are the defaults: TUNE 64, AMOUNT 96, MIX 127. The screen draws the sway as it goes, and the wear (what's left of the highs).</li>
+        </ul>
+        <p>Its memory came from the tape: a track is 2.39 s at HI now.</p>
       </section>
 
       <section id="robots">

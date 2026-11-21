@@ -139,6 +139,20 @@ static float fsin(float x)   /* radians, any */
     return y * (1.f - y2 * (1.f / 6.f - y2 * (1.f / 120.f - y2 * (1.f / 5040.f))));
 }
 static float fcos(float x) { return fsin(x + 1.5707963f); }
+static float fexp2(float x)   /* 2^x, near enough for a screen */
+{
+    int i = (int)x; if (x < 0.f && (float)i != x) --i;
+    const float f = x - (float)i, p = 1.f + f * (0.6931472f + f * (0.2402265f + f * (0.0555041f + f * 0.0096181f)));
+    union { float f; uint32_t u; } u = {p}; u.u += (uint32_t)i << 23; return u.f;
+}
+static float flog10(float x)   /* x > 0 */
+{
+    union { float f; uint32_t u; } u = {x};
+    const int e = (int)((u.u >> 23) & 255u) - 127;
+    u.u = (u.u & 0x007fffffu) | 0x3f800000u;
+    const float m = u.f, l2 = -1.7417939f + (2.8212026f + (-1.4699568f + (0.44717955f - 0.056570851f * m) * m) * m) * m;
+    return ((float)e + l2) * 0.30103f;
+}
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 static void num(char *o, int v)
 {
@@ -202,8 +216,8 @@ static unsigned slot(unsigned k)
         return s[view & 1][k];
     }
     case PG_RESON: {
-        static const uint8_t s[2][4] = {{P_RPROF, P_RMIX, P_RDECAY, P_RWIDTH}, {P_RSHIFT, P_RDUST, K_BAND, K_NONE}};
-        return s[view & 1][k];
+        static const uint8_t s[3][4] = {{P_RPROF, P_RMIX, P_RDECAY, P_RWIDTH}, {P_RSHIFT, P_RDUST, K_BAND, K_NONE}, {P_TWHERE, P_TTUNE, P_TAMT, P_TMIX}};
+        return s[view % 3u][k];
     }
     case PG_ROBOTS:
         if (view == V_MATRIX) { static const uint8_t s[4] = {K_RSRC, K_RDST, K_RDEPTH, K_RDEL}; return s[k]; }
@@ -218,7 +232,7 @@ static unsigned slot(unsigned k)
 }
 static unsigned views(void)
 {
-    return page == PG_MOTION ? 2 : page == PG_MASTER ? 8 : page == PG_TAPE ? 3 : page == PG_MIXER ? 4 : page == PG_BOUNCE || page == PG_RESON || page == PG_SETTINGS ? 2 : page == PG_SPLICE ? 3 : page == PG_ROBOTS ? V_LEARN + 1 : 1;
+    return page == PG_MOTION ? 2 : page == PG_MASTER ? 8 : page == PG_TAPE ? 3 : page == PG_MIXER ? 4 : page == PG_BOUNCE || page == PG_SETTINGS ? 2 : page == PG_RESON || page == PG_SPLICE ? 3 : page == PG_ROBOTS ? V_LEARN + 1 : 1;
 }
 static float tape_hz(void) { return vsc_tape_hz(vsc.p[P_TAPESPD] % 3u); }
 /* MOTION: the lane a parameter has (-1 none), and what it plays now */
@@ -1093,7 +1107,67 @@ static void draw_bounce(void)
 }
 
 /* ---- RESON */
+static void draw_reson_main(void);
+/* ENV's third view, TAPE: its wow as it sways (the last few seconds), and the wear (its response) */
+static float tp_hist[64];
+static unsigned tp_hn;
+static uint32_t tp_hat;
+static void draw_tape_fx(void)
+{
+    char b[24];
+    const unsigned w = vsc.p[P_TWHERE] % 7u;
+    vsc_param_label(P_TWHERE, w, b);
+    if (w) { char c[24]; cpy(c, "ON "); cat(c, b); cpy(b, c); }
+    header("TAPE", b, w ? C_DEEP : C_PANEL, w ? C_AMBER : C_DIM);
+    if (now_ms - tp_hat >= 40u) { tp_hat = now_ms; tp_hist[tp_hn++ & 63u] = w ? vsc_meter.tape_m : 0.f; }
+    if (IN_BAND(18, 168)) {
+        box(6, 19, 228, 148, C_DARK);
+        /* the wow: the first head's sway, newest at the right */
+        const float amt = (float)vsc.p[P_TAMT] / 127.f;
+        text(12, 23, "WOW", C_DIM);
+        {
+            const float rate = 0.3f * fexp2((float)vsc.p[P_TTUNE] / 127.f * 4.6f);
+            int hz10 = (int)(rate * 10.f + 0.5f); char c[8];
+            num(b, hz10 / 10); cat(b, "."); c[0] = (char)('0' + hz10 % 10); c[1] = 0; cat(b, c); cat(b, " HZ");
+            text_r(228, 23, b, C_CREAM);
+        }
+        hline(14, 62, 212, C_PANEL);
+        int py = 62;
+        for (unsigned i = 0; i < 64; ++i) {
+            float v = tp_hist[(tp_hn + i) & 63u];
+            int y = 62 - (int)(v * amt * 30.f);
+            int x = 14 + (int)i * 212 / 63;
+            if (i) vline(x, y < py ? y : py, (y < py ? py - y : y - py) + 1, C_AMBER);
+            rect(x, y, 3, 2, C_AMBER);
+            py = y;
+        }
+        /* the wear: three poles' response, 100 Hz to 16 kHz, and the hiss under it */
+        text(12, 100, "WEAR", C_DIM);
+        const float kq = (1.f - amt) * (1.f - amt), c1 = 0.075f + 0.875f * kq, c2 = 0.68f + 0.27f * kq;
+        int lastq = -1;
+        for (int x = 0; x < 212; x += 2) {
+            const float f = 100.f * fexp2((float)x * (7.32f / 212.f)), wv = 6.2831853f * f / 44100.f, cw = fcos(wv);
+            float h1 = c1 * c1 / (1.f - 2.f * (1.f - c1) * cw + (1.f - c1) * (1.f - c1));
+            float h2 = c2 * c2 / (1.f - 2.f * (1.f - c2) * cw + (1.f - c2) * (1.f - c2));
+            float g = h1 * h2 * h2;   /* (power) */
+            int db = (int)(10.f * flog10(g + 1e-9f));
+            int q = db < -48 ? 48 : -db;
+            int top = 112 + q;
+            rect(14 + x, top, 2, 160 - top, C_TAPE3);
+            if (lastq >= 0) rect(14 + x, top, 2, 1, C_AMBER);
+            lastq = q;
+        }
+        if (amt > 0.f) for (int k = 0; k < 18; ++k) { int x = 14 + (int)((uint32_t)(k * 2654435761u + now_ms / 60u * 40503u) % 212u), y = 152 - (int)((uint32_t)(k * 97u + now_ms / 90u) % 6u); rect(x, y, 1, 1, C_CREAM); }
+    }
+    knob_row(172);
+    footer(w ? "AFTER RAVEL'S TAPE  ENV: RESON" : "WHERE: A TRACK, THE INPUT, A BOUNCE");
+}
 static void draw_reson(void)
+{
+    if (view == 2u) { draw_tape_fx(); return; }
+    draw_reson_main();
+}
+static void draw_reson_main(void)
 {
     char b[24];
     unsigned tg = vsc.p[P_RTGT];

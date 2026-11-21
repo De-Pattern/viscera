@@ -175,7 +175,8 @@ static CTRL int head_ok(const uint32_t *head)
 {
     return head[0] == VSC_MAGIC && ((head[1] == VSC_FORMAT && head[2] == sizeof(struct vsc_project)) ||
                                     (head[1] == 10u && head[2] == VSC_FORMAT_10_BYTES) ||
-                                    (head[1] == 11u && head[2] == VSC_FORMAT_11_BYTES) || (head[1] == 12u && head[2] == VSC_FORMAT_12_BYTES));
+                                    (head[1] == 11u && head[2] == VSC_FORMAT_11_BYTES) || (head[1] == 12u && head[2] == VSC_FORMAT_12_BYTES) ||
+                                    (head[1] == 13u && head[2] == VSC_FORMAT_13_BYTES));
 }
 CTRL int vsc_fm1_slot_info(unsigned slot, char name[12])
 {

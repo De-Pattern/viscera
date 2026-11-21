@@ -15,10 +15,11 @@
 
 Viscera 4-Track records sound coming in over Bluetooth (a phone or tablet) or USB (a computer) onto four tracks of tape in the FM-1's memory, and overdubs them:
 
-- **The tape**: four mono tracks of 4-bit ADPCM, at three tape speeds (2.44, 3.36 or 4.9 s a track). The first take sets the loop; then punch in and out of the armed tracks, DUB or REPLACE. SPEED is varispeed (pitch and time together, as tape); PITCH shifts the mix without changing its time.
+- **The tape**: four mono tracks of 4-bit ADPCM, at three tape speeds (2.39, 3.3 or 4.78 s a track). The first take sets the loop; then punch in and out of the armed tracks, DUB or REPLACE. SPEED is varispeed (pitch and time together, as tape); PITCH shifts the mix without changing its time.
 - **The desk**: four channel strips with VU meters, each with a TRIM into a 424-style preamp (clean to 0 VU, then softly rounding with a little second harmonic), PAN and LEVEL; the input has its own preamp with DRIVE.
 - **Bounce**: print any tracks, through RESON and a preamp, onto a free track, one loop long.
 - **RESON**: an eight-band resonant filterbank (LIQUID, GLASS, THROAT, DUST, RADIO, DROPS) on a track, the input or a bounce.
+- **TAPE**: Ravel's worn reel-to-reel (wow, flutter, two heads, the highs worn away, hiss), placed on a track, the input or the bounce.
 - **SPLICE**: tracks 3 and 4 as two spools; hold a key to print one onto the other through a degrader (wow, saturation, age, dropouts, crush, a lossy smear, a comparator, XOR), back and forth, with a hand on the record to scrub and reverse it.
 - **Delay and verb**: a send on each strip into a lo-fi 8-bit delay (up to 350 ms) and a 12-bit verb after the Alesis era (BITS: 12, 10, 8), on the MASTER page.
 - **Robots**: two, moving SPEED, PITCH, levels, pans or RESON as LFOs or as a recorded knob gesture, plus an eight-route LFO matrix: hold LFO and turn any knob to route a robot to it. MIDI learn for knobs and for REC, PLAY and the arm keys.

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.8.0 — TAPE, from Ravel
+
+- **TAPE** (ENV, past RESON's two views): Ravel's worn reel-to-reel, ported from Ravel 1.43.1 line for line. The sound read back from a short loop of tape by two heads: wow (TUNE, 0.3 to 7 Hz), a motor's drift and a little flutter, the second head swaying partly against the first (a slow, detuned chorus); AMOUNT: the sway's depth and the tape's age (the highs worn away, the tape driven, hiss under the note); MIX.
+- **One TAPE, placed (WHERE)**: a track (after its preamp), the input (heard and recorded through it) or the bounce (printed through it). Off to begin with: **no change to the sound until it's placed.**
+- Checked against Ravel's own measurement: a saw chord at the defaults (TUNE 64, AMOUNT 96, MIX 127) lands within 1.4 dB of Ravel's spectrum in every band from 1 to 16 kHz.
+- The robots and the LFO matrix can move TUNE, AMOUNT and MIX. Projects from 2.4 on open.
+- The tape is a touch shorter for its memory: 2.39 s a track at HI (was 2.44), 3.3 at MID, 4.78 at LO.
+
 ## 2.7.3 — KNOB SPEED
 
 - **The knobs travel further.** At the new default, MEDIUM, a slow click moves a 0–127 knob two steps, and a quick turn up to eight a click (with more when the clicks come fast). Knobs with finer ranges (semitones and the like) keep single steps on a slow turn.

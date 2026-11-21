@@ -19,7 +19,7 @@ const TRK = (t, k) => 10 + t * 8 + k, S = {TRIM: 0, PAN: 1, LEVEL: 2, MUTE: 3, A
 const EQ = (b, k) => P.EQ0 + b * 4 + k;
 const ROB = (r, k) => P.ROB0 + r * 5 + k, R = {TARGET: 0, RATE: 1, SHAPE: 2, SKEW: 3, DEPTH: 4};
 const EV = {NOTE_ON: 0, NOTE_OFF: 1, PLAY: 2, STOP: 3, REC: 4, CLEAR: 5, ERASE: 6, BOUNCE: 7, ARM: 8, CC: 9, PANIC: 10, LOOP: 11};
-ok(x.np() === 122, 'parameter count: ' + x.np());
+ok(x.np() === 126, 'parameter count: ' + x.np());
 x.init();
 const inbuf = new Float32Array(mem(), x.input_buffer(), 256), usbbuf = new Float32Array(mem(), x.usb_buffer(), 256);
 let fr = 0;
@@ -360,12 +360,12 @@ x.device_seal(); ok(x.device_check() === 1, 'the device settings check');
   // 2.4's projects (format 10: 101 parameters, no matrix) and 2.5's (11: 101 and the matrix) load,
   // their gestures, motion and routes moved to where this format has them, the new knobs at their defaults
   const crc = (u, a, b) => { let c = 0xffffffff; for (let i = a; i < b; i++) { c ^= u[i]; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1)); } return (~c) >>> 0; };
-  for (const [fmt, ob, onp] of [[12, 548, 113], [11, 536, 101], [10, 504, 101]]) {
+  for (const [fmt, ob, onp] of [[13, 556, 122], [12, 548, 113], [11, 536, 101], [10, 504, 101]]) {
     x.set_param(TRK(2, S.LEVEL), 77); x.set_param(ROB(1, R.RATE), 99);
     rt()[0] = 1; rt()[1] = TRK(0, S.PAN); rt()[2] = 50;
     x.project_seal(0);
     const bytes = x.project_bytes(), u8 = () => new Uint8Array(mem(), x.project(), bytes);
-    const cur = u8().slice(), gestAt = 28 + 124, oldGest = 28 + ((onp + 3) & ~3);
+    const cur = u8().slice(), gestAt = 28 + 128, oldGest = 28 + ((onp + 3) & ~3);
     for (let i = 0; i < bytes - gestAt; i++) cur[gestAt + i] = (i * 7 + 3) & 0x7f;   // (marks in the gestures, motion, routes)
     cur[gestAt + 372 + 1] = TRK(0, S.PAN); cur[gestAt + 372 + 2] = 50; cur[gestAt + 372] = 1;   // (route 0, valid)
     const old = new Uint8Array(ob);
@@ -377,12 +377,13 @@ x.device_seal(); ok(x.device_check() === 1, 'the device settings check');
     const nw = u8(), hv = new Uint32Array(mem(), x.project(), 4);
     let same = true; for (let i = 28; i < 28 + onp; i++) if (nw[i] !== cur[i]) same = false;
     let moved = true; for (let i = 0; i < ob - oldGest; i++) if (nw[gestAt + i] !== cur[gestAt + i]) moved = false;
-    ok(hv[1] === 13 && hv[2] === bytes && same && moved, 'format ' + fmt + ': this format, its knobs kept, the rest moved up');
+    ok(hv[1] === 14 && hv[2] === bytes && same && moved, 'format ' + fmt + ': this format, its knobs kept, the rest moved up');
     if (onp === 101) ok(nw[28 + 101] === 0 && nw[28 + 105] === 60 && nw[28 + 112] === 0, 'the sends start at 0, the delay and verb at their defaults');
-    ok(nw[28 + 113] === 1 && nw[28 + 114] === 0 && nw[28 + 121] === 0, 'SPLICE: FROM spool 2, the degrader at 0');
+    if (onp < 122) ok(nw[28 + 113] === 1 && nw[28 + 114] === 0 && nw[28 + 121] === 0, 'SPLICE: FROM spool 2, the degrader at 0');
+    ok(nw[28 + 122] === 0 && nw[28 + 123] === 64 && nw[28 + 124] === 96 && nw[28 + 125] === 127, 'TAPE: off, at the reference (TUNE 64, AMOUNT 96, MIX 127)');
     if (fmt === 10) { let z = true; for (let i = 0; i < 32; i++) if (nw[bytes - 32 + i]) z = false; ok(z, 'format 10: an empty LFO matrix'); }
   }
-  { const b = x.project_bytes(), u = new Uint8Array(mem(), x.project(), b), g = 28 + 124;   // (back to flat gestures, no motion, no routes)
+  { const b = x.project_bytes(), u = new Uint8Array(mem(), x.project(), b), g = 28 + 128;   // (back to flat gestures, no motion, no routes)
     u.fill(0, g); new DataView(u.buffer, u.byteOffset).setUint16(g + 96, 1000, true); new DataView(u.buffer, u.byteOffset).setUint16(g + 98, 1000, true); }
   for (let i = 0; i < 32; i++) rt()[i] = 0;
   x.set_param(ROB(0, R.SHAPE), 0); x.set_param(ROB(0, R.RATE), 40);
@@ -472,6 +473,21 @@ x.device_seal(); ok(x.device_check() === 1, 'the device settings check');
   ok(x.device_check() === 1, 'version 4 settings check (upgraded)');
   const hv = new DataView(mem(), x.device(), 16);
   ok(hv.getUint32(4, true) === 5 && d[16] === 2 && d[21] === 74 && d[ob] === 1, 'kept: the backlight, the learned CC; KNOB SPEED MEDIUM');
+}
+
+// 14g. TAPE (Ravel's worn reel-to-reel): one, placed on a track, the input or the bounce
+{
+  const WHERE = 122, TUNE = 123, AMT = 124, MIX = 125;
+  ok(x.get_param(WHERE) === 0 && x.get_param(TUNE) === 64 && x.get_param(AMT) === 96 && x.get_param(MIX) === 127, 'TAPE starts off, at the reference settings');
+  press(B.ENV); press(B.ENV); press(B.ENV); paintCheck('ENV TAPE');
+  gen = music; x.event(EV.PLAY, 1, 0);
+  const a = run(80);
+  for (const w of [1, 2, 3, 4, 5]) { x.set_param(WHERE, w); const r = run(80); ok(!r.nan && r.peak <= 1 && r.rms > 1e-4, 'TAPE on ' + ['', 'track 1', 'track 2', 'track 3', 'track 4', 'the input'][w] + ' ' + JSON.stringify(r)); }
+  x.set_param(WHERE, 5); x.set_param(MIX, 0); run(4); const z = run(80);
+  ok(Math.abs(z.rms - a.rms) / a.rms < 0.35, 'MIX 0: as without it (' + z.rms.toFixed(4) + ' vs ' + a.rms.toFixed(4) + ')');
+  x.set_param(MIX, 127); x.set_param(AMT, 127); x.set_param(TUNE, 127); let r = run(80); ok(!r.nan && r.peak <= 1, 'TAPE at full ' + JSON.stringify(r));
+  x.set_param(AMT, 96); x.set_param(TUNE, 64); x.set_param(WHERE, 6); r = run(40); ok(!r.nan, 'TAPE on the bounce');
+  x.set_param(WHERE, 0); x.event(EV.STOP, 0, 0); press(B.HOME);
 }
 
 // 15. long run with everything moving: no NaN, in range

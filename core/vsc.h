@@ -46,11 +46,15 @@ enum vsc_param {
     /* SPOOLS (format 13): tracks 3 and 4 as two spools; which one prints (FROM: 0 spool 1, 1 spool 2),
      * and the degrader on it: WEAR (WOW, SAT, AGE, DROP), BREAK (CRUSH, LOSSY, CMP, XOR) */
     P_SPFROM, P_WOW, P_SAT, P_AGE, P_DROP, P_CRUSH, P_LOSSY, P_CMP, P_XOR,
+    /* TAPE (format 14): Ravel's worn reel-to-reel, one, placed: WHERE (0 off, 1-4 a track after its
+     * preamp, 5 the input, 6 the bounce), TUNE (its wow's rate), AMOUNT (depth, age, drive, hiss), MIX */
+    P_TWHERE, P_TTUNE, P_TAMT, P_TMIX,
     VSC_NP
 };
 #define VSC_SPOOL0 2u    /* spool 1 is track 3, spool 2 track 4 */
 #define VSC_NP_V11 101   /* the parameters of formats 10 and 11 (2.4, 2.5): those up to the robots */
 #define VSC_NP_V12 113   /* format 12 (2.6): those up to the verb */
+#define VSC_NP_V13 122   /* format 13 (2.7): those up to SPLICE */
 enum { S_TRIM, S_PAN, S_LEVEL, S_MUTE, S_ARM, S_SPEED, S_PITCH, S_DUB };
 enum { E_FREQ, E_GAIN, E_Q, E_TYPE };
 #define P_EQ(b, k) (P_EQ0 + (b) * 4 + (k))
@@ -107,10 +111,11 @@ struct vsc_project {
     struct vsc_route { uint8_t src, param; int8_t depth; uint8_t pad; } route[VSC_ROUTES];
 };
 #define VSC_MAGIC 0x34435356u /* "VSC4" */
-#define VSC_FORMAT 13         /* 9: per-track speed, pitch, dub; the master EQ and compressor; 11: the LFO matrix; 12: the sends, delay and verb; 13: the spools */
+#define VSC_FORMAT 14         /* 9: per-track speed, pitch, dub; the master EQ and compressor; 11: the LFO matrix; 12: the sends, delay and verb; 13: the spools; 14: TAPE */
 #define VSC_FORMAT_10_BYTES 504u   /* the earlier formats' sizes (2.4's: no LFO matrix; 2.5's: 101 parameters) */
 #define VSC_FORMAT_11_BYTES 536u
 #define VSC_FORMAT_12_BYTES 548u
+#define VSC_FORMAT_13_BYTES 556u
 /* MIDI learn: a CC (or a note, for an action) on a channel. kind 0: CC to a parameter;
  * 1: a note to an action. */
 struct vsc_learn { uint8_t ch, cc, kind, param; };
@@ -220,6 +225,7 @@ struct vsc_meter {
     uint8_t sp_print, sp_rev;                /* SPLICE: printing now (0 no, 1 onto spool 1, 2 onto spool 2); the source reversed */
     float sp_speed;                          /* SPLICE: the source's speed under the hand (1 as it plays; below 0 reversed) */
     uint8_t sp_drag, sp_pad2[3];             /* SPLICE: DRAG, 0..100 */
+    float tape_m;                            /* TAPE: its first head's sway now (about -1..1) */
 };
 extern struct vsc_project vsc;   /* the live project */
 extern struct vsc_meter vsc_meter;

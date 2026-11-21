@@ -20,7 +20,7 @@
   /* ---------- panel: the FM-1's own layout ---------- */
   /* encoder indices as the FM-1 reports them: 0 SELECT, 1 ALGORITHM, 2-5 KNOB 1-4, 6 PRESETS */
   const ENC_FN = ['view', 'reson · robot', 'param 1', 'param 2', 'param 3', 'param 4', 'page\'s own'];
-  const BTN_FN = {FX: 'master', SEL: 'motion · slice', ARP: 'clear', ENV: 'reson', LFO: 'robots', EDIT: 'mixer', GLO: 'settings',
+  const BTN_FN = {FX: 'master', SEL: 'motion · slice', ARP: 'clear', ENV: 'reson · tape', LFO: 'robots', EDIT: 'mixer', GLO: 'settings',
     HOME: 'tape', SAVE: 'projects', SEQ: 'bounce · splice', PLAY: 'play · stop', REC: 'rec · punch'};
   const ROW1 = ['FX', 'SEL', 'ENV', 'LFO', 'EDIT', 'GLO'], ROW2 = ['HOME', 'SAVE', 'ARP', 'SEQ', 'PLAY', 'REC'];
   let master = 0.8;

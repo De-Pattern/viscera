@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.9.2 — IVORY, finished
+
+- **Deep green** for IVORY's lit keys and chips (the mint stays for the waveforms and traces, which now glow faintly, deeper green, into the dark round them).
+- **The VU lamps' light spreads** from behind the face's lower corners and fades with no edge to it (both looks); IVORY's meters sit in dark bezels.
+- **IVORY's windows sit in moulded plastic bezels**: shadowed above and left, catching the light below and right.
+- **Fader caps** (the mixer, RESON's bands): IVORY's are moulded grey caps, lit from above, ridged, their line green when the knobs move them.
+- No change to the sound.
+
 ## 2.9.1 — reels, knobs, lamps
 
 - **IVORY's reels are open reels**, as a reel-to-reel deck's: an aluminium flange with three windows cut in it, the tape wound on the hub showing through them, growing and shrinking as the tape winds; the flange turns.

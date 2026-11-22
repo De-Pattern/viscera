@@ -139,9 +139,14 @@ static void vline(int x, int y, int h, uint16_t c) { rect(x, y, 1, h, c); }
 /* a box with its corners cut (rounded, at this size) */
 static void box(int x, int y, int w, int h, uint16_t c)
 {
-    if (!IN_BAND(y - 1, y + h + 1)) return;
-    if (look_at == 0 && w >= 40 && h >= 20 && (c == C_DARK || c == C_BLACK)) {   /* IVORY: a window set into the panel */
-        rect(x + 1, y - 1, w - 2, 1, RGB(150, 146, 136)); rect(x + 1, y + h, w - 2, 1, RGB(232, 228, 219));
+    if (!IN_BAND(y - 3, y + h + 3)) return;
+    if (look_at == 0 && c == C_AMBER) c = RGB(38, 112, 80);   /* IVORY: a lit key or chip, deep green */
+    if (look_at == 0 && w >= 40 && h >= 20 && (c == C_DARK || c == C_BLACK)) {   /* IVORY: a window in a moulded plastic bezel */
+        rect(x, y - 3, w, 1, RGB(160, 156, 146)); rect(x - 2, y - 2, w + 4, 1, RGB(128, 124, 116));   /* (its top, in shadow) */
+        rect(x - 1, y - 1, w + 2, 1, RGB(62, 62, 58));
+        rect(x - 3, y, 1, h, RGB(160, 156, 146)); rect(x - 2, y - 1, 1, h + 2, RGB(132, 128, 120)); rect(x - 1, y, 1, h, RGB(70, 70, 66));
+        rect(x + w + 2, y, 1, h, RGB(228, 224, 215)); rect(x + w + 1, y - 1, 1, h + 2, RGB(178, 174, 164)); rect(x + w, y, 1, h, RGB(96, 96, 90));
+        rect(x - 2, y + h + 2, w + 4, 1, RGB(236, 232, 224)); rect(x - 1, y + h + 1, w + 2, 1, RGB(184, 180, 170)); rect(x, y + h, w, 1, RGB(104, 104, 98));
     }
     rect(x + 1, y, w - 2, 1, c); rect(x, y + 1, w, h - 2, c); rect(x + 1, y + h - 1, w - 2, 1, c);
 }
@@ -156,8 +161,11 @@ static int text(int x, int y, const char *s, uint16_t c)
     if (y + 8 <= by0 || y >= by0 + VSC_BAND) { while (*s) { x += 6; ++s; } return x; }
     if (look_at == 0 && *s && c != C_RED) {   /* IVORY: light lettering on the light panel turns dark */
         int sy = y + 3 < by0 ? by0 : y + 3 >= by0 + VSC_BAND ? by0 + VSC_BAND - 1 : y + 3, sx = x - 1 < 0 ? 0 : x - 1;
-        if (sx < VSC_SCREEN_W && lum(band[(sy - by0) * VSC_SCREEN_W + sx]) > 140 && lum(c) > 120)
-            c = c == C_AMBER ? C_TEALK : c == C_CREAM || c == C_FACE ? C_INK : C_INK2;
+        if (sx < VSC_SCREEN_W) {
+            const int bl = lum(band[(sy - by0) * VSC_SCREEN_W + sx]), cl = lum(c);
+            if (bl > 140 && cl > 120) c = c == C_AMBER ? C_TEALK : c == C_CREAM || c == C_FACE ? C_INK : C_INK2;
+            else if (bl < 110 && cl < 100) c = RGB(226, 236, 230);   /* (and dark lettering on a deep green chip, light) */
+        }
     }
     for (; *s; ++s) {
         int ch = (unsigned char)*s;
@@ -920,6 +928,20 @@ static void knob(int cx, int cy, int r, float f, int lit)
     int x1 = cx + (int)(fsin(a) * (float)(r - 2) + 0.5f * (fsin(a) > 0 ? 1 : -1)), y1 = cy - (int)(fcos(a) * (float)(r - 2) + 0.5f * (fcos(a) > 0 ? 1 : -1));
     thick(cx, cy, x1, y1, C_BODY);
 }
+/* a fader's cap. IVORY: a moulded grey cap, lit from above, ridged, its line lit when it's the one
+ * the knobs move; SMOKE: as it was */
+static void fader_cap(int x, int y, int w, int h, int lit)
+{
+    if (look_at != 0) { box(x, y, w, h, lit ? C_AMBER : C_ALU2); hline(x, y + h / 2, w, C_BODY); return; }
+    for (int i = 0; i < w - 2; ++i) rect(x + 2 + i, y + h, 1, 2, RGB(40, 40, 38));   /* (its shadow) */
+    for (int j = 0; j < h; ++j) {
+        const int d = 36 - j * 64 / h;   /* (lighter on top) */
+        rect(x + (j == 0 || j == h - 1), y + j, w - 2 * (j == 0 || j == h - 1), 1, shade(150, 152, 150, d));
+    }
+    for (int j = 2; j < h - 1; j += 2) if (j != h / 2) hline(x + 2, y + j, w - 4, RGB(96, 98, 96));   /* (its ridges) */
+    hline(x + 1, y + h / 2, w - 2, lit ? RGB(36, 132, 94) : RGB(240, 240, 236));
+    vline(x, y + 1, h - 2, RGB(100, 102, 100)); vline(x + w - 1, y + 1, h - 2, RGB(80, 82, 80));
+}
 /* the four knob cells: knob, name, value */
 static void knob_row(int y)
 {
@@ -944,19 +966,19 @@ static float db_pos(int db) { float a = 1.f; int d = db; while (d > 0) { a *= 1.
 /* the meter lamp: a warm, deep orange glow from inside the face's corners, fading to the face */
 static void vu_glow(int x, int y, int w, int h)
 {
-    const float rg = (float)(h < w ? h : w) * 0.36f;   /* (a lamp's glow, close in the corners) */
-    const int ri = (int)rg + 1;
+    /* two lamps behind the face's lower corners, as a meter's are: their light spreads up and in,
+     * strongest at the corner, fading out with no edge to it (an inverse square, a little grain) */
+    const float sx = (float)w * 0.16f + 2.f, sy = (float)h * 0.22f + 2.f;
     int a = y > by0 ? y : by0, b = y + h < by0 + VSC_BAND ? y + h : by0 + VSC_BAND;
     for (int yy = a; yy < b; ++yy) {
-        float dy0 = (float)(yy - y), dy1 = (float)(y + h - 1 - yy), dy = dy0 < dy1 ? dy0 : dy1;
-        if (dy >= rg) continue;
+        const float fy = (float)(y + h - 1 - yy) / sy, gy = 1.f / (1.f + fy * fy);
         for (int xx = x; xx < x + w; ++xx) {
-            if (xx >= x + ri && xx < x + w - ri) { xx = x + w - ri - 1; continue; }
-            float dx0 = (float)(xx - x), dx1 = (float)(x + w - 1 - xx), dx = dx0 < dx1 ? dx0 : dx1;
-            float d2 = (dx * dx + dy * dy) / (rg * rg);
-            if (d2 >= 1.f) continue;
-            float t = 1.f - d2; t = t * t * t * 0.5f;   /* (falling away softly) */
-            int r = (int)(246.f + (232.f - 246.f) * t), g = (int)(220.f + (150.f - 220.f) * t), bl = (int)(160.f + (70.f - 160.f) * t);
+            const float fl = (float)(xx - x) / sx, fr = (float)(x + w - 1 - xx) / sx;
+            float t = gy * (1.f / (1.f + fl * fl) + 1.f / (1.f + fr * fr));
+            t *= 0.55f;
+            if (t < 0.025f) continue;
+            if (t > 0.6f) t = 0.6f;
+            int r = (int)(246.f + (236.f - 246.f) * t), g = (int)(220.f + (150.f - 220.f) * t), bl = (int)(160.f + (64.f - 160.f) * t);
             band[(yy - by0) * VSC_SCREEN_W + xx] = RGB(r, g, bl);
         }
     }
@@ -964,7 +986,7 @@ static void vu_glow(int x, int y, int w, int h)
 static void vu(int x, int y, int w, int h, float v, int big_one)
 {
     if (!IN_BAND(y, y + h)) return;
-    box(x, y, w, h, C_AMBER); box(x + 2, y + 2, w - 4, h - 4, C_FACE);
+    box(x, y, w, h, look_at == 0 ? RGB(44, 46, 44) : C_AMBER); box(x + 2, y + 2, w - 4, h - 4, C_FACE);
     vu_glow(x + 3, y + 3, w - 6, h - 6);
     int px0 = x + w / 2, py0 = y + h - 3, R = h - 9;
     if (big_one) R = h - 22;   /* a shorter needle: the numbers sit clear of the top */
@@ -1136,7 +1158,7 @@ static void draw_mixer(void)
             /* on the SEND view the faders flip to the sends, as a console's do */
             const unsigned fp = row == 3 ? P_SEND0 + t : P_TRK(t, S_LEVEL);
             int fy = 138 + (int)((1.f - (float)vsc.p[fp] / 127.f) * 52.f);
-            box(cx - 10, fy, 21, 9, row == 0 || row == 3 ? C_AMBER : C_ALU2); hline(cx - 10, fy + 4, 21, C_BODY);
+            fader_cap(cx - 10, fy, 21, 9, row == 0 || row == 3);
         }
         if (IN_BAND(203, 221)) {
             box(x + 8, 204, 39, 16, armed ? C_REDK : C_DEEP);
@@ -1329,7 +1351,7 @@ static void draw_reson_main(void)
             rect(x - 2, 24, 5, 5, lit ? C_AMBER : C_GLOW);
             rect(x, 34, 2, 106, C_BLACK);
             int y = 34 + (int)((1.f - (float)vsc.p[P_RG0 + k] / 127.f) * 98.f);
-            box(x - 6, y, 14, 8, k == rsel ? C_AMBER : C_ALU2); hline(x - 6, y + 3, 14, C_BODY);
+            fader_cap(x - 6, y, 14, 8, k == rsel);
             /* the band's ring, as a meter */
             int lv = vsc_meter.rb_level[k] * 98 / 255;
             if (lv) rect(x + 9, 140 - lv, 2, lv, C_TAPE3);
@@ -1853,6 +1875,20 @@ void vsc_ui_paint_band(unsigned y0, uint16_t *pixels)
     case PG_MOTION: draw_tape(); break;
     case PG_SLICE: draw_slice(); break;
     default: draw_tape(); break;
+    }
+    if (look_at == 0) {   /* IVORY: the mint traces glow, faintly, a deeper green into the dark round them */
+        const uint16_t m = C_AMBER, gl = RGB(22, 58, 42);
+        for (int yy = 0; yy < VSC_BAND; ++yy) for (int xx = 1; xx < VSC_SCREEN_W - 1; ++xx) {
+            if (band[yy * VSC_SCREEN_W + xx] != m) continue;
+            for (int oy = -1; oy <= 1; ++oy) {
+                const int ry = yy + oy;
+                if ((unsigned)ry >= VSC_BAND) continue;
+                for (int ox = -1; ox <= 1; ++ox) {
+                    uint16_t *q = &band[ry * VSC_SCREEN_W + xx + ox];
+                    if (*q != m && lum(*q) < 40) *q = gl;
+                }
+            }
+        }
     }
     draw_notice();
 }

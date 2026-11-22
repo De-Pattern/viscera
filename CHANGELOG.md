@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.9.1 — reels, knobs, lamps
+
+- **IVORY's reels are open reels**, as a reel-to-reel deck's: an aluminium flange with three windows cut in it, the tape wound on the hub showing through them, growing and shrinking as the tape winds; the flange turns.
+- **IVORY's knobs**: a black domed cap lit from the top left on a knurled skirt, with a soft shadow.
+- **The VU lamps' glow** sits close in the corners and falls away softly (both looks).
+- No change to the sound.
+
 ## 2.9.0 — IVORY
 
 - **A new look, IVORY, now the default**: a light, grained cream-grey panel with dark display windows set into it, mint on black inside them, black knurled knobs with white pointers, white reels with three holes turning, light console strips on the mixer. Lettering on the panel turns dark by itself, so every screen follows.

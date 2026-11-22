@@ -215,6 +215,22 @@ static float fsin(float x)   /* radians, any */
     return y * (1.f - y2 * (1.f / 6.f - y2 * (1.f / 120.f - y2 * (1.f / 5040.f))));
 }
 static float fcos(float x) { return fsin(x + 1.5707963f); }
+static float fatan2(float y, float x)   /* radians, -pi..pi, within about 0.01 */
+{
+    const float ax = x < 0.f ? -x : x, ay = y < 0.f ? -y : y, mx = ax > ay ? ax : ay;
+    if (mx == 0.f) return 0.f;
+    const float a = (ax < ay ? ax : ay) / mx, s2 = a * a;
+    float r = ((-0.0464964749f * s2 + 0.15931422f) * s2 - 0.327622764f) * s2 * a + a;
+    if (ay > ax) r = 1.5707963f - r;
+    if (x < 0.f) r = 3.1415927f - r;
+    return y < 0.f ? -r : r;
+}
+static uint16_t shade(int r, int g, int b, int d)   /* a colour lightened (d > 0) or darkened */
+{
+    r += d; g += d; b += d;
+    r = r < 0 ? 0 : r > 255 ? 255 : r; g = g < 0 ? 0 : g > 255 ? 255 : g; b = b < 0 ? 0 : b > 255 ? 255 : b;
+    return RGB(r, g, b);
+}
 static float fexp2(float x)   /* 2^x, near enough for a screen */
 {
     int i = (int)x; if (x < 0.f && (float)i != x) --i;
@@ -864,15 +880,45 @@ static void footer(const char *hint)
         for (unsigned b = 0; b < bt; ++b) rect(226 + 3 * (int)b, 233, 2, 3, c);
 }
 /* a knob: aluminium, its pointer from -135 to 135 degrees */
+/* IVORY's knob: a black, knurled skirt and a domed cap, lit from the top left, on a soft shadow */
+static void knob_ivory(int cx, int cy, int r, float f, int lit)
+{
+    const int a = cy - r - 3 < by0 ? by0 : cy - r - 3, b = cy + r + 4 > by0 + VSC_BAND ? by0 + VSC_BAND : cy + r + 4;
+    const int rc = r > 8 ? r - 3 : r - 2;   /* the cap */
+    for (int y = a; y < b; ++y) for (int x = cx - r - 3; x <= cx + r + 3; ++x) {
+        if ((unsigned)x >= VSC_SCREEN_W) continue;
+        const int dx = x - cx, dy = y - cy, d2 = dx * dx + dy * dy;
+        uint16_t *pp = &band[(y - by0) * VSC_SCREEN_W + x];
+        if (d2 > r * r) {   /* the shadow, down and right */
+            const int sx = dx - 1, sy = dy - 2, s2 = sx * sx + sy * sy;
+            if (s2 <= (r + 1) * (r + 1)) { uint16_t c = *pp; *pp = (uint16_t)(((c >> 1) & 0x7bef) + ((c >> 2) & 0x39e7)); }
+            continue;
+        }
+        if (lit && d2 > (r - 1) * (r - 1)) { *pp = C_AMBER; continue; }
+        const int light = (-dx - dy) * 40 / (2 * r);   /* (lit from the top left) */
+        if (d2 > rc * rc) {   /* the skirt: knurled */
+            const float an = fatan2((float)dy, (float)dx);
+            const int k = (int)((an + 3.1415927f) * (float)(r * 2) / 6.2831853f);
+            *pp = shade(46, 48, 47, light + ((k & 1) ? 18 : -10));
+        } else {   /* the cap: domed, a highlight top left */
+            const int hx = dx + rc / 3, hy = dy + rc / 3, h2 = hx * hx + hy * hy, hr = rc * rc / 5 + 1;
+            *pp = shade(30, 32, 31, light / 2 + (h2 < hr ? 26 - 26 * h2 / hr : 0));
+        }
+    }
+    const float an = (-135.f + 270.f * (f < 0.f ? 0.f : f > 1.f ? 1.f : f)) * (3.1415927f / 180.f), sn = fsin(an), cs = fcos(an);
+    const int x0 = cx + (int)(sn * (float)(rc / 3)), y0 = cy - (int)(cs * (float)(rc / 3));
+    const int x1 = cx + (int)(sn * (float)(r - 1) + (sn > 0 ? 0.5f : -0.5f)), y1 = cy - (int)(cs * (float)(r - 1) + (cs > 0 ? 0.5f : -0.5f));
+    thick(x0, y0, x1, y1, RGB(244, 244, 240));
+}
 static void knob(int cx, int cy, int r, float f, int lit)
 {
-    if (!IN_BAND(cy - r - 2, cy + r + 2)) return;
+    if (!IN_BAND(cy - r - 3, cy + r + 4)) return;
+    if (look_at == 0) { knob_ivory(cx, cy, r, f, lit); return; }
     if (lit) disc(cx, cy, r + 2, C_GLOW);
     disc(cx, cy, r, C_ALU); disc(cx, cy, r - 3, C_ALU2);
-    if (look_at == 0) { ring(cx, cy, r, RGB(120, 122, 120)); if (r > 8) ring(cx, cy, r - 3, RGB(48, 50, 49)); }   /* (IVORY: a knurled black knob) */
     float a = (-135.f + 270.f * (f < 0.f ? 0.f : f > 1.f ? 1.f : f)) * (3.1415927f / 180.f);
     int x1 = cx + (int)(fsin(a) * (float)(r - 2) + 0.5f * (fsin(a) > 0 ? 1 : -1)), y1 = cy - (int)(fcos(a) * (float)(r - 2) + 0.5f * (fcos(a) > 0 ? 1 : -1));
-    thick(cx, cy, x1, y1, look_at == 0 ? RGB(240, 240, 236) : C_BODY);
+    thick(cx, cy, x1, y1, C_BODY);
 }
 /* the four knob cells: knob, name, value */
 static void knob_row(int y)
@@ -898,7 +944,7 @@ static float db_pos(int db) { float a = 1.f; int d = db; while (d > 0) { a *= 1.
 /* the meter lamp: a warm, deep orange glow from inside the face's corners, fading to the face */
 static void vu_glow(int x, int y, int w, int h)
 {
-    const float rg = (float)(h < w ? h : w) * 0.62f;
+    const float rg = (float)(h < w ? h : w) * 0.36f;   /* (a lamp's glow, close in the corners) */
     const int ri = (int)rg + 1;
     int a = y > by0 ? y : by0, b = y + h < by0 + VSC_BAND ? y + h : by0 + VSC_BAND;
     for (int yy = a; yy < b; ++yy) {
@@ -909,8 +955,8 @@ static void vu_glow(int x, int y, int w, int h)
             float dx0 = (float)(xx - x), dx1 = (float)(x + w - 1 - xx), dx = dx0 < dx1 ? dx0 : dx1;
             float d2 = (dx * dx + dy * dy) / (rg * rg);
             if (d2 >= 1.f) continue;
-            float t = 1.f - d2; t = t * t * 0.62f;
-            int r = (int)(246.f + (214.f - 246.f) * t), g = (int)(220.f + (98.f - 220.f) * t), bl = (int)(160.f + (26.f - 160.f) * t);
+            float t = 1.f - d2; t = t * t * t * 0.5f;   /* (falling away softly) */
+            int r = (int)(246.f + (232.f - 246.f) * t), g = (int)(220.f + (150.f - 220.f) * t), bl = (int)(160.f + (70.f - 160.f) * t);
             band[(yy - by0) * VSC_SCREEN_W + xx] = RGB(r, g, bl);
         }
     }
@@ -949,15 +995,25 @@ static void vu(int x, int y, int w, int h, float v, int big_one)
 /* ---- TAPE */
 static void reel(int cx, int cy, int r, float ang)
 {
-    if (look_at == 0) {   /* IVORY: the tape wound on a white reel, three holes turning */
-        disc(cx, cy, r, C_TAPE); ring(cx, cy, r, C_TAPE2);
-        const int rr = r < 17 ? r - 1 : 16;
-        disc(cx, cy, rr, RGB(232, 232, 228)); ring(cx, cy, rr, RGB(170, 170, 166));
-        for (unsigned k = 0; k < 3; ++k) {
-            float a = ang + (float)k * 2.0943951f;
-            disc(cx + (int)(fsin(a) * (float)rr * 0.56f), cy - (int)(fcos(a) * (float)rr * 0.56f), rr / 5, C_BLACK);
+    if (look_at == 0) {   /* IVORY: an open reel, as a reel-to-reel deck's: an aluminium flange with three
+                             * windows cut in it, the tape wound on the hub showing through them */
+        const int R = 33, pk = r > R - 3 ? R - 3 : r;   /* (r: how much tape is wound on) */
+        const int a = cy - R < by0 ? by0 : cy - R, b = cy + R + 1 > by0 + VSC_BAND ? by0 + VSC_BAND : cy + R + 1;
+        for (int y = a; y < b; ++y) for (int x = cx - R; x <= cx + R; ++x) {
+            if ((unsigned)x >= VSC_SCREEN_W) continue;
+            const int dx = x - cx, dy = y - cy, d2 = dx * dx + dy * dy;
+            if (d2 > R * R) continue;
+            uint16_t *pp = &band[(y - by0) * VSC_SCREEN_W + x];
+            const int sheen = (dx - dy) * 22 / R;   /* (brushed metal, lit across) */
+            if (d2 > (R - 2) * (R - 2)) { *pp = shade(196, 198, 196, sheen - 8); continue; }   /* the rim */
+            if (d2 <= 25) { *pp = d2 <= 4 ? RGB(150, 152, 150) : RGB(22, 23, 22); continue; }  /* the spindle */
+            if (d2 <= 64) { *pp = shade(170, 172, 170, sheen); continue; }                     /* the hub */
+            float an = fatan2((float)dy, (float)dx) - ang;
+            an -= 2.0943951f * (float)(int)(an * (1.f / 2.0943951f)); if (an < 0.f) an += 2.0943951f;
+            const int win = an > 0.30f && an < 1.62f && d2 > 110 && d2 < (R - 5) * (R - 5);
+            if (win) *pp = d2 <= pk * pk ? (((d2 >> 4) & 1) ? RGB(58, 44, 36) : RGB(66, 50, 41)) : C_BLACK;   /* the tape, or through */
+            else *pp = shade(214, 216, 214, sheen + (d2 > (R - 6) * (R - 6) ? -6 : 0));
         }
-        disc(cx, cy, 4, C_BLACK); disc(cx, cy, 1, RGB(200, 200, 196));
         return;
     }
     disc(cx, cy, r, C_TAPE); ring(cx, cy, r, C_TAPE2);
@@ -1512,7 +1568,7 @@ static void draw_splice(void)
         box(6, 19, 228, 84, C_BLACK); frame(6, 19, 228, 84, C_LINE);
         for (unsigned k = 0; k < 2; ++k) {
             const int cx = k ? 180 : 60, cy = 58, has = vsc_meter.has[VSC_SPOOL0 + k];
-            reel(cx, cy, has ? 32 : 18, sp_ang[k]);
+            reel(cx, cy, look_at == 0 ? (has ? 28 : 9) : has ? 32 : 18, sp_ang[k]);
             if (k == from) ring(cx, cy, has ? 34 : 20, pr ? C_RED : C_AMBER);
         }
         /* the tape between, and which way a print goes */

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.9.0 — IVORY
+
+- **A new look, IVORY, now the default**: a light, grained cream-grey panel with dark display windows set into it, mint on black inside them, black knurled knobs with white pointers, white reels with three holes turning, light console strips on the mixer. Lettering on the panel turns dark by itself, so every screen follows.
+- **The first look stays, as SMOKE**: SETTINGS, second view, KNOB 4 (LOOK). Saved with the settings.
+- No change to the sound.
+
 ## 2.8.0 — TAPE, from Ravel
 
 - **TAPE** (ENV, past RESON's two views): Ravel's worn reel-to-reel, ported from Ravel 1.43.1 line for line. The sound read back from a short loop of tape by two heads: wow (TUNE, 0.3 to 7 Hz), a motor's drift and a little flutter, the second head swaying partly against the first (a slow, detuned chorus); AMOUNT: the sway's depth and the tape's age (the highs worn away, the tape driven, hiss under the note); MIX.

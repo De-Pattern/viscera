@@ -9,30 +9,97 @@ struct vsc_host_status vsc_host;
 
 /* ---------------------------------------------------------------- colour */
 #define RGB(r, g, b) (uint16_t)((((r) & 0xf8) << 8) | (((g) & 0xfc) << 3) | ((b) >> 3))
-#define C_BODY  RGB(28, 26, 23)
-#define C_PANEL RGB(43, 39, 35)
-#define C_LINE  RGB(74, 68, 60)
-#define C_DARK  RGB(38, 35, 31)
-#define C_DEEP  RGB(58, 53, 47)
-#define C_BLACK RGB(15, 14, 13)
-#define C_CREAM RGB(239, 230, 210)
-#define C_DIM   RGB(167, 159, 142)
-#define C_DIMR  RGB(111, 104, 92)
-#define C_AMBER RGB(242, 196, 109)
-#define C_FACE  RGB(246, 220, 160)
-#define C_BROWN RGB(90, 59, 37)
-#define C_RED   RGB(226, 73, 47)
-#define C_REDK  RGB(74, 42, 36)
-#define C_TAPE  RGB(61, 42, 29)
-#define C_TAPE2 RGB(86, 57, 42)
-#define C_TAPE3 RGB(107, 70, 48)
-#define C_HUB   RGB(207, 203, 193)
-#define C_HUB2  RGB(142, 139, 132)
-#define C_ALU   RGB(185, 182, 174)
-#define C_ALU2  RGB(216, 213, 205)
-#define C_GREEN RGB(127, 174, 106)
-#define C_LED   RGB(47, 107, 42)
-#define C_GLOW  RGB(74, 58, 36)
+/* two looks: SMOKE (the first: a smoked body, cream lettering, aluminium knobs, amber meters) and
+ * IVORY (a light, cream-grey panel with dark display windows set in it, mint on black, black
+ * knurled knobs, white reels). The same drawing for both, from this palette; text on the light
+ * panel is turned dark where it lands (text()). SETTINGS: LOOK. */
+enum { KC_BODY, KC_PANEL, KC_LINE, KC_DARK, KC_DEEP, KC_BLACK, KC_CREAM, KC_DIM, KC_DIMR, KC_AMBER, KC_FACE, KC_BROWN, KC_RED, KC_REDK, KC_TAPE, KC_TAPE2, KC_TAPE3, KC_HUB, KC_HUB2, KC_ALU, KC_ALU2, KC_GREEN, KC_LED, KC_GLOW, KN };
+static const uint16_t pal_smoke[KN] = {
+    RGB(28, 26, 23),
+    RGB(43, 39, 35),
+    RGB(74, 68, 60),
+    RGB(38, 35, 31),
+    RGB(58, 53, 47),
+    RGB(15, 14, 13),
+    RGB(239, 230, 210),
+    RGB(167, 159, 142),
+    RGB(111, 104, 92),
+    RGB(242, 196, 109),
+    RGB(246, 220, 160),
+    RGB(90, 59, 37),
+    RGB(226, 73, 47),
+    RGB(74, 42, 36),
+    RGB(61, 42, 29),
+    RGB(86, 57, 42),
+    RGB(107, 70, 48),
+    RGB(207, 203, 193),
+    RGB(142, 139, 132),
+    RGB(185, 182, 174),
+    RGB(216, 213, 205),
+    RGB(127, 174, 106),
+    RGB(47, 107, 42),
+    RGB(74, 58, 36)};
+static const uint16_t pal_ivory[KN] = {
+    RGB(208, 203, 192),
+    RGB(194, 189, 178),
+    RGB(142, 137, 127),
+    RGB(30, 33, 32),
+    RGB(60, 66, 64),
+    RGB(17, 19, 18),
+    RGB(226, 234, 228),
+    RGB(146, 160, 154),
+    RGB(96, 106, 102),
+    RGB(122, 214, 186),
+    RGB(244, 228, 190),
+    RGB(90, 59, 37),
+    RGB(222, 62, 44),
+    RGB(92, 40, 34),
+    RGB(52, 46, 42),
+    RGB(84, 80, 76),
+    RGB(96, 110, 106),
+    RGB(236, 236, 232),
+    RGB(160, 160, 156),
+    RGB(36, 38, 37),
+    RGB(70, 73, 71),
+    RGB(110, 190, 150),
+    RGB(40, 110, 80),
+    RGB(150, 214, 196)};
+static uint16_t pal[KN];
+static uint8_t look_at = 255;
+#define C_BODY pal[KC_BODY]
+#define C_PANEL pal[KC_PANEL]
+#define C_LINE pal[KC_LINE]
+#define C_DARK pal[KC_DARK]
+#define C_DEEP pal[KC_DEEP]
+#define C_BLACK pal[KC_BLACK]
+#define C_CREAM pal[KC_CREAM]
+#define C_DIM pal[KC_DIM]
+#define C_DIMR pal[KC_DIMR]
+#define C_AMBER pal[KC_AMBER]
+#define C_FACE pal[KC_FACE]
+#define C_BROWN pal[KC_BROWN]
+#define C_RED pal[KC_RED]
+#define C_REDK pal[KC_REDK]
+#define C_TAPE pal[KC_TAPE]
+#define C_TAPE2 pal[KC_TAPE2]
+#define C_TAPE3 pal[KC_TAPE3]
+#define C_HUB pal[KC_HUB]
+#define C_HUB2 pal[KC_HUB2]
+#define C_ALU pal[KC_ALU]
+#define C_ALU2 pal[KC_ALU2]
+#define C_GREEN pal[KC_GREEN]
+#define C_LED pal[KC_LED]
+#define C_GLOW pal[KC_GLOW]
+#define C_INK   RGB(34, 34, 31)     /* (IVORY: the panel's lettering) */
+#define C_INK2  RGB(92, 88, 80)
+#define C_TEALK RGB(26, 118, 98)
+static void look_set(unsigned l)
+{
+    if (l == look_at) return;
+    const uint16_t *s = l ? pal_smoke : pal_ivory;
+    for (unsigned i = 0; i < KN; ++i) pal[i] = s[i];
+    look_at = (uint8_t)l;
+}
 
 /* ------------------------------------------------------------------ font */
 /* 5x7, ASCII 32..95, column bytes with bit 0 at the top. */
@@ -72,7 +139,10 @@ static void vline(int x, int y, int h, uint16_t c) { rect(x, y, 1, h, c); }
 /* a box with its corners cut (rounded, at this size) */
 static void box(int x, int y, int w, int h, uint16_t c)
 {
-    if (!IN_BAND(y, y + h)) return;
+    if (!IN_BAND(y - 1, y + h + 1)) return;
+    if (look_at == 0 && w >= 40 && h >= 20 && (c == C_DARK || c == C_BLACK)) {   /* IVORY: a window set into the panel */
+        rect(x + 1, y - 1, w - 2, 1, RGB(150, 146, 136)); rect(x + 1, y + h, w - 2, 1, RGB(232, 228, 219));
+    }
     rect(x + 1, y, w - 2, 1, c); rect(x, y + 1, w, h - 2, c); rect(x + 1, y + h - 1, w - 2, 1, c);
 }
 static void frame(int x, int y, int w, int h, uint16_t c)
@@ -80,9 +150,15 @@ static void frame(int x, int y, int w, int h, uint16_t c)
     if (!IN_BAND(y, y + h)) return;
     hline(x + 1, y, w - 2, c); hline(x + 1, y + h - 1, w - 2, c); vline(x, y + 1, h - 2, c); vline(x + w - 1, y + 1, h - 2, c);
 }
+static int lum(uint16_t c) { return (((c >> 11) & 31) * 8 * 3 + ((c >> 5) & 63) * 4 * 6 + (c & 31) * 8) / 10; }
 static int text(int x, int y, const char *s, uint16_t c)
 {
     if (y + 8 <= by0 || y >= by0 + VSC_BAND) { while (*s) { x += 6; ++s; } return x; }
+    if (look_at == 0 && *s && c != C_RED) {   /* IVORY: light lettering on the light panel turns dark */
+        int sy = y + 3 < by0 ? by0 : y + 3 >= by0 + VSC_BAND ? by0 + VSC_BAND - 1 : y + 3, sx = x - 1 < 0 ? 0 : x - 1;
+        if (sx < VSC_SCREEN_W && lum(band[(sy - by0) * VSC_SCREEN_W + sx]) > 140 && lum(c) > 120)
+            c = c == C_AMBER ? C_TEALK : c == C_CREAM || c == C_FACE ? C_INK : C_INK2;
+    }
     for (; *s; ++s) {
         int ch = (unsigned char)*s;
         if (ch >= 'a' && ch <= 'z') ch -= 32;
@@ -189,7 +265,7 @@ static uint8_t slice_open;                                 /* the SLICE page tol
 static uint32_t intro_at, frame_ms;   /* frame_ms: the time a frame is drawn at (one picture, however long its bands take) */
 static uint8_t intro_on, intro_fresh;   /* the start-up animation is on screen; its start time not yet taken from the clock */   /* a held modifier was used */
 /* a knob slot: a parameter, or one of the page's own controls */
-enum { K_NONE = 200, K_LSTART, K_LEND, K_LSLIDE, K_LFULL, K_LOOP, K_BTAUDIO, K_BTMIDI, K_LIGHT, K_KNOBCC, K_BLE, K_CLEARMAP, K_BAND, K_START, K_RSRC, K_RDST, K_RDEPTH, K_RDEL, K_FINGER, K_DRAG, K_KNOBSPD };
+enum { K_NONE = 200, K_LSTART, K_LEND, K_LSLIDE, K_LFULL, K_LOOP, K_BTAUDIO, K_BTMIDI, K_LIGHT, K_KNOBCC, K_BLE, K_CLEARMAP, K_BAND, K_START, K_RSRC, K_RDST, K_RDEPTH, K_RDEL, K_FINGER, K_DRAG, K_KNOBSPD, K_LOOK };
 static unsigned slot(unsigned k)
 {
     switch (page) {
@@ -224,7 +300,7 @@ static unsigned slot(unsigned k)
         if (view >= V_LEARN) return k == 3 ? K_CLEARMAP : K_NONE;
         return P_ROB(view, k == 0 ? R_RATE : k == 1 ? R_SHAPE : k == 2 ? R_SKEW : R_DEPTH);
     case PG_SETTINGS: {
-        static const uint8_t s[2][4] = {{K_BTAUDIO, K_BTMIDI, K_LIGHT, K_START}, {K_BLE, K_KNOBCC, K_KNOBSPD, K_NONE}};
+        static const uint8_t s[2][4] = {{K_BTAUDIO, K_BTMIDI, K_LIGHT, K_START}, {K_BLE, K_KNOBCC, K_KNOBSPD, K_LOOK}};
         return s[view & 1][k];
     }
     default: return K_NONE;
@@ -266,6 +342,7 @@ static void slot_text(unsigned s, char name[10], char val[10])
     case K_BTMIDI: cpy(name, "BT MID"); cpy(val, vsc_host.bt_midi ? "ON" : "OFF"); break;
     case K_LIGHT: { static const char *const l[4] = {"OFF", "LOW", "MID", "HIGH"}; cpy(name, "LIGHT"); cpy(val, l[vsc_dev.backlight & 3]); break; }
     case K_KNOBCC: cpy(name, "CC 110"); cpy(val, vsc_dev.knob_cc ? "KNOBS" : "OFF"); break;
+    case K_LOOK: cpy(name, "LOOK"); cpy(val, vsc_dev.pad[0] ? "SMOKE" : "IVORY"); break;
     case K_KNOBSPD: { static const char *const n[3] = {"SLOW", "MEDIUM", "FAST"}; cpy(name, "KNOBS"); cpy(val, n[vsc_dev.knob_speed % 3u]); break; }
     case K_BLE: cpy(name, "BLE"); cpy(val, vsc_host.ble_role ? "CENTRL" : "PERIPH"); break;
     case K_START: cpy(name, "START"); cpy(val, vsc_dev.start_blank ? "BLANK" : "LAST"); break;
@@ -399,6 +476,7 @@ static void edit(unsigned s, int d, unsigned *req, unsigned *arg)
     case K_BTMIDI: *req = HOST_BT_MIDI; *arg = d > 0; break;
     case K_LIGHT: vsc_dev.backlight = (uint8_t)clampi((int)vsc_dev.backlight + d, 0, BACKLIGHT_HIGH); ++vsc_dev_changed; break;
     case K_KNOBCC: vsc_dev.knob_cc = d > 0; ++vsc_dev_changed; break;
+    case K_LOOK: vsc_dev.pad[0] = d > 0 ? 1u : 0u; ++vsc_dev_changed; break;
     case K_KNOBSPD: vsc_dev.knob_speed = (uint8_t)clampi((int)vsc_dev.knob_speed + (d > 0 ? 1 : -1), 0, 2); ++vsc_dev_changed; break;
     case K_START: vsc_dev.start_blank = d < 0; ++vsc_dev_changed; break;
     case K_BLE: *req = HOST_BLE_ROLE; *arg = d > 0; break;
@@ -791,9 +869,10 @@ static void knob(int cx, int cy, int r, float f, int lit)
     if (!IN_BAND(cy - r - 2, cy + r + 2)) return;
     if (lit) disc(cx, cy, r + 2, C_GLOW);
     disc(cx, cy, r, C_ALU); disc(cx, cy, r - 3, C_ALU2);
+    if (look_at == 0) { ring(cx, cy, r, RGB(120, 122, 120)); if (r > 8) ring(cx, cy, r - 3, RGB(48, 50, 49)); }   /* (IVORY: a knurled black knob) */
     float a = (-135.f + 270.f * (f < 0.f ? 0.f : f > 1.f ? 1.f : f)) * (3.1415927f / 180.f);
     int x1 = cx + (int)(fsin(a) * (float)(r - 2) + 0.5f * (fsin(a) > 0 ? 1 : -1)), y1 = cy - (int)(fcos(a) * (float)(r - 2) + 0.5f * (fcos(a) > 0 ? 1 : -1));
-    thick(cx, cy, x1, y1, C_BODY);
+    thick(cx, cy, x1, y1, look_at == 0 ? RGB(240, 240, 236) : C_BODY);
 }
 /* the four knob cells: knob, name, value */
 static void knob_row(int y)
@@ -870,6 +949,17 @@ static void vu(int x, int y, int w, int h, float v, int big_one)
 /* ---- TAPE */
 static void reel(int cx, int cy, int r, float ang)
 {
+    if (look_at == 0) {   /* IVORY: the tape wound on a white reel, three holes turning */
+        disc(cx, cy, r, C_TAPE); ring(cx, cy, r, C_TAPE2);
+        const int rr = r < 17 ? r - 1 : 16;
+        disc(cx, cy, rr, RGB(232, 232, 228)); ring(cx, cy, rr, RGB(170, 170, 166));
+        for (unsigned k = 0; k < 3; ++k) {
+            float a = ang + (float)k * 2.0943951f;
+            disc(cx + (int)(fsin(a) * (float)rr * 0.56f), cy - (int)(fcos(a) * (float)rr * 0.56f), rr / 5, C_BLACK);
+        }
+        disc(cx, cy, 4, C_BLACK); disc(cx, cy, 1, RGB(200, 200, 196));
+        return;
+    }
     disc(cx, cy, r, C_TAPE); ring(cx, cy, r, C_TAPE2);
     if (r > 20) ring(cx, cy, r - 7, C_TAPE3);
     disc(cx, cy, 13, C_HUB); ring(cx, cy, 13, C_HUB2); disc(cx, cy, 5, C_BLACK);
@@ -966,7 +1056,8 @@ static void draw_mixer(void)
         int x = 4 + 59 * (int)t, cx = x + 27;
         int armed = vsc.p[P_TRK(t, S_ARM)], has = vsc_meter.has[t];
         if (IN_BAND(18, 226)) {
-            box(x, 18, 55, 208, C_DARK);
+            box(x, 18, 55, 208, look_at == 0 ? RGB(186, 181, 170) : C_DARK);   /* (IVORY: a light strip, as a console's) */
+            if (look_at == 0) frame(x, 18, 55, 208, RGB(150, 146, 136));
             if (armed) frame(x, 18, 55, 208, (vsc_meter.recording >> t & 1u) ? C_RED : C_REDK);
         }
         vu(x + 4, 22, 47, 34, has ? vsc_meter.vu[t] : 0.f, 0);
@@ -1444,7 +1535,7 @@ static void draw_splice(void)
         for (unsigned k = 0; k < 2; ++k) {
             const unsigned t = VSC_SPOOL0 + k;
             const int y = 107 + 30 * (int)k, mid = y + 13, onto = pr == k + 1u;
-            box(6, y, 228, 27, onto ? C_DARK : C_PANEL);
+            box(6, y, 228, 27, look_at == 0 ? (onto ? C_DEEP : C_DARK) : onto ? C_DARK : C_PANEL);
             if (onto) frame(6, y, 228, 27, C_RED); else if (k == from) frame(6, y, 228, 27, C_AMBER);
             text(11, y + 4, k ? "2" : "1", k == from ? C_AMBER : C_DIM);
             text(11, y + 15, k == from ? "FR" : onto ? "TO" : "", k == from ? C_AMBER : C_RED);
@@ -1685,7 +1776,14 @@ void vsc_ui_paint_band(unsigned y0, uint16_t *pixels)
         if ((int32_t)(frame_ms - intro_at) < (int32_t)INTRO_MS) { draw_intro(); return; }
         intro_on = 0;
     }
-    for (unsigned i = 0; i < VSC_SCREEN_W * VSC_BAND; ++i) pixels[i] = C_BODY;
+    look_set(vsc_dev.pad[0] ? 1u : 0u);
+    if (look_at == 0) {   /* IVORY: the panel's grain */
+        for (unsigned i = 0; i < VSC_SCREEN_W * VSC_BAND; ++i) {
+            uint32_t h = (i + y0 * VSC_SCREEN_W) * 2654435761u; h ^= h >> 15; h *= 2246822519u; h ^= h >> 13;
+            int d = (int)(h & 7u) - 3;
+            pixels[i] = RGB(208 + d * 2, 203 + d * 2, 192 + d * 2);
+        }
+    } else for (unsigned i = 0; i < VSC_SCREEN_W * VSC_BAND; ++i) pixels[i] = C_BODY;
     switch (page) {
     case PG_MIXER: draw_mixer(); break;
     case PG_INPUT: draw_input(); break;

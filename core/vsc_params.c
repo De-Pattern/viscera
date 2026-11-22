@@ -300,7 +300,7 @@ int vsc_device_valid(const struct vsc_device *d)
         const struct vsc_learn *e = &d->learn[l];
         if (e->param != 255 && (e->kind > 1 || (e->kind == 0 && e->param >= VSC_NP) || (e->kind == 1 && e->param >= ACT_COUNT))) return 0;
     }
-    return d->backlight <= BACKLIGHT_HIGH && d->knob_speed <= 2;
+    return d->backlight <= BACKLIGHT_HIGH && d->knob_speed <= 2 && d->pad[0] <= 1;
 }
 int vsc_device_upgrade(struct vsc_device *d)
 {

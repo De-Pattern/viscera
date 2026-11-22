@@ -128,7 +128,7 @@ struct vsc_device {
     uint8_t backlight, knob_cc;
     uint8_t start_blank, last_slot;   /* START WITH: 0 the last project saved or loaded (last_slot, 1..8; 0 none), 1 a blank one */
     struct vsc_learn learn[VSC_LEARN];
-    uint8_t knob_speed, pad[3];       /* the knobs' travel: 0 SLOW, 1 MEDIUM, 2 FAST (version 5) */
+    uint8_t knob_speed, pad[3];       /* the knobs' travel: 0 SLOW, 1 MEDIUM, 2 FAST (version 5); pad[0]: LOOK, 0 IVORY, 1 SMOKE */
 };
 #define VSC_DEV_MAGIC 0x44435356u   /* 'VSCD' */
 #define VSC_DEV_VERSION 5           /* 4: the 4-track; 5: KNOB SPEED */
